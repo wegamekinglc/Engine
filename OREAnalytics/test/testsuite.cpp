@@ -16,113 +16,79 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*! \file testsuite.cpp
-    \brief wrapper calling all individual test cases
-    \ingroup
-*/
-
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 using namespace std;
 
 // Boost
-#include <boost/timer.hpp>
+#include <boost/timer/timer.hpp>
 using namespace boost;
+using boost::timer::cpu_timer;
 
 // Boost.Test
-#include <boost/test/unit_test.hpp>
+#define BOOST_TEST_MODULE OREAnalyticsTestSuite
+#include <boost/test/parameterized_test.hpp>
 #include <boost/test/test_tools.hpp>
 #include <boost/test/unit_test.hpp>
-#include <boost/test/parameterized_test.hpp>
 using boost::unit_test::test_suite;
+using boost::unit_test::framework::master_test_suite;
+
+#include <oret/oret.hpp>
+using ore::test::setupTestLogging;
 
 #ifdef BOOST_MSVC
-#include <ql/auto_link.hpp>
-#include <qle/auto_link.hpp>
 #include <orea/auto_link.hpp>
 #include <ored/auto_link.hpp>
-#define BOOST_LIB_NAME boost_date_time
-#include <boost/config/auto_link.hpp>
+#include <ql/auto_link.hpp>
+#include <qle/auto_link.hpp>
 #define BOOST_LIB_NAME boost_serialization
 #include <boost/config/auto_link.hpp>
 #define BOOST_LIB_NAME boost_regex
 #include <boost/config/auto_link.hpp>
-#define BOOST_LIB_NAME boost_system
+#define BOOST_LIB_NAME boost_timer
 #include <boost/config/auto_link.hpp>
-#define BOOST_LIB_NAME boost_filesystem
+#define BOOST_LIB_NAME boost_chrono
 #include <boost/config/auto_link.hpp>
 #endif
 
-// Lib test suites
-#include "aggregationscenariodata.hpp"
-#include "cube.hpp"
-#include "scenariosimmarket.hpp"
-#include "scenariogenerator.hpp"
-#include "swapperformance.hpp"
-#include "sensitivityanalysis.hpp"
-#include "sensitivityanalysis2.hpp"
-#include "sensitivityperformance.hpp"
-#include "stresstest.hpp"
-#include "observationmode.hpp"
+class OreaGlobalFixture {
+public:
+    OreaGlobalFixture() {
+        int argc = master_test_suite().argc;
+        char** argv = master_test_suite().argv;
 
-namespace {
-
-boost::timer t;
-
-void startTimer() { t.restart(); }
-void stopTimer() {
-    double seconds = t.elapsed();
-    int hours = int(seconds / 3600);
-    seconds -= hours * 3600;
-    int minutes = int(seconds / 60);
-    seconds -= minutes * 60;
-    std::cout << endl << " OREAnalytics tests completed in ";
-    if (hours > 0)
-        cout << hours << " h ";
-    if (hours > 0 || minutes > 0)
-        cout << minutes << " m ";
-    cout << fixed << setprecision(0) << seconds << " s" << endl << endl;
-}
-}
-
-test_suite* init_unit_test_suite(int, char* []) {
-
-    int argc = boost::unit_test::framework::master_test_suite().argc;
-    char** argv = boost::unit_test::framework::master_test_suite().argv;
-    bool enablePerformanceTests = false;
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--enable_performance_tests") == 0)
-            enablePerformanceTests = true;
-    }
-    string name(argv[0]);
-    string baseName = name.substr(name.find_last_of("/\\") + 1);
-    BOOST_TEST_MESSAGE("Enable performance tests:  " << baseName
-                                                     << " [Boost.Test arguments] -- --enable_performance_tests");
-
-    if (enablePerformanceTests)
-        BOOST_TEST_MESSAGE("Performance tests ENABLED");
-    else
-        BOOST_TEST_MESSAGE("Performance tests DISABLED");
-
-    test_suite* test = BOOST_TEST_SUITE("OREAnalyticsTestSuite");
-
-    test->add(BOOST_TEST_CASE(startTimer));
-    test->add(testsuite::AggregationScenarioDataTest::suite());
-    test->add(testsuite::CubeTest::suite());
-    test->add(testsuite::ScenarioSimMarketTest::suite());
-    test->add(testsuite::ScenarioGeneratorTest::suite());
-    test->add(testsuite::SensitivityAnalysisTest::suite());
-    test->add(testsuite::SensitivityAnalysis2Test::suite());
-    test->add(testsuite::StressTestingTest::suite());
-    test->add(testsuite::ObservationModeTest::suite());
-    // test->add(FXSwapTest::suite());
-
-    if (enablePerformanceTests) {
-        test->add(testsuite::SensitivityPerformanceTest::suite());
-        test->add(testsuite::SwapPerformanceTest::suite());
+        // Set up test logging
+        setupTestLogging(argc, argv);
     }
 
-    test->add(BOOST_TEST_CASE(stopTimer));
+    ~OreaGlobalFixture() { stopTimer(); }
 
-    return test;
-}
+    // Method called in destructor to log time taken
+    void stopTimer() {
+        t.stop();
+        double seconds = t.elapsed().wall * 1e-9;
+        int hours = int(seconds / 3600);
+        seconds -= hours * 3600;
+        int minutes = int(seconds / 60);
+        seconds -= minutes * 60;
+        cout << endl << "OREAnalytics tests completed in ";
+        if (hours > 0)
+            cout << hours << " h ";
+        if (hours > 0 || minutes > 0)
+            cout << minutes << " m ";
+        cout << fixed << setprecision(0) << seconds << " s" << endl;
+    }
+
+private:
+    // Timing the test run
+    cpu_timer t;
+};
+
+// Breaking change in 1.65.0
+// https://www.boost.org/doc/libs/1_65_0/libs/test/doc/html/boost_test/change_log.html
+// Deprecating BOOST_GLOBAL_FIXTURE in favor of BOOST_TEST_GLOBAL_FIXTURE
+#if BOOST_VERSION < 106500
+BOOST_GLOBAL_FIXTURE(OreaGlobalFixture);
+#else
+BOOST_TEST_GLOBAL_FIXTURE(OreaGlobalFixture);
+#endif

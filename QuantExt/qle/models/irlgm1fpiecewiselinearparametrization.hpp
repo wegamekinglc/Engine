@@ -46,25 +46,30 @@ namespace QuantExt {
 template <class TS>
 class Lgm1fPiecewiseLinearParametrization : public Lgm1fParametrization<TS>, private PiecewiseConstantHelper11 {
 public:
-    Lgm1fPiecewiseLinearParametrization(const Currency& currency, const Handle<TS>& termStructure,
-                                        const Array& alphaTimes, const Array& alpha, const Array& hTimes,
-                                        const Array& h);
-    Lgm1fPiecewiseLinearParametrization(const Currency& currency, const Handle<TS>& termStructure,
-                                        const std::vector<Date>& alphaDates, const Array& alpha,
-                                        const std::vector<Date>& hDates, const Array& h);
-    Real zeta(const Time t) const;
-    Real H(const Time t) const;
-    Real alpha(const Time t) const;
-    Real kappa(const Time t) const;
-    Real Hprime(const Time t) const;
-    Real Hprime2(const Time t) const;
-    const Array& parameterTimes(const Size) const;
-    const boost::shared_ptr<Parameter> parameter(const Size) const;
-    void update() const;
+    Lgm1fPiecewiseLinearParametrization(
+        const Currency& currency, const Handle<TS>& termStructure, const Array& alphaTimes, const Array& alpha,
+        const Array& hTimes, const Array& h, const std::string& name = std::string(),
+        const boost::shared_ptr<QuantLib::Constraint>& alphaConstraint = boost::make_shared<QuantLib::NoConstraint>(),
+        const boost::shared_ptr<QuantLib::Constraint>& hConstraint = boost::make_shared<QuantLib::NoConstraint>());
+    Lgm1fPiecewiseLinearParametrization(
+        const Currency& currency, const Handle<TS>& termStructure, const std::vector<Date>& alphaDates,
+        const Array& alpha, const std::vector<Date>& hDates, const Array& h, const std::string& name = std::string(),
+        const boost::shared_ptr<QuantLib::Constraint>& alphaConstraint = boost::make_shared<QuantLib::NoConstraint>(),
+        const boost::shared_ptr<QuantLib::Constraint>& hConstraint = boost::make_shared<QuantLib::NoConstraint>());
+
+    Real zeta(const Time t) const override;
+    Real H(const Time t) const override;
+    Real alpha(const Time t) const override;
+    Real kappa(const Time t) const override;
+    Real Hprime(const Time t) const override;
+    Real Hprime2(const Time t) const override;
+    const Array& parameterTimes(const Size) const override;
+    const boost::shared_ptr<Parameter> parameter(const Size) const override;
+    void update() const override;
 
 protected:
-    Real direct(const Size i, const Real x) const;
-    Real inverse(const Size j, const Real y) const;
+    Real direct(const Size i, const Real x) const override;
+    Real inverse(const Size j, const Real y) const override;
 
 private:
     void initialize(const Array& alpha, const Array& h);
@@ -73,28 +78,32 @@ private:
 // implementation
 
 template <class TS>
-Lgm1fPiecewiseLinearParametrization<TS>::Lgm1fPiecewiseLinearParametrization(const Currency& currency,
-                                                                             const Handle<TS>& termStructure,
-                                                                             const Array& alphaTimes,
-                                                                             const Array& alpha, const Array& hTimes,
-                                                                             const Array& h)
-    : Lgm1fParametrization<TS>(currency, termStructure), PiecewiseConstantHelper11(alphaTimes, hTimes) {
+Lgm1fPiecewiseLinearParametrization<TS>::Lgm1fPiecewiseLinearParametrization(
+    const Currency& currency, const Handle<TS>& termStructure, const Array& alphaTimes, const Array& alpha,
+    const Array& hTimes, const Array& h, const std::string& name,
+    const boost::shared_ptr<QuantLib::Constraint>& alphaConstraint,
+    const boost::shared_ptr<QuantLib::Constraint>& hConstraint)
+    : Lgm1fParametrization<TS>(currency, termStructure, name),
+      PiecewiseConstantHelper11(alphaTimes, hTimes, alphaConstraint, hConstraint) {
     initialize(alpha, h);
 }
 
 template <class TS>
 Lgm1fPiecewiseLinearParametrization<TS>::Lgm1fPiecewiseLinearParametrization(
     const Currency& currency, const Handle<TS>& termStructure, const std::vector<Date>& alphaDates, const Array& alpha,
-    const std::vector<Date>& hDates, const Array& h)
-    : IrLgm1fParametrization(currency, termStructure), PiecewiseConstantHelper11(alphaDates, hDates, termStructure) {
+    const std::vector<Date>& hDates, const Array& h, const std::string& name,
+    const boost::shared_ptr<QuantLib::Constraint>& alphaConstraint,
+    const boost::shared_ptr<QuantLib::Constraint>& hConstraint)
+    : Lgm1fParametrization<TS>(currency, termStructure, name),
+      PiecewiseConstantHelper11(alphaDates, hDates, termStructure, alphaConstraint, hConstraint) {
     initialize(alpha, h);
 }
 
 template <class TS> void Lgm1fPiecewiseLinearParametrization<TS>::initialize(const Array& alpha, const Array& h) {
     QL_REQUIRE(helper1().t().size() + 1 == alpha.size(),
                "alpha size (" << alpha.size() << ") inconsistent to times size (" << helper1().t().size() << ")");
-    QL_REQUIRE(helper2().t().size() + 1 == h.size(), "h size (" << h.size() << ") inconsistent to times size ("
-                                                                << helper1().t().size() << ")");
+    QL_REQUIRE(helper2().t().size() + 1 == h.size(),
+               "h size (" << h.size() << ") inconsistent to times size (" << helper1().t().size() << ")");
     // store raw parameter values
     for (Size i = 0; i < helper1().p()->size(); ++i) {
         helper1().p()->setParam(i, inverse(0, alpha[i]));
@@ -140,6 +149,7 @@ template <class TS> inline Real Lgm1fPiecewiseLinearParametrization<TS>::Hprime2
 }
 
 template <class TS> inline void Lgm1fPiecewiseLinearParametrization<TS>::update() const {
+    Lgm1fParametrization<TS>::update();
     helper1().update();
     helper2().update();
 }

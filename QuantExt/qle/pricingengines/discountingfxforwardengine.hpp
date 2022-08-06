@@ -44,7 +44,7 @@ namespace QuantExt {
 class DiscountingFxForwardEngine : public FxForward::engine {
 public:
     /*! \param ccy1, currency1Discountcurve
-               Currency 1 and its discount curve.
+               Currency 1 and its discount curve.y
         \param ccy2, currency2Discountcurve
                Currency 2 and its discount curve.
         \param spotFX
@@ -66,7 +66,7 @@ public:
                                boost::optional<bool> includeSettlementDateFlows = boost::none,
                                const Date& settlementDate = Date(), const Date& npvDate = Date());
 
-    void calculate() const;
+    void calculate() const override;
 
     const Handle<YieldTermStructure>& currency1Discountcurve() const { return currency1Discountcurve_; }
 
@@ -87,6 +87,6 @@ private:
     Date settlementDate_;
     Date npvDate_;
 };
-}
+} // namespace QuantExt
 
 #endif

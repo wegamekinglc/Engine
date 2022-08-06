@@ -25,12 +25,11 @@
 
 #include <qle/termstructures/datedstrippedoptionletbase.hpp>
 
-#include <ql/termstructures/volatility/optionlet/optionletvolatilitystructure.hpp>
 #include <ql/math/interpolation.hpp>
-
-using namespace QuantLib;
+#include <ql/termstructures/volatility/optionlet/optionletvolatilitystructure.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Adapter class for turning a DatedStrippedOptionletBase object into an OptionletVolatilityStructure
 /*! Takes a DatedStrippedOptionletBase and converts it into an OptionletVolatilityStructure with a fixed
@@ -40,41 +39,42 @@ namespace QuantExt {
 */
 class DatedStrippedOptionletAdapter : public OptionletVolatilityStructure, public LazyObject {
 public:
-    DatedStrippedOptionletAdapter(const boost::shared_ptr<DatedStrippedOptionletBase>& s);
+    DatedStrippedOptionletAdapter(const boost::shared_ptr<DatedStrippedOptionletBase>& s, const bool flatExtrapolation);
 
     //! \name TermStructure interface
     //@{
-    Date maxDate() const;
+    Date maxDate() const override;
     //@}
     //! \name VolatilityTermStructure interface
     //@{
-    Rate minStrike() const;
-    Rate maxStrike() const;
+    Rate minStrike() const override;
+    Rate maxStrike() const override;
     //@}
     //! \name LazyObject interface
     //@{
-    void update();
-    void performCalculations() const;
+    void update() override;
+    void performCalculations() const override;
     //@}
 
-    VolatilityType volatilityType() const;
-    Real displacement() const;
+    VolatilityType volatilityType() const override;
+    Real displacement() const override;
 
 protected:
     //! \name OptionletVolatilityStructure interface
     //@{
-    boost::shared_ptr<SmileSection> smileSectionImpl(Time optionTime) const;
-    Volatility volatilityImpl(Time length, Rate strike) const;
+    boost::shared_ptr<SmileSection> smileSectionImpl(Time optionTime) const override;
+    Volatility volatilityImpl(Time length, Rate strike) const override;
     //@}
 
 private:
     const boost::shared_ptr<DatedStrippedOptionletBase> optionletStripper_;
     Size nInterpolations_;
     mutable vector<boost::shared_ptr<Interpolation> > strikeInterpolations_;
+    bool flatExtrapolation_;
 };
 
 inline void DatedStrippedOptionletAdapter::update() {
     TermStructure::update();
     LazyObject::update();
 }
-}
+} // namespace QuantExt

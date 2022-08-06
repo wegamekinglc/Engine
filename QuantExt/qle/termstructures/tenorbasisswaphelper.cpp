@@ -16,8 +16,9 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <ql/pricingengines/swap/discountingswapengine.hpp>
 #include <ql/cashflows/floatingratecoupon.hpp>
+#include <ql/indexes/ibor/libor.hpp>
+#include <ql/pricingengines/swap/discountingswapengine.hpp>
 
 #include <qle/termstructures/tenorbasisswaphelper.hpp>
 
@@ -25,13 +26,13 @@ namespace QuantExt {
 
 namespace {
 void no_deletion(YieldTermStructure*) {}
-}
+} // namespace
 
 TenorBasisSwapHelper::TenorBasisSwapHelper(Handle<Quote> spread, const Period& swapTenor,
                                            const boost::shared_ptr<IborIndex> longIndex,
                                            const boost::shared_ptr<IborIndex> shortIndex, const Period& shortPayTenor,
                                            const Handle<YieldTermStructure>& discountingCurve, bool spreadOnShort,
-                                           bool includeSpread, SubPeriodsCoupon::Type type)
+                                           bool includeSpread, QuantExt::SubPeriodsCoupon1::Type type)
     : RelativeDateRateHelper(spread), swapTenor_(swapTenor), longIndex_(longIndex), shortIndex_(shortIndex),
       spreadOnShort_(spreadOnShort), includeSpread_(includeSpread), type_(type), discountHandle_(discountingCurve) {
 
@@ -61,9 +62,15 @@ TenorBasisSwapHelper::TenorBasisSwapHelper(Handle<Quote> spread, const Period& s
 
 void TenorBasisSwapHelper::initializeDates() {
 
-    Date valuationDate = Settings::instance().evaluationDate();
-    Calendar spotCalendar = longIndex_->fixingCalendar();
+    boost::shared_ptr<Libor> longIndexAsLibor = boost::dynamic_pointer_cast<Libor>(longIndex_);
+    Calendar spotCalendar = longIndexAsLibor != NULL ? longIndexAsLibor->jointCalendar() : longIndex_->fixingCalendar();
     Natural spotDays = longIndex_->fixingDays();
+
+    Date valuationDate = Settings::instance().evaluationDate();
+    // if the evaluation date is not a business day
+    // then move to the next business day
+    valuationDate = spotCalendar.adjust(valuationDate);
+
     Date effectiveDate = spotCalendar.advance(valuationDate, spotDays * Days);
 
     swap_ = boost::shared_ptr<TenorBasisSwap>(new TenorBasisSwap(effectiveDate, 1.0, swapTenor_, true, longIndex_, 0.0,
@@ -87,7 +94,7 @@ void TenorBasisSwapHelper::initializeDates() {
     latestDate_ = std::max(latestDate_, endValueDate);
 #else
     /* Subperiods coupons do not have a par approximation either... */
-    if (boost::dynamic_pointer_cast<SubPeriodsCoupon>(lastFloating)) {
+    if (boost::dynamic_pointer_cast<QuantExt::SubPeriodsCoupon1>(lastFloating)) {
         Date fixingValueDate = shortIndex_->valueDate(lastFloating->fixingDate());
         Date endValueDate = shortIndex_->maturityDate(fixingValueDate);
         latestDate_ = std::max(latestDate_, endValueDate);
@@ -112,7 +119,7 @@ void TenorBasisSwapHelper::setTermStructure(YieldTermStructure* t) {
 
 Real TenorBasisSwapHelper::impliedQuote() const {
     QL_REQUIRE(termStructure_ != 0, "Termstructure not set");
-    swap_->recalculate();
+    swap_->deepUpdate();
     return (spreadOnShort_ ? swap_->fairShortLegSpread() : swap_->fairLongLegSpread());
 }
 
@@ -123,4 +130,4 @@ void TenorBasisSwapHelper::accept(AcyclicVisitor& v) {
     else
         RateHelper::accept(v);
 }
-}
+} // namespace QuantExt

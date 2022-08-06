@@ -16,29 +16,43 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <test/observationmode.hpp>
-#include <test/testmarket.hpp>
-#include <ored/utilities/osutils.hpp>
-#include <ored/utilities/log.hpp>
-#include <orea/cube/npvcube.hpp>
+#include "testmarket.hpp"
+#include <boost/test/unit_test.hpp>
+#include <boost/timer/timer.hpp>
 #include <orea/cube/inmemorycube.hpp>
-#include <ored/model/lgmdata.hpp>
-#include <orea/scenario/scenariosimmarketparameters.hpp>
-#include <ored/model/crossassetmodelbuilder.hpp>
-#include <orea/scenario/scenariosimmarket.hpp>
-#include <orea/scenario/simplescenariofactory.hpp>
+#include <orea/cube/npvcube.hpp>
+#include <orea/engine/filteredsensitivitystream.hpp>
+#include <orea/engine/observationmode.hpp>
+#include <orea/engine/parametricvar.hpp>
+#include <orea/engine/riskfilter.hpp>
+#include <orea/engine/sensitivityaggregator.hpp>
+#include <orea/engine/sensitivityanalysis.hpp>
+#include <orea/engine/sensitivitycubestream.hpp>
+#include <orea/engine/sensitivityfilestream.hpp>
+#include <orea/engine/sensitivityinmemorystream.hpp>
+#include <orea/engine/sensitivityrecord.hpp>
+#include <orea/engine/sensitivitystream.hpp>
+#include <orea/engine/stresstest.hpp>
+#include <orea/engine/valuationcalculator.hpp>
+#include <orea/engine/valuationengine.hpp>
 #include <orea/scenario/crossassetmodelscenariogenerator.hpp>
-#include <qle/methods/multipathgeneratorbase.hpp>
-#include <ql/time/date.hpp>
-#include <ql/math/randomnumbers/mt19937uniformrng.hpp>
-#include <ql/time/calendars/target.hpp>
-#include <ql/time/daycounters/actualactual.hpp>
-#include <orea/engine/all.hpp>
-#include <ored/portfolio/swap.hpp>
+#include <orea/scenario/scenariosimmarket.hpp>
+#include <orea/scenario/scenariosimmarketparameters.hpp>
+#include <orea/scenario/simplescenariofactory.hpp>
+#include <ored/model/crossassetmodelbuilder.hpp>
+#include <ored/model/lgmdata.hpp>
 #include <ored/portfolio/builders/swap.hpp>
 #include <ored/portfolio/portfolio.hpp>
-#include <orea/engine/observationmode.hpp>
-#include <boost/timer.hpp>
+#include <ored/portfolio/swap.hpp>
+#include <ored/utilities/log.hpp>
+#include <ored/utilities/osutils.hpp>
+#include <oret/toplevelfixture.hpp>
+#include <ql/math/randomnumbers/mt19937uniformrng.hpp>
+#include <ql/time/calendars/target.hpp>
+#include <ql/time/date.hpp>
+#include <ql/time/daycounters/actualactual.hpp>
+#include <qle/methods/multipathgeneratorbase.hpp>
+#include <test/oreatoplevelfixture.hpp>
 
 using namespace std;
 using namespace QuantLib;
@@ -47,10 +61,12 @@ using namespace boost::unit_test_framework;
 using namespace ore;
 using namespace ore::data;
 using namespace ore::analytics;
+using boost::timer::cpu_timer;
+using boost::timer::default_places;
 
-namespace testsuite {
+using testsuite::TestMarket;
 
-boost::shared_ptr<data::Conventions> conventions() {
+void setConventions() {
     boost::shared_ptr<data::Conventions> conventions(new data::Conventions());
 
     boost::shared_ptr<data::Convention> swapIndexConv(
@@ -61,7 +77,7 @@ boost::shared_ptr<data::Conventions> conventions() {
         new data::IRSwapConvention("EUR-6M-SWAP-CONVENTIONS", "TARGET", "Annual", "MF", "30/360", "EUR-EURIBOR-6M"));
     conventions->add(swapConv);
 
-    return conventions;
+    InstrumentConventions::instance().setConventions(conventions);
 }
 
 boost::shared_ptr<Portfolio> buildPortfolio(boost::shared_ptr<EngineFactory>& factory) {
@@ -81,7 +97,7 @@ boost::shared_ptr<Portfolio> buildPortfolio(boost::shared_ptr<EngineFactory>& fa
     string calStr = "TARGET";
     string conv = "MF";
     string rule = "Forward";
-    Size days = 2;
+    Natural days = 2;
     string fixDC = "30/360";
     string floatDC = "ACT/360";
 
@@ -108,13 +124,13 @@ boost::shared_ptr<Portfolio> buildPortfolio(boost::shared_ptr<EngineFactory>& fa
     ScheduleData fixedSchedule(ScheduleRules(start, end, fixFreq, calStr, conv, conv, rule));
 
     // fixed Leg - with dummy rate
-    FixedLegData fixedLegData(vector<double>(1, fixedRate));
-    LegData fixedLeg(isPayer, ccy, fixedLegData, fixedSchedule, fixDC, notional);
+    LegData fixedLeg(boost::make_shared<FixedLegData>(vector<double>(1, fixedRate)), isPayer, ccy, fixedSchedule, fixDC,
+                     notional);
 
     // float Leg
     vector<double> spreads(1, 0);
-    FloatingLegData floatingLegData(index, days, false, spread);
-    LegData floatingLeg(!isPayer, ccy, floatingLegData, floatSchedule, floatDC, notional);
+    LegData floatingLeg(boost::make_shared<FloatingLegData>(index, days, false, spread), !isPayer, ccy, floatSchedule,
+                        floatDC, notional);
 
     boost::shared_ptr<Trade> swap(new data::Swap(env, floatingLeg, fixedLeg));
 
@@ -157,25 +173,26 @@ void simulation(string dateGridString, bool checkFixings) {
     // build scenario sim market parameters
     boost::shared_ptr<analytics::ScenarioSimMarketParameters> parameters(new analytics::ScenarioSimMarketParameters());
     parameters->baseCcy() = "EUR";
-    parameters->ccys() = {"EUR", "GBP", "USD", "CHF", "JPY"};
-    parameters->yieldCurveTenors() = {1 * Months, 6 * Months, 1 * Years, 2 * Years, 5 * Years, 10 * Years, 20 * Years};
-    parameters->indices() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"};
+    parameters->setDiscountCurveNames({"EUR", "GBP", "USD", "CHF", "JPY"});
+    parameters->setYieldCurveTenors("",
+                                    {1 * Months, 6 * Months, 1 * Years, 2 * Years, 5 * Years, 10 * Years, 20 * Years});
+    parameters->setIndices({"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"});
     parameters->interpolation() = "LogLinear";
-    parameters->extrapolate() = true;
 
-    parameters->swapVolTerms() = {6 * Months, 1 * Years};
-    parameters->swapVolExpiries() = {1 * Years, 2 * Years};
-    parameters->swapVolCcys() = ccys;
+    parameters->setSwapVolTerms("", {6 * Months, 1 * Years});
+    parameters->setSwapVolExpiries("", {1 * Years, 2 * Years});
+    parameters->setSwapVolKeys(ccys);
     parameters->swapVolDecayMode() = "ForwardVariance";
-    parameters->simulateSwapVols() = false;
+    parameters->setSimulateSwapVols(false);
 
-    parameters->fxVolExpiries() = {1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years};
-    parameters->fxVolDecayMode() = "ConstantVariance";
-    parameters->simulateFXVols() = false;
+    parameters->setFxVolExpiries("",
+        vector<Period>{1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years});
+    parameters->setFxVolDecayMode(string("ConstantVariance"));
+    parameters->setSimulateFXVols(false);
 
-    parameters->fxVolCcyPairs() = {"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"};
+    parameters->setFxVolCcyPairs({"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"});
 
-    parameters->fxCcyPairs() = {"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"};
+    parameters->setFxCcyPairs({"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"});
 
     parameters->additionalScenarioDataIndices() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M",
                                                    "JPY-LIBOR-6M"};
@@ -192,38 +209,36 @@ void simulation(string dateGridString, bool checkFixings) {
     vector<string> swaptionStrikes(swaptionExpiries.size(), "ATM");
     vector<Time> hTimes = {};
     vector<Time> aTimes = {};
-    vector<Real> hValues = {};
-    vector<Real> aValues = {};
 
-    std::vector<boost::shared_ptr<LgmData>> irConfigs;
+    std::vector<boost::shared_ptr<IrLgmData>> irConfigs;
 
-    hValues = {0.02};
-    aValues = {0.008};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    vector<Real> hValues = {0.02};
+    vector<Real> aValues = {0.008};
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "EUR", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.03};
     aValues = {0.009};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "USD", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "GBP", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "CHF", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "JPY", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
@@ -231,10 +246,9 @@ void simulation(string dateGridString, bool checkFixings) {
     vector<string> optionExpiries = {"1Y", "2Y", "3Y", "5Y", "7Y", "10Y"};
     vector<string> optionStrikes(optionExpiries.size(), "ATMF");
     vector<Time> sigmaTimes = {};
-    vector<Real> sigmaValues = {};
 
     std::vector<boost::shared_ptr<FxBsData>> fxConfigs;
-    sigmaValues = {0.15};
+    vector<Real> sigmaValues = {0.15};
     fxConfigs.push_back(boost::make_shared<FxBsData>("USD", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
@@ -250,34 +264,36 @@ void simulation(string dateGridString, bool checkFixings) {
     fxConfigs.push_back(boost::make_shared<FxBsData>("JPY", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
-    std::map<std::pair<std::string, std::string>, Real> corr;
-    corr[std::make_pair("IR:EUR", "IR:USD")] = 0.6;
+    map<CorrelationKey, Handle<Quote>> corr;
+    CorrelationFactor f_1{ CrossAssetModelTypes::IR, "EUR", 0 };
+    CorrelationFactor f_2{ CrossAssetModelTypes::IR, "USD", 0 };
+    corr[make_pair(f_1, f_2)] = Handle<Quote>(boost::make_shared<SimpleQuote>(0.6));
 
     boost::shared_ptr<CrossAssetModelData> config(boost::make_shared<CrossAssetModelData>(irConfigs, fxConfigs, corr));
 
     // Model Builder & Model
     // model builder
-    boost::shared_ptr<CrossAssetModelBuilder> modelBuilder(new CrossAssetModelBuilder(initMarket));
-    boost::shared_ptr<QuantExt::CrossAssetModel> model = modelBuilder->build(config);
+    boost::shared_ptr<CrossAssetModelBuilder> modelBuilder(new CrossAssetModelBuilder(initMarket, config));
+    boost::shared_ptr<QuantExt::CrossAssetModel> model = *modelBuilder->model();
     modelBuilder = NULL;
 
     // Path generator
-    Size seed = 5;
+    BigNatural seed = 5;
     bool antithetic = false;
     boost::shared_ptr<QuantExt::MultiPathGeneratorBase> pathGen =
         boost::make_shared<MultiPathGeneratorMersenneTwister>(model->stateProcess(), dg->timeGrid(), seed, antithetic);
+
+    // build scenario sim market
+    boost::shared_ptr<analytics::ScenarioSimMarket> simMarket =
+        boost::make_shared<analytics::ScenarioSimMarket>(initMarket, parameters);
 
     // build scenario generator
     boost::shared_ptr<ScenarioFactory> scenarioFactory(new SimpleScenarioFactory);
     boost::shared_ptr<ScenarioGenerator> scenarioGenerator = boost::make_shared<CrossAssetModelScenarioGenerator>(
         model, pathGen, scenarioFactory, parameters, today, dg, initMarket);
+    simMarket->scenarioGenerator() = scenarioGenerator;
 
-    // build scenario sim market
-    Conventions conv = *conventions();
-    boost::shared_ptr<analytics::ScenarioSimMarket> simMarket =
-        boost::make_shared<analytics::ScenarioSimMarket>(scenarioGenerator, initMarket, parameters, conv);
-
-    // Build Porfolio
+    // Build Portfolio
     boost::shared_ptr<EngineData> data = boost::make_shared<EngineData>();
     data->model("Swap") = "DiscountedCashflows";
     data->engine("Swap") = "DiscountingSwapEngine";
@@ -298,15 +314,15 @@ void simulation(string dateGridString, bool checkFixings) {
     ValuationEngine valEngine(today, dg, simMarket);
 
     // Calculate Cube
-    boost::timer t;
+    cpu_timer t;
     boost::shared_ptr<NPVCube> cube =
         boost::make_shared<DoublePrecisionInMemoryCube>(today, portfolio->ids(), dg->dates(), samples);
     vector<boost::shared_ptr<ValuationCalculator>> calculators;
     calculators.push_back(boost::make_shared<NPVCalculator>(baseCcy));
     valEngine.buildCube(portfolio, cube, calculators);
-    double elapsed = t.elapsed();
+    t.stop();
 
-    BOOST_TEST_MESSAGE("Cube generated in " << elapsed << " seconds");
+    BOOST_TEST_MESSAGE("Cube generated in " << t.format(default_places, "%w") << " seconds");
 
     map<string, vector<Real>> referenceFixings;
     // First 10 EUR-EURIBOR-6M fixings at dateIndex 5, date grid 11,1Y
@@ -318,8 +334,8 @@ void simulation(string dateGridString, bool checkFixings) {
                                  0.018856,   0.0276796, 0.0349766, 0.0105696, 0.0103713};
 
     if (simMarket->aggregationScenarioData()) {
-        QL_REQUIRE(dateGridString == "10,1Y" || dateGridString == "11,1Y", "date grid string " << dateGridString
-                                                                                               << " unexpected");
+        QL_REQUIRE(dateGridString == "10,1Y" || dateGridString == "11,1Y",
+                   "date grid string " << dateGridString << " unexpected");
         // Reference scenario data:
         Size dateIndex = 5;
         Size maxSample = 10;
@@ -335,8 +351,13 @@ void simulation(string dateGridString, bool checkFixings) {
     }
 }
 
-void ObservationModeTest::testDisableShort() {
+BOOST_FIXTURE_TEST_SUITE(OREAnalyticsTestSuite, ore::test::OreaTopLevelFixture)
+
+BOOST_AUTO_TEST_SUITE(ObservationModeTest)
+
+BOOST_AUTO_TEST_CASE(testDisableShort) {
     ObservationMode::instance().setMode(ObservationMode::Mode::Disable);
+    setConventions();
 
     BOOST_TEST_MESSAGE("Testing Observation Mode Disable, Short Grid, No Fixing Checks");
     simulation("10,1Y", false);
@@ -345,8 +366,9 @@ void ObservationModeTest::testDisableShort() {
     simulation("10,1Y", true);
 }
 
-void ObservationModeTest::testDisableLong() {
+BOOST_AUTO_TEST_CASE(testDisableLong) {
     ObservationMode::instance().setMode(ObservationMode::Mode::Disable);
+    setConventions();
 
     BOOST_TEST_MESSAGE("Testing Observation Mode Disable, Long Grid, No Fixing Checks");
     simulation("11,1Y", false);
@@ -355,8 +377,9 @@ void ObservationModeTest::testDisableLong() {
     simulation("11,1Y", true);
 }
 
-void ObservationModeTest::testNone() {
+BOOST_AUTO_TEST_CASE(testNone) {
     ObservationMode::instance().setMode(ObservationMode::Mode::None);
+    setConventions();
 
     BOOST_TEST_MESSAGE("Testing Observation Mode None, Short Grid, No Fixing Checks");
     simulation("10,1Y", false);
@@ -371,8 +394,9 @@ void ObservationModeTest::testNone() {
     simulation("11,1Y", true);
 }
 
-void ObservationModeTest::testUnregister() {
+BOOST_AUTO_TEST_CASE(testUnregister) {
     ObservationMode::instance().setMode(ObservationMode::Mode::Unregister);
+    setConventions();
 
     BOOST_TEST_MESSAGE("Testing Observation Mode Unregister, Long Grid, No Fixing Checks");
     simulation("11,1Y", false);
@@ -387,8 +411,9 @@ void ObservationModeTest::testUnregister() {
     simulation("10,1Y", true);
 }
 
-void ObservationModeTest::testDefer() {
+BOOST_AUTO_TEST_CASE(testDefer) {
     ObservationMode::instance().setMode(ObservationMode::Mode::Defer);
+    setConventions();
 
     BOOST_TEST_MESSAGE("Testing Observation Mode Defer, Long Grid, No Fixing Checks");
     simulation("11,1Y", false);
@@ -403,24 +428,6 @@ void ObservationModeTest::testDefer() {
     simulation("10,1Y", true);
 }
 
-test_suite* ObservationModeTest::suite() {
-    // Uncomment the below to get detailed output TODO: custom logger that uses BOOST_MESSAGE
-    /*
-    boost::shared_ptr<ore::data::FileLogger> logger
-        = boost::make_shared<ore::data::FileLogger>("swapperformace_test.log");
-    ore::data::Log::instance().removeAllLoggers();
-    ore::data::Log::instance().registerLogger(logger);
-    ore::data::Log::instance().switchOn();
-    ore::data::Log::instance().setMask(255);
-    */
+BOOST_AUTO_TEST_SUITE_END()
 
-    test_suite* suite = BOOST_TEST_SUITE("ObservationModeTest");
-    // Set the Observation mode here
-    suite->add(BOOST_TEST_CASE(&ObservationModeTest::testNone));
-    suite->add(BOOST_TEST_CASE(&ObservationModeTest::testUnregister));
-    suite->add(BOOST_TEST_CASE(&ObservationModeTest::testDefer));
-    suite->add(BOOST_TEST_CASE(&ObservationModeTest::testDisableShort));
-    suite->add(BOOST_TEST_CASE(&ObservationModeTest::testDisableLong));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()

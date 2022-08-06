@@ -1,59 +1,28 @@
 #!/bin/sh
 
-echo Conventions:
-/bin/echo -n "Checking ... "
-xmllint --schema conventions.xsd --path xsd --noout Examples/Input/conventions.xml
-echo -------
+function validate {
 
-echo CurveConfig:
-/bin/echo -n "Checking ... "
-xmllint --schema curveconfig.xsd --path xsd --noout Examples/Input/curveconfig.xml
-echo -------
+# Get a list of the directories to check
+dirs="Examples"
+[ -d "OREAnalytics/test/input" ] && dirs="${dirs} OREAnalytics/test/input"
+[ -d "OREData/test/input" ] && dirs="${dirs} OREData/test/input"
+[ -d "QuantExt/test/input" ] && dirs="${dirs} QuantExt/test/input"
 
-echo Portfolio Files Examples:
-find Examples -name 'portfolio*.xml' -print0 | while read -d $'\0' file
-do
-  /bin/echo -n "Checking ... "
-  xmllint --schema instruments.xsd --path xsd --noout $file
-done
-echo -------
+# Check the XML files under the existing directories
+find $dirs -name '*.xml' -print0 | \
+{ 
+fail=0
+    while read -d $'\0' file
+    do
+        OUTPUT=$(xmllint --schema input.xsd --path xsd --noout $file 2>&1)
+        if [ "$?" -gt "0" ] 
+        then 
+        fail=1
+        echo "${OUTPUT}"
+        fi
+    done
+return $fail
+}
+}
 
-echo Netting Set Files Examples:
-find Examples -name 'netting*.xml' -print0 | while read -d $'\0' file
-do
-  /bin/echo -n "Checking ... "
-  xmllint --schema nettingsetdefinitions.xsd --path xsd --noout $file
-done
-echo -------
-
-echo Simulation Files Examples:
-find Examples -name 'simulation*.xml' -print0 | while read -d $'\0' file
-do
-  /bin/echo -n "Checking ... "
-  xmllint --schema simulation.xsd --path xsd --noout $file
-done
-echo -------
-
-echo Pricing Engine Files Examples:
-find Examples -name 'pricingeng*.xml' -print0 | while read -d $'\0' file
-do
-  /bin/echo -n "Checking ... "
-  xmllint --schema pricingengines.xsd --path xsd --noout $file
-done
-echo -------
-
-echo Todays Market Files Examples:
-find Examples -name 'todaysmarket*.xml' -print0 | while read -d $'\0' file
-do
-  /bin/echo -n "Checking ... "
-  xmllint --schema todaysmarket.xsd --path xsd --noout $file
-done
-echo -------
-
-echo ORE Examples:
-find Examples -name 'ore*.xml' -print0 | while read -d $'\0' file
-do
-  /bin/echo -n "Checking ... "
-  xmllint --schema ore.xsd --path xsd --noout $file
-done
-echo -------
+validate || exit 1

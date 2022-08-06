@@ -22,20 +22,19 @@
         \ingroup cashflows
 */
 
-#ifndef quantext_average_on_indexed_coupon_hpp
-#define quantext_average_on_indexed_coupon_hpp
+#pragma once
 
+#include <ql/cashflows/couponpricer.hpp>
 #include <ql/cashflows/floatingratecoupon.hpp>
 #include <ql/indexes/iborindex.hpp>
 #include <ql/time/schedule.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! average overnight coupon pricer
 /*! \ingroup cashflows
-*/
+ */
 class AverageONIndexedCouponPricer;
 
 //! average overnight coupon
@@ -50,7 +49,10 @@ class AverageONIndexedCoupon : public FloatingRateCoupon {
 public:
     AverageONIndexedCoupon(const Date& paymentDate, Real nominal, const Date& startDate, const Date& endDate,
                            const boost::shared_ptr<OvernightIndex>& overnightIndex, Real gearing = 1.0,
-                           Spread spread = 0.0, Natural rateCutoff = 0, const DayCounter& dayCounter = DayCounter());
+                           Spread spread = 0.0, Natural rateCutoff = 0, const DayCounter& dayCounter = DayCounter(),
+                           const Period& lookback = 0 * Days, const Size fixingDays = Null<Size>(),
+                           const Date& rateComputationStartDate = Null<Date>(),
+                           const Date& rateComputationEndDate = Null<Date>(), const bool telescopicValueDates = false);
     //! \name Inspectors
     //@{
     //! fixing dates for the rates to be averaged
@@ -63,27 +65,104 @@ public:
     const std::vector<Date>& valueDates() const { return valueDates_; }
     //! rate cutoff associated with the coupon
     Natural rateCutoff() const { return rateCutoff_; }
+    //! lookback period
+    const Period& lookback() const { return lookback_; }
+    //! rate computation start date
+    const Date& rateComputationStartDate() const { return rateComputationStartDate_; }
+    //! rate computation end date
+    const Date& rateComputationEndDate() const { return rateComputationEndDate_; }
+    //! the underlying index
+    const ext::shared_ptr<OvernightIndex>& overnightIndex() const { return overnightIndex_; }
     //@}
     //! \name FloatingRateCoupon interface
     //@{
     //! the date when the coupon is fully determined
-    Date fixingDate() const;
+    Date fixingDate() const override;
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 private:
+    boost::shared_ptr<OvernightIndex> overnightIndex_;
     std::vector<Date> valueDates_, fixingDates_;
     mutable std::vector<Rate> fixings_;
     Size numPeriods_;
     std::vector<Time> dt_;
     Natural rateCutoff_;
+    Period lookback_;
+    Date rateComputationStartDate_, rateComputationEndDate_;
+};
+
+//! capped floored overnight indexed coupon
+class CappedFlooredAverageONIndexedCoupon : public FloatingRateCoupon {
+public:
+    /*! capped / floored averaged, backward-looking on coupon, local means that the daily rates are capped / floored
+      while a global cap / floor is applied to the effective period rate */
+    CappedFlooredAverageONIndexedCoupon(const ext::shared_ptr<AverageONIndexedCoupon>& underlying,
+                                        Real cap = Null<Real>(), Real floor = Null<Real>(), bool nakedOption = false,
+                                        bool localCapFloor = false, bool includeSpread = false);
+
+    //! \name Observer interface
+    //@{
+    void deepUpdate() override;
+    //@}
+    //! \name LazyObject interface
+    //@{
+    void performCalculations() const override;
+    void alwaysForwardNotifications() override;
+    //@}
+    //! \name Coupon interface
+    //@{
+    Rate rate() const override;
+    Rate convexityAdjustment() const override;
+    //@}
+    //! \name FloatingRateCoupon interface
+    //@{
+    Date fixingDate() const override { return underlying_->fixingDate(); }
+    //@}
+    //! cap
+    Rate cap() const;
+    //! floor
+    Rate floor() const;
+    //! effective cap of fixing
+    Rate effectiveCap() const;
+    //! effective floor of fixing
+    Rate effectiveFloor() const;
+    //@}
+    //! \name Visitability
+    //@{
+    virtual void accept(AcyclicVisitor&) override;
+
+    bool isCapped() const { return cap_ != Null<Real>(); }
+    bool isFloored() const { return floor_ != Null<Real>(); }
+
+    ext::shared_ptr<AverageONIndexedCoupon> underlying() const { return underlying_; }
+    bool nakedOption() const { return nakedOption_; }
+    bool localCapFloor() const { return localCapFloor_; }
+    bool includeSpread() const { return includeSpread_; }
+
+protected:
+    ext::shared_ptr<AverageONIndexedCoupon> underlying_;
+    Rate cap_, floor_;
+    bool nakedOption_;
+    bool localCapFloor_;
+    bool includeSpread_;
+};
+
+//! capped floored averaged indexed coupon pricer base class
+class CapFlooredAverageONIndexedCouponPricer : public FloatingRateCouponPricer {
+public:
+    CapFlooredAverageONIndexedCouponPricer(const Handle<OptionletVolatilityStructure>& v);
+    Handle<OptionletVolatilityStructure> capletVolatility() const;
+
+private:
+    Handle<OptionletVolatilityStructure> capletVol_;
 };
 
 //! helper class building a sequence of overnight coupons
 /*! \ingroup cashflows
-*/
+ */
 class AverageONLeg {
 public:
     AverageONLeg(const Schedule& schedule, const boost::shared_ptr<OvernightIndex>& overnightIndex);
@@ -95,9 +174,25 @@ public:
     AverageONLeg& withGearings(const std::vector<Real>& gearings);
     AverageONLeg& withSpread(Spread spread);
     AverageONLeg& withSpreads(const std::vector<Spread>& spreads);
+    AverageONLeg& withTelescopicValueDates(bool telescopicValueDates);
     AverageONLeg& withRateCutoff(Natural rateCutoff);
     AverageONLeg& withPaymentCalendar(const Calendar& calendar);
+    AverageONLeg& withPaymentLag(Natural lag);
+    AverageONLeg& withLookback(const Period& lookback);
+    AverageONLeg& withFixingDays(const Size fixingDays);
+    AverageONLeg& withCaps(Rate cap);
+    AverageONLeg& withCaps(const std::vector<Rate>& caps);
+    AverageONLeg& withFloors(Rate floor);
+    AverageONLeg& withFloors(const std::vector<Rate>& floors);
+    AverageONLeg& includeSpreadInCapFloors(bool includeSpread);
+    AverageONLeg& withNakedOption(const bool nakedOption);
+    AverageONLeg& withLocalCapFloor(const bool localCapFloor);
+    AverageONLeg& withInArrears(const bool inArrears);
+    AverageONLeg& withLastRecentPeriod(const boost::optional<Period>& lastRecentPeriod);
+    AverageONLeg& withLastRecentPeriodCalendar(const Calendar& lastRecentPeriodCalendar);
     AverageONLeg& withAverageONIndexedCouponPricer(const boost::shared_ptr<AverageONIndexedCouponPricer>& couponPricer);
+    AverageONLeg& withCapFlooredAverageONIndexedCouponPricer(
+        const boost::shared_ptr<CapFlooredAverageONIndexedCouponPricer>& couponPricer);
     operator Leg() const;
 
 private:
@@ -106,13 +201,23 @@ private:
     std::vector<Real> notionals_;
     DayCounter paymentDayCounter_;
     BusinessDayConvention paymentAdjustment_;
+    Natural paymentLag_;
     std::vector<Real> gearings_;
     std::vector<Spread> spreads_;
+    bool telescopicValueDates_;
     Calendar paymentCalendar_;
     Natural rateCutoff_;
+    Period lookback_;
+    Natural fixingDays_;
+    std::vector<Rate> caps_, floors_;
+    bool includeSpread_;
+    bool nakedOption_;
+    bool localCapFloor_;
+    bool inArrears_;
+    boost::optional<Period> lastRecentPeriod_;
+    Calendar lastRecentPeriodCalendar_;
     boost::shared_ptr<AverageONIndexedCouponPricer> couponPricer_;
+    boost::shared_ptr<CapFlooredAverageONIndexedCouponPricer> capFlooredCouponPricer_;
 };
 
 } // namespace QuantExt
-
-#endif

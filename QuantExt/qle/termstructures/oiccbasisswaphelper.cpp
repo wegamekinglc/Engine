@@ -16,11 +16,10 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <qle/termstructures/oiccbasisswaphelper.hpp>
-#include <qle/pricingengines/oiccbasisswapengine.hpp>
-#include <ql/pricingengines/swap/discountingswapengine.hpp>
 #include <ql/currencies/europe.hpp>
-#include <iostream>
+#include <ql/pricingengines/swap/discountingswapengine.hpp>
+#include <qle/pricingengines/oiccbasisswapengine.hpp>
+#include <qle/termstructures/oiccbasisswaphelper.hpp>
 
 using boost::shared_ptr;
 
@@ -30,7 +29,7 @@ namespace QuantExt {
 
 namespace {
 void no_deletion(YieldTermStructure*) {}
-}
+} // namespace
 
 OICCBSHelper::OICCBSHelper(Natural settlementDays,
                            const Period& term, // swap maturity
@@ -88,7 +87,7 @@ void OICCBSHelper::setTermStructure(YieldTermStructure* t) {
 Real OICCBSHelper::impliedQuote() const {
     QL_REQUIRE(termStructure_ != 0, "term structure not set");
     // we didn't register as observers - force calculation
-    swap_->recalculate();
+    swap_->deepUpdate();
     if (spreadQuoteOnPayLeg_)
         return swap_->fairPayLegSpread();
     else
@@ -102,4 +101,4 @@ void OICCBSHelper::accept(AcyclicVisitor& v) {
     else
         RateHelper::accept(v);
 }
-}
+} // namespace QuantExt

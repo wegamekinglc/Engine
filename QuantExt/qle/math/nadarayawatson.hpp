@@ -28,12 +28,14 @@
     \ingroup math
 */
 
+namespace QuantExt {
 using QuantLib::Real;
 using QuantLib::Size;
-
-namespace QuantExt {
 namespace detail {
 
+//! Regression impl
+/*! \ingroup math
+ */
 class RegressionImpl {
 public:
     virtual ~RegressionImpl() {}
@@ -42,6 +44,9 @@ public:
     virtual Real standardDeviation(Real x) const = 0;
 };
 
+//! Nadaraya Watson impl
+/*! \ingroup math
+ */
 template <class I1, class I2, class Kernel> class NadarayaWatsonImpl : public RegressionImpl {
 public:
     /*! \pre the \f$ x \f$ values must be sorted.
@@ -50,9 +55,9 @@ public:
     NadarayaWatsonImpl(const I1& xBegin, const I1& xEnd, const I2& yBegin, const Kernel& kernel)
         : xBegin_(xBegin), xEnd_(xEnd), yBegin_(yBegin), kernel_(kernel) {}
 
-    void update() {}
+    void update() override {}
 
-    Real value(Real x) const {
+    Real value(Real x) const override {
 
         Real tmp1 = 0.0, tmp2 = 0.0;
 
@@ -65,7 +70,7 @@ public:
         return QuantLib::close_enough(tmp2, 0.0) ? 0.0 : tmp1 / tmp2;
     }
 
-    Real standardDeviation(Real x) const {
+    Real standardDeviation(Real x) const override {
 
         Real tmp1 = 0.0, tmp1b = 0.0, tmp2 = 0.0;
 
@@ -86,14 +91,14 @@ private:
 };
 } // namespace detail
 
-//! Nadaraya Watgon regression
+//! Nadaraya Watson regression
 /*! This implements the estimator
 
     \f[
     m(x) = \frac{\sum_i y_i K(x-x_i)}{\sum_i K(x-x_i)}
     \f]
 
-    \ingroup interpolations
+    \ingroup math
 */
 class NadarayaWatson {
 public:

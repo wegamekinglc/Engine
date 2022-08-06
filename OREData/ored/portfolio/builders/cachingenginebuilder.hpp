@@ -17,7 +17,8 @@
 */
 
 /*! \file ored/portfolio/builders/cachingenginebuilder.hpp
-    \ingroup portfolio
+  \brief Abstract template engine builder class
+  \ingroup builders
 */
 
 #pragma once
@@ -25,6 +26,8 @@
 #include <ored/portfolio/enginefactory.hpp>
 
 #include <ql/cashflows/couponpricer.hpp>
+#include <ql/cashflows/inflationcouponpricer.hpp>
+#include <qle/cashflows/cpicouponpricer.hpp>
 
 namespace ore {
 namespace data {
@@ -43,15 +46,17 @@ namespace data {
  *  The remaining variable arguments are to be passed to engine() and
  *  engineImpl(), these are the specific parameters required to build
  *  an engine or coupon pricer for this trade type.
-    \ingroup portfolio
+    \ingroup builders
  */
 template <class T, class U, typename... Args> class CachingEngineBuilder : public EngineBuilder {
 public:
     /*! Constructor that takes a model and engine name
         @param model the model name
         @param engine the engine name
+        @param tradeTypes a set of trade types
      */
-    CachingEngineBuilder(const string& model, const string& engine) : EngineBuilder(model, engine) {}
+    CachingEngineBuilder(const string& model, const string& engine, const set<string>& tradeTypes)
+        : EngineBuilder(model, engine, tradeTypes) {}
 
     //! Return a PricingEngine or a FloatingRateCouponPricer
     boost::shared_ptr<U> engine(Args... params) {
@@ -65,6 +70,8 @@ public:
         return engines_[key];
     }
 
+    void reset() override { engines_.clear(); }
+
 protected:
     virtual T keyImpl(Args...) = 0;
     virtual boost::shared_ptr<U> engineImpl(Args...) = 0;
@@ -77,6 +84,12 @@ using CachingPricingEngineBuilder = CachingEngineBuilder<T, PricingEngine, Args.
 
 template <class T, typename... Args>
 using CachingCouponPricerBuilder = CachingEngineBuilder<T, FloatingRateCouponPricer, Args...>;
+
+template <class T, typename... Args>
+using CachingInflationCouponPricerBuilder = CachingEngineBuilder<T, InflationCouponPricer, Args...>;
+
+template <class T, typename... Args>
+using CachingInflationCashFlowPricerBuilder = CachingEngineBuilder<T, QuantExt::InflationCashFlowPricer, Args...>;
 
 } // namespace data
 } // namespace ore

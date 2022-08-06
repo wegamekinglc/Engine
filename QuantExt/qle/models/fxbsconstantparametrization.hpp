@@ -16,8 +16,8 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*! \file fxbspiecewiseconstantparametrization.hpp
-    \brief piecewise constant model parametrization
+/*! \file fxbsconstantparametrization.hpp
+    \brief Constant FX model parametrization
     \ingroup models
 */
 
@@ -35,14 +35,16 @@ class FxBsConstantParametrization : public FxBsParametrization {
 public:
     /*! The currency refers to the foreign currency, the
         spot is as of today (i.e. the discounted spot) */
-    FxBsConstantParametrization(const Currency& currency, const Handle<Quote>& fxSpotToday, const Real sigma);
-    Real variance(const Time t) const;
-    Real sigma(const Time t) const;
-    const boost::shared_ptr<Parameter> parameter(const Size) const;
+    FxBsConstantParametrization(const Currency& currency, const Handle<Quote>& fxSpotToday, const Real sigma,
+        const boost::shared_ptr<QuantLib::Constraint>& sigmaConstraint = boost::make_shared<QuantLib::NoConstraint>());
+
+    Real variance(const Time t) const override;
+    Real sigma(const Time t) const override;
+    const boost::shared_ptr<Parameter> parameter(const Size) const override;
 
 protected:
-    Real direct(const Size i, const Real x) const;
-    Real inverse(const Size i, const Real y) const;
+    Real direct(const Size i, const Real x) const override;
+    Real inverse(const Size i, const Real y) const override;
 
 private:
     const boost::shared_ptr<PseudoParameter> sigma_;

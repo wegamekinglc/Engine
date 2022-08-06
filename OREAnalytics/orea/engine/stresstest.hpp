@@ -16,21 +16,21 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*! \file engine/sensitivityanalysis.hpp
-    \brief Perfrom sensitivity analysis for a given portfolio
+/*! \file engine/stresstest.hpp
+    \brief  perform a stress testing analysis for a given portfolio.
     \ingroup simulation
 */
 
 #pragma once
 
-#include <ored/portfolio/portfolio.hpp>
-#include <ored/marketdata/market.hpp>
-#include <ored/report/report.hpp>
 #include <orea/cube/npvcube.hpp>
-#include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <orea/scenario/scenariosimmarket.hpp>
+#include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <orea/scenario/stressscenariodata.hpp>
 #include <orea/scenario/stressscenariogenerator.hpp>
+#include <ored/marketdata/market.hpp>
+#include <ored/portfolio/portfolio.hpp>
+#include <ored/report/report.hpp>
 
 #include <map>
 #include <set>
@@ -55,11 +55,18 @@ namespace analytics {
 class StressTest {
 public:
     //! Constructor
-    StressTest(const boost::shared_ptr<ore::data::Portfolio>& portfolio, boost::shared_ptr<ore::data::Market>& market,
+    StressTest(const boost::shared_ptr<ore::data::Portfolio>& portfolio, const boost::shared_ptr<ore::data::Market>& market,
                const string& marketConfiguration, const boost::shared_ptr<ore::data::EngineData>& engineData,
                boost::shared_ptr<ScenarioSimMarketParameters>& simMarketData,
-               const boost::shared_ptr<StressTestScenarioData>& stressData, const Conventions& conventions,
-               boost::shared_ptr<ScenarioFactory> scenarioFactory = {});
+               const boost::shared_ptr<StressTestScenarioData>& stressData,
+               const ore::data::CurveConfigurations& curveConfigs = ore::data::CurveConfigurations(),
+               const ore::data::TodaysMarketParameters& todaysMarketParams = ore::data::TodaysMarketParameters(),
+               boost::shared_ptr<ScenarioFactory> scenarioFactory = {},
+               std::vector<boost::shared_ptr<ore::data::EngineBuilder>> extraEngineBuilders = {},
+               std::vector<boost::shared_ptr<ore::data::LegBuilder>> extraLegBuilders = {},
+               const boost::shared_ptr<ReferenceDataManager>& referenceData = nullptr,
+               const IborFallbackConfig& iborFallbackConfig = IborFallbackConfig::defaultConfig(),
+               bool continueOnError = false);
 
     //! Return set of trades analysed
     const std::set<std::string>& trades() { return trades_; }
@@ -73,6 +80,9 @@ public:
     //! Return shifted NPVs by trade and scenario
     const std::map<std::pair<std::string, std::string>, Real>& shiftedNPV() { return shiftedNPV_; }
 
+    //! Return delta NPV by trade and scenario
+    const std::map<std::pair<std::string, std::string>, Real>& delta() { return delta_; }
+
     //! Write NPV by trade/scenario to a file (base and shifted NPVs, delta)
     void writeReport(const boost::shared_ptr<ore::data::Report>& report, Real outputThreshold = 0.0);
 
@@ -84,5 +94,5 @@ private:
     // scenario labels
     std::set<std::string> labels_, trades_;
 };
-}
-}
+} // namespace analytics
+} // namespace ore

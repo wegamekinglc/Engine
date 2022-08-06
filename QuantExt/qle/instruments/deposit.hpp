@@ -31,9 +31,8 @@
 #include <ql/time/calendar.hpp>
 #include <ql/time/daycounter.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Deposit Instrument
 
@@ -54,9 +53,9 @@ public:
 
     //! \name Instrument interface
     //@{
-    bool isExpired() const;
-    void setupArguments(PricingEngine::arguments*) const;
-    void fetchResults(const PricingEngine::results*) const;
+    bool isExpired() const override;
+    void setupArguments(PricingEngine::arguments*) const override;
+    void fetchResults(const PricingEngine::results*) const override;
     //@}
     //! \name Additional interface
     //@{
@@ -65,6 +64,7 @@ public:
     Date maturityDate() const { return maturityDate_; }
     Real fairRate() const {
         calculate();
+        QL_REQUIRE(fairRate_ != Null<Real>(), "Deposit::fairRate(): not provided");
         return fairRate_;
     }
     const Leg& leg() const { return leg_; }
@@ -73,7 +73,7 @@ public:
 private:
     //! \name Instrument interface
     //@{
-    void setupExpired() const;
+    void setupExpired() const override;
     //@}
     Date fixingDate_, startDate_, maturityDate_;
     boost::shared_ptr<IborIndex> index_;
@@ -82,20 +82,24 @@ private:
     mutable Real fairRate_;
 };
 
+//! \ingroup instruments
 class Deposit::arguments : public virtual PricingEngine::arguments {
 public:
     boost::shared_ptr<IborIndex> index;
+    Date maturityDate;
     Leg leg;
-    void validate() const;
+    void validate() const override;
 };
 
+//! \ingroup instruments
 class Deposit::results : public Instrument::results {
 public:
     Real fairRate;
-    void reset();
+    void reset() override;
 };
 
+//! \ingroup instruments
 class Deposit::engine : public GenericEngine<Deposit::arguments, Deposit::results> {};
-}
+} // namespace QuantExt
 
 #endif

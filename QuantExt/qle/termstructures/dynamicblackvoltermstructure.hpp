@@ -30,14 +30,15 @@
 #include <ql/termstructures/volatility/equityfx/blackvoltermstructure.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
 
-using namespace QuantLib;
+#include <ql/math/comparison.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 namespace tag {
 struct curve {};
 struct surface {};
-}
+} // namespace tag
 
 //! Takes a BlackVolTermStructure with fixed reference date and turns it into a floating reference date term structure.
 /*! This class takes a BlackVolTermStructure with fixed reference date
@@ -59,7 +60,7 @@ struct surface {};
 */
 template <typename mode = tag::surface> class DynamicBlackVolTermStructure : public BlackVolTermStructure {
 public:
-    /* For a stickyness that involves ATM calculations, the yield term
+    /* For a stickiness that involves ATM calculations, the yield term
        structures and the spot (as of today, i.e. without settlement lag)
        must be given. They are also required if an ATM volatility with null
        strike is requested. The termstructures are expected to have a
@@ -80,18 +81,18 @@ public:
     Real atm() const;
 
     /* VolatilityTermStructure interface */
-    Real minStrike() const;
-    Real maxStrike() const;
+    Real minStrike() const override;
+    Real maxStrike() const override;
     /* TermStructure interface */
-    Date maxDate() const;
+    Date maxDate() const override;
     /* Observer interface */
-    void update();
+    void update() override;
 
 protected:
     /* BlackVolTermStructure interface */
-    Real blackVarianceImpl(Time t, Real strike) const;
-    Volatility blackVolImpl(Time t, Real strike) const;
-    /* immplementations for curve and surface tags */
+    Real blackVarianceImpl(Time t, Real strike) const override;
+    Volatility blackVolImpl(Time t, Real strike) const override;
+    /* implementations for curve and surface tags */
     Real blackVarianceImplTag(Time t, Real strike, tag::curve) const;
     Real blackVarianceImplTag(Time t, Real strike, tag::surface) const;
 
@@ -121,15 +122,15 @@ DynamicBlackVolTermStructure<mode>::DynamicBlackVolTermStructure(const Handle<Bl
       atmKnown_(!riskfree.empty() && !dividend.empty() && !spot.empty()),
       forwardCurveSampleGrid_(forwardCurveSampleGrid) {
 
-    QL_REQUIRE(stickyness == StickyStrike || stickyness == StickyLogMoneyness, "stickyness (" << stickyness
-                                                                                              << ") not supported");
+    QL_REQUIRE(stickyness == StickyStrike || stickyness == StickyLogMoneyness,
+               "stickiness (" << stickyness << ") not supported");
     QL_REQUIRE(decayMode == ConstantVariance || decayMode == ForwardForwardVariance,
                "reaction to time decay (" << decayMode << ") not supported");
 
     registerWith(source);
 
     if (stickyness != StickyStrike) {
-        QL_REQUIRE(atmKnown_, "for stickyness other than strike, the term "
+        QL_REQUIRE(atmKnown_, "for stickiness other than strike, the term "
                               "structures and spot must be given");
         QL_REQUIRE(riskfree_->referenceDate() == source_->referenceDate(),
                    "at construction time the reference dates of the volatility "
@@ -153,8 +154,8 @@ DynamicBlackVolTermStructure<mode>::DynamicBlackVolTermStructure(const Handle<Bl
                            8.0, 9.0,  10.0, 12.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0 };
             forwardCurveSampleGrid_ = std::vector<Real>(tmp, tmp + sizeof(tmp) / sizeof(tmp[0]));
         }
-        QL_REQUIRE(close_enough(forwardCurveSampleGrid_[0], 0.0), "forward curve sample grid must start at 0 ("
-                                                                      << forwardCurveSampleGrid_[0]);
+        QL_REQUIRE(QuantLib::close_enough(forwardCurveSampleGrid_[0], 0.0),
+                   "forward curve sample grid must start at 0 (" << forwardCurveSampleGrid_[0]);
         initialForwards_.resize(forwardCurveSampleGrid_.size());
         for (Size i = 1; i < forwardCurveSampleGrid_.size(); ++i) {
             QL_REQUIRE(forwardCurveSampleGrid_[i] > forwardCurveSampleGrid_[i - 1],
@@ -196,7 +197,7 @@ template <typename mode> Real DynamicBlackVolTermStructure<mode>::minStrike() co
         // source for a volatility and are not in sticky strike mode
         return 0.0;
     }
-    QL_FAIL("unexpected stickyness (" << stickyness_ << ")");
+    QL_FAIL("unexpected stickiness (" << stickyness_ << ")");
 }
 
 template <typename mode> Real DynamicBlackVolTermStructure<mode>::maxStrike() const {
@@ -207,7 +208,7 @@ template <typename mode> Real DynamicBlackVolTermStructure<mode>::maxStrike() co
         // see above
         return QL_MAX_REAL;
     }
-    QL_FAIL("unexpected stickyness (" << stickyness_ << ")");
+    QL_FAIL("unexpected stickiness (" << stickyness_ << ")");
 }
 
 template <typename mode> Volatility DynamicBlackVolTermStructure<mode>::blackVolImpl(Time t, Real strike) const {
@@ -237,8 +238,8 @@ Real DynamicBlackVolTermStructure<mode>::blackVarianceImplTag(Time t, Real strik
         scenarioStrike1 = initialForwardCurve_->operator()(scenarioT1) / forward * strike;
         scenarioStrike0 = initialForwardCurve_->operator()(scenarioT0) / spot_->value() * strike;
     }
-    return source_->blackVariance(scenarioT1, scenarioStrike1, true) -
-           source_->blackVariance(scenarioT0, scenarioStrike0, true);
+    return std::max(0.0, source_->blackVariance(scenarioT1, scenarioStrike1, true) -
+           source_->blackVariance(scenarioT0, scenarioStrike0, true));
 }
 
 template <typename mode>
@@ -246,7 +247,7 @@ Real DynamicBlackVolTermStructure<mode>::blackVarianceImplTag(Time t, Real strik
     if (decayMode_ == ForwardForwardVariance) {
         Real scenarioT0 = source_->timeFromReference(referenceDate());
         Real scenarioT1 = scenarioT0 + t;
-        return source_->blackVariance(scenarioT1, strike, true) - source_->blackVariance(scenarioT0, strike, true);
+        return std::max(0.0, source_->blackVariance(scenarioT1, strike, true) - source_->blackVariance(scenarioT0, strike, true));
     } else {
         return source_->blackVariance(t, strike, true);
     }

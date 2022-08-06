@@ -17,8 +17,9 @@
 */
 
 #include <ql/cashflows/iborcoupon.hpp>
-#include <ql/pricingengines/swap/discountingswapengine.hpp>
+#include <ql/indexes/ibor/libor.hpp>
 #include <ql/math/solvers1d/brent.hpp>
+#include <ql/pricingengines/swap/discountingswapengine.hpp>
 
 #include <qle/instruments/tenorbasisswap.hpp>
 
@@ -44,7 +45,7 @@ public:
         // Change the spread on the leg and recalculate
         Leg::const_iterator it;
         for (it = shortLeg_.begin(); it != shortLeg_.end(); ++it) {
-            boost::shared_ptr<SubPeriodsCoupon> c = boost::dynamic_pointer_cast<SubPeriodsCoupon>(*it);
+            boost::shared_ptr<QuantExt::SubPeriodsCoupon1> c = boost::dynamic_pointer_cast<QuantExt::SubPeriodsCoupon1>(*it);
             c->spread() = shortSpread;
         }
         engine_->calculate();
@@ -59,13 +60,13 @@ private:
     Size shortNo_;
     Leg shortLeg_;
 };
-}
+} // namespace
 
 TenorBasisSwap::TenorBasisSwap(const Date& effectiveDate, Real nominal, const Period& swapTenor, bool payLongIndex,
                                const boost::shared_ptr<IborIndex>& longIndex, Spread longSpread,
                                const boost::shared_ptr<IborIndex>& shortIndex, Spread shortSpread,
                                const Period& shortPayTenor, DateGeneration::Rule rule, bool includeSpread,
-                               SubPeriodsCoupon::Type type)
+                               QuantExt::SubPeriodsCoupon1::Type type)
     : Swap(2), nominal_(nominal), payLongIndex_(payLongIndex), longIndex_(longIndex), longSpread_(longSpread),
       shortIndex_(shortIndex), shortSpread_(shortSpread), shortPayTenor_(shortPayTenor), includeSpread_(includeSpread),
       type_(type) {
@@ -78,40 +79,31 @@ TenorBasisSwap::TenorBasisSwap(const Date& effectiveDate, Real nominal, const Pe
     // Create the default long and short schedules
     Date terminationDate = effectiveDate + swapTenor;
 
+    boost::shared_ptr<Libor> longIndexAsLibor = boost::dynamic_pointer_cast<Libor>(longIndex_);
+    longIndexCalendar_ = longIndexAsLibor != NULL ? longIndexAsLibor->jointCalendar() : longIndex_->fixingCalendar();
+    boost::shared_ptr<Libor> shortIndexAsLibor = boost::dynamic_pointer_cast<Libor>(shortIndex_);
+    shortIndexCalendar_ =
+        shortIndexAsLibor != NULL ? shortIndexAsLibor->jointCalendar() : shortIndex_->fixingCalendar();
+
     longSchedule_ = MakeSchedule()
                         .from(effectiveDate)
                         .to(terminationDate)
                         .withTenor(longTenor)
-                        .withCalendar(longIndex_->fixingCalendar())
+                        .withCalendar(longIndexCalendar_)
                         .withConvention(longIndex_->businessDayConvention())
                         .withTerminationDateConvention(longIndex_->businessDayConvention())
                         .withRule(rule)
                         .endOfMonth(longIndex_->endOfMonth());
 
-    if (shortPayTenor_ == shortIndex_->tenor()) {
-        shortSchedule_ = MakeSchedule()
-                             .from(effectiveDate)
-                             .to(terminationDate)
-                             .withTenor(shortPayTenor_)
-                             .withCalendar(shortIndex_->fixingCalendar())
-                             .withConvention(shortIndex_->businessDayConvention())
-                             .withTerminationDateConvention(shortIndex_->businessDayConvention())
-                             .withRule(rule)
-                             .endOfMonth(shortIndex_->endOfMonth());
-    } else {
-        /* Where the payment tenor is longer, the SubPeriodsLeg
-           will handle the adjustments. We just need to give the
-           anchor dates. */
-        shortSchedule_ = MakeSchedule()
-                             .from(effectiveDate)
-                             .to(terminationDate)
-                             .withTenor(shortPayTenor_)
-                             .withCalendar(NullCalendar())
-                             .withConvention(QuantLib::Unadjusted)
-                             .withTerminationDateConvention(QuantLib::Unadjusted)
-                             .withRule(rule)
-                             .endOfMonth(shortIndex_->endOfMonth());
-    }
+    shortSchedule_ = MakeSchedule()
+                        .from(effectiveDate)
+                        .to(terminationDate)
+                        .withTenor(shortPayTenor_)
+                        .withCalendar(shortIndexCalendar_)
+                        .withConvention(shortIndex_->businessDayConvention())
+                        .withTerminationDateConvention(shortIndex_->businessDayConvention())
+                        .withRule(rule)
+                        .endOfMonth(shortIndex_->endOfMonth());
 
     // Create legs
     initializeLegs();
@@ -120,7 +112,7 @@ TenorBasisSwap::TenorBasisSwap(const Date& effectiveDate, Real nominal, const Pe
 TenorBasisSwap::TenorBasisSwap(Real nominal, bool payLongIndex, const Schedule& longSchedule,
                                const boost::shared_ptr<IborIndex>& longIndex, Spread longSpread,
                                const Schedule& shortSchedule, const boost::shared_ptr<IborIndex>& shortIndex,
-                               Spread shortSpread, bool includeSpread, SubPeriodsCoupon::Type type)
+                               Spread shortSpread, bool includeSpread, QuantExt::SubPeriodsCoupon1::Type type)
     : Swap(2), nominal_(nominal), payLongIndex_(payLongIndex), longSchedule_(longSchedule), longIndex_(longIndex),
       longSpread_(longSpread), shortSchedule_(shortSchedule), shortIndex_(shortIndex), shortSpread_(shortSpread),
       includeSpread_(includeSpread), type_(type) {
@@ -145,26 +137,27 @@ void TenorBasisSwap::initializeLegs() {
                       .withNotionals(nominal_)
                       .withSpreads(longSpread_)
                       .withPaymentAdjustment(longPmtConvention)
-                      .withPaymentDayCounter(longDayCounter);
+                      .withPaymentDayCounter(longDayCounter)
+                      .withPaymentCalendar(longIndexCalendar_);
 
     // Short leg
     Leg shortLeg;
     BusinessDayConvention shortPmtConvention = shortIndex_->businessDayConvention();
     DayCounter shortDayCounter = shortIndex_->dayCounter();
-    Calendar shortPmtCalendar = shortIndex_->fixingCalendar();
     if (shortPayTenor_ == shortIndex_->tenor()) {
         shortLeg = IborLeg(shortSchedule_, shortIndex_)
                        .withNotionals(nominal_)
                        .withSpreads(shortSpread_)
                        .withPaymentAdjustment(shortPmtConvention)
-                       .withPaymentDayCounter(shortDayCounter);
+                       .withPaymentDayCounter(shortDayCounter)
+                       .withPaymentCalendar(shortIndexCalendar_);
     } else {
-        shortLeg = SubPeriodsLeg(shortSchedule_, shortIndex_)
+        shortLeg = QuantExt::SubPeriodsLeg1(shortSchedule_, shortIndex_)
                        .withNotional(nominal_)
                        .withSpread(shortSpread_)
                        .withPaymentAdjustment(shortPmtConvention)
                        .withPaymentDayCounter(shortDayCounter)
-                       .withPaymentCalendar(shortPmtCalendar)
+                       .withPaymentCalendar(shortIndexCalendar_)
                        .includeSpread(includeSpread_)
                        .withType(type_);
     }
@@ -285,4 +278,4 @@ void TenorBasisSwap::results::reset() {
     fairLongSpread = Null<Spread>();
     fairShortSpread = Null<Spread>();
 }
-}
+} // namespace QuantExt

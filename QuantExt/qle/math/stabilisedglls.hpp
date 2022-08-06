@@ -18,7 +18,7 @@
 
 /*! \file qle/math/stabilisedglls.hpp
     \brief Numerically stabilised general linear least squares
-    \ingroup termstructures
+    \ingroup math
 */
 
 #ifndef quantext_stabilised_glls_hpp
@@ -32,20 +32,21 @@
 #include <boost/accumulators/statistics/mean.hpp>
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/variance.hpp>
-#include <boost/type_traits.hpp>
 #include <boost/make_shared.hpp>
+#include <boost/type_traits.hpp>
 
 #include <vector>
 
+namespace QuantExt {
 using namespace QuantLib;
 using namespace boost::accumulators;
 
-namespace QuantExt {
-
 //! Numerically stabilised general linear least squares
-/*! The input data is lineaerly transformed before performing the linear least squares fit.
+/*! The input data is linearly transformed before performing the linear least squares fit.
   The linear least squares fit on the transformed data is done using the
-  GeneralLinearLeastSquares class. */
+  GeneralLinearLeastSquares class.
+    \ingroup math
+ */
 
 class StabilisedGLLS {
 public:
@@ -124,12 +125,12 @@ void StabilisedGLLS::calculate(
         for (Size i = 0; i < static_cast<Size>(x.end() - x.begin()); ++i) {
             mx = std::max(std::abs(x[i]), mx);
         }
-        if (!close_enough(mx, 0.0))
+        if (!QuantLib::close_enough(mx, 0.0))
             xMultiplier_[0] = 1.0 / mx;
         for (Size i = 0; i < static_cast<Size>(y.end() - y.begin()); ++i) {
             my = std::max(std::abs(y[i]), my);
         }
-        if (!close_enough(my, 0.0))
+        if (!QuantLib::close_enough(my, 0.0))
             yMultiplier_ = 1.0 / my;
         break;
     }
@@ -140,7 +141,7 @@ void StabilisedGLLS::calculate(
         }
         xShift_[0] = -mean(acc);
         Real tmp = variance(acc);
-        if (!close_enough(tmp, 0.0))
+        if (!QuantLib::close_enough(tmp, 0.0))
             xMultiplier_[0] = 1.0 / std::sqrt(tmp);
         accumulator_set<Real, stats<tag::mean, tag::variance> > acc2;
         for (Size i = 0; i < static_cast<Size>(y.end() - y.begin()); ++i) {
@@ -148,7 +149,7 @@ void StabilisedGLLS::calculate(
         }
         yShift_ = -mean(acc2);
         Real tmp2 = variance(acc2);
-        if (!close_enough(tmp2, 0.0))
+        if (!QuantLib::close_enough(tmp2, 0.0))
             yMultiplier_ = 1.0 / std::sqrt(tmp2);
         break;
     }
@@ -193,13 +194,13 @@ void StabilisedGLLS::calculate(
             }
         }
         for (Size j = 0; j < m.size(); ++j) {
-            if (!close_enough(m[j], 0.0))
+            if (!QuantLib::close_enough(m[j], 0.0))
                 xMultiplier_[j] = 1.0 / m[j];
         }
         for (Size i = 0; i < static_cast<Size>(y.end() - y.begin()); ++i) {
             my = std::max(std::abs(y[i]), my);
         }
-        if (!close_enough(my, 0.0))
+        if (!QuantLib::close_enough(my, 0.0))
             yMultiplier_ = 1.0 / my;
         break;
     }
@@ -213,7 +214,7 @@ void StabilisedGLLS::calculate(
         for (Size j = 0; j < acc.size(); ++j) {
             xShift_[j] = -mean(acc[j]);
             Real tmp = variance(acc[j]);
-            if (!close_enough(tmp, 0.0))
+            if (!QuantLib::close_enough(tmp, 0.0))
                 xMultiplier_[j] = 1.0 / std::sqrt(tmp);
         }
         accumulator_set<Real, stats<tag::mean, tag::variance> > acc2;
@@ -222,7 +223,7 @@ void StabilisedGLLS::calculate(
         }
         yShift_ = -mean(acc2);
         Real tmp2 = variance(acc2);
-        if (!close_enough(tmp2, 0.0))
+        if (!QuantLib::close_enough(tmp2, 0.0))
             yMultiplier_ = 1.0 / std::sqrt(tmp2);
         break;
     }
@@ -246,8 +247,8 @@ void StabilisedGLLS::calculate(
 template <class xType, class vContainer>
 Real StabilisedGLLS::eval(xType x, vContainer& v,
                           typename boost::enable_if<typename boost::is_arithmetic<xType>::type>::type*) {
-    QL_REQUIRE(v.size() == glls_->dim(), "StabilisedGLLS::eval(): v size (" << v.size() << ") must be equal to dim ("
-                                                                            << glls_->dim());
+    QL_REQUIRE(v.size() == glls_->dim(),
+               "StabilisedGLLS::eval(): v size (" << v.size() << ") must be equal to dim (" << glls_->dim());
     Real tmp = 0.0;
     for (Size i = 0; i < v.size(); ++i) {
         tmp += glls_->coefficients()[i] * v[i]((x + xShift_[0]) * xMultiplier_[0]);
@@ -258,8 +259,8 @@ Real StabilisedGLLS::eval(xType x, vContainer& v,
 template <class xType, class vContainer>
 Real StabilisedGLLS::eval(xType x, vContainer& v,
                           typename boost::disable_if<typename boost::is_arithmetic<xType>::type>::type*) {
-    QL_REQUIRE(v.size() == glls_->dim(), "StabilisedGLLS::eval(): v size (" << v.size() << ") must be equal to dim ("
-                                                                            << glls_->dim());
+    QL_REQUIRE(v.size() == glls_->dim(),
+               "StabilisedGLLS::eval(): v size (" << v.size() << ") must be equal to dim (" << glls_->dim());
     Real tmp = 0.0;
     for (Size i = 0; i < v.size(); ++i) {
         xType xNew(x.end() - x.begin());

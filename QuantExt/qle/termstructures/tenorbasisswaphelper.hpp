@@ -16,7 +16,7 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*! \file tenorbasisswap.hpp
+/*! \file tenorbasisswaphelper.hpp
     \brief Single currency tenor basis swap helper
     \ingroup termstructures
 */
@@ -28,25 +28,24 @@
 
 #include <qle/instruments/tenorbasisswap.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Rate helper for bootstrapping using Libor tenor basis swaps
 /*! \ingroup termstructures
-*/
+ */
 class TenorBasisSwapHelper : public RelativeDateRateHelper {
 public:
     TenorBasisSwapHelper(Handle<Quote> spread, const Period& swapTenor, const boost::shared_ptr<IborIndex> longIndex,
                          const boost::shared_ptr<IborIndex> shortIndex, const Period& shortPayTenor = Period(),
                          const Handle<YieldTermStructure>& discountingCurve = Handle<YieldTermStructure>(),
                          bool spreadOnShort = true, bool includeSpread = false,
-                         SubPeriodsCoupon::Type type = SubPeriodsCoupon::Compounding);
+                         QuantExt::SubPeriodsCoupon1::Type type = QuantExt::SubPeriodsCoupon1::Compounding);
 
     //! \name RateHelper interface
     //@{
-    Real impliedQuote() const;
-    void setTermStructure(YieldTermStructure*);
+    Real impliedQuote() const override;
+    void setTermStructure(YieldTermStructure*) override;
     //@}
     //! \name TenorBasisSwapHelper inspectors
     //@{
@@ -54,11 +53,11 @@ public:
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 
 protected:
-    void initializeDates();
+    void initializeDates() override;
 
     Period swapTenor_;
     boost::shared_ptr<IborIndex> longIndex_;
@@ -66,13 +65,13 @@ protected:
     Period shortPayTenor_;
     bool spreadOnShort_;
     bool includeSpread_;
-    SubPeriodsCoupon::Type type_;
+    QuantExt::SubPeriodsCoupon1::Type type_;
 
     boost::shared_ptr<TenorBasisSwap> swap_;
     RelinkableHandle<YieldTermStructure> termStructureHandle_;
     Handle<YieldTermStructure> discountHandle_;
     RelinkableHandle<YieldTermStructure> discountRelinkableHandle_;
 };
-}
+} // namespace QuantExt
 
 #endif

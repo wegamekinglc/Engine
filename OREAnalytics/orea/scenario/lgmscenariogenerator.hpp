@@ -23,17 +23,16 @@
 
 #pragma once
 
-#include <orea/scenario/scenariogenerator.hpp>
-#include <qle/models/lgm.hpp>
-#include <qle/methods/multipathgeneratorbase.hpp>
 #include <orea/scenario/scenariofactory.hpp>
+#include <orea/scenario/scenariogenerator.hpp>
 #include <orea/scenario/scenariosimmarket.hpp>
-#include <orea/simulation/dategrid.hpp>
-
-using namespace QuantLib;
+#include <ored/utilities/dategrid.hpp>
+#include <qle/methods/multipathgeneratorbase.hpp>
+#include <qle/models/lgm.hpp>
 
 namespace ore {
 namespace analytics {
+using namespace QuantLib;
 
 //! Scenario Generator using LGM model paths
 /*!
@@ -54,12 +53,11 @@ public:
     LgmScenarioGenerator(boost::shared_ptr<QuantExt::LGM> model,
                          boost::shared_ptr<QuantExt::MultiPathGeneratorBase> multiPathGenerator,
                          boost::shared_ptr<ScenarioFactory> scenarioFactory,
-                         boost::shared_ptr<ScenarioSimMarketParameters> simMarketConfig, Date today,
-                         ore::analytics::DateGrid grid);
+                         boost::shared_ptr<ScenarioSimMarketParameters> simMarketConfig, Date today, DateGrid grid);
     //! Destructor
     ~LgmScenarioGenerator(){};
-    std::vector<boost::shared_ptr<Scenario>> nextPath();
-    void reset() { pathGenerator_->reset(); }
+    std::vector<boost::shared_ptr<Scenario>> nextPath() override;
+    void reset() override { pathGenerator_->reset(); }
 
 private:
     boost::shared_ptr<QuantExt::LGM> model_;
@@ -67,5 +65,5 @@ private:
     boost::shared_ptr<ScenarioFactory> scenarioFactory_;
     boost::shared_ptr<ScenarioSimMarketParameters> simMarketConfig_;
 };
-}
-}
+} // namespace analytics
+} // namespace ore

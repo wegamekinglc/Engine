@@ -23,7 +23,7 @@ namespace QuantExt {
 
 namespace {
 void no_deletion(YieldTermStructure*) {}
-}
+} // namespace
 
 SubPeriodsSwapHelper::SubPeriodsSwapHelper(Handle<Quote> spread, const Period& swapTenor, const Period& fixedTenor,
                                            const Calendar& fixedCalendar, const DayCounter& fixedDayCount,
@@ -31,7 +31,7 @@ SubPeriodsSwapHelper::SubPeriodsSwapHelper(Handle<Quote> spread, const Period& s
                                            const boost::shared_ptr<IborIndex>& iborIndex,
                                            const DayCounter& floatDayCount,
                                            const Handle<YieldTermStructure>& discountingCurve,
-                                           SubPeriodsCoupon::Type type)
+                                           QuantExt::SubPeriodsCoupon1::Type type)
     : RelativeDateRateHelper(spread), iborIndex_(iborIndex), swapTenor_(swapTenor), fixedTenor_(fixedTenor),
       fixedCalendar_(fixedCalendar), fixedDayCount_(fixedDayCount), fixedConvention_(fixedConvention),
       floatPayTenor_(floatPayTenor), floatDayCount_(floatDayCount), type_(type), discountHandle_(discountingCurve) {
@@ -77,7 +77,7 @@ void SubPeriodsSwapHelper::initializeDates() {
     latestDate_ = std::max(latestDate_, endValueDate);
 #else
     /* Subperiods coupons do not have a par approximation either... */
-    if (boost::dynamic_pointer_cast<SubPeriodsCoupon>(lastFloating)) {
+    if (boost::dynamic_pointer_cast<QuantExt::SubPeriodsCoupon1>(lastFloating)) {
         Date fixingValueDate = iborIndex_->valueDate(lastFloating->fixingDate());
         Date endValueDate = iborIndex_->maturityDate(fixingValueDate);
         latestDate_ = std::max(latestDate_, endValueDate);
@@ -102,7 +102,7 @@ void SubPeriodsSwapHelper::setTermStructure(YieldTermStructure* t) {
 
 Real SubPeriodsSwapHelper::impliedQuote() const {
     QL_REQUIRE(termStructure_ != 0, "Termstructure not set");
-    swap_->recalculate();
+    swap_->deepUpdate();
     return swap_->fairRate();
 }
 
@@ -113,4 +113,4 @@ void SubPeriodsSwapHelper::accept(AcyclicVisitor& v) {
     else
         RateHelper::accept(v);
 }
-}
+} // namespace QuantExt

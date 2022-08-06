@@ -25,12 +25,13 @@
 #ifndef quantext_oiccbs_engine_hpp
 #define quantext_oiccbs_engine_hpp
 
-#include <qle/instruments/oiccbasisswap.hpp>
 #include <ql/pricingengines/swap/discountingswapengine.hpp>
+#include <qle/instruments/oiccbasisswap.hpp>
 
 namespace QuantExt {
 
 //! Overnight Indexed Cross Currency Basis Swap Engine
+//! \ingroup engines
 class OvernightIndexedCrossCcyBasisSwapEngine : public OvernightIndexedCrossCcyBasisSwap::engine {
 public:
     OvernightIndexedCrossCcyBasisSwapEngine(const Handle<YieldTermStructure>& ts1, const Currency& ccy1,
@@ -38,7 +39,7 @@ public:
                                             // Spot FX rate quoted as 1 ccy2 = fx ccy1,
                                             // ccy1 is price currency, ccy 2 amounts to be multiplied by fx
                                             const Handle<Quote>& fx);
-    void calculate() const;
+    void calculate() const override;
     Handle<YieldTermStructure> ts1() { return ts1_; }
     Handle<YieldTermStructure> ts2() { return ts2_; }
     Currency ccy1() { return ccy1_; }
@@ -52,6 +53,6 @@ private:
     Currency ccy2_;
     Handle<Quote> fx_;
 };
-}
+} // namespace QuantExt
 
 #endif

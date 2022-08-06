@@ -18,13 +18,13 @@
 
 /*! \file ored/portfolio/builders/capfloorediborleg.hpp
     \brief builder that returns an engine to price capped floored ibor legs
-    \ingroup portfolio
+    \ingroup builders
 */
 
 #pragma once
 
-#include <ored/portfolio/enginefactory.hpp>
 #include <ored/portfolio/builders/cachingenginebuilder.hpp>
+#include <ored/portfolio/enginefactory.hpp>
 
 #include <ql/cashflows/couponpricer.hpp>
 
@@ -33,14 +33,17 @@ namespace data {
 
 //! CouponPricer Builder for CapFlooredIborLeg
 /*! The coupon pricers are cached by currency
+ \ingroup builders
  */
-class CapFlooredIborLegEngineBuilder : public CachingCouponPricerBuilder<string, const Currency&> {
+class CapFlooredIborLegEngineBuilder : public CachingCouponPricerBuilder<string, const string&> {
 public:
-    CapFlooredIborLegEngineBuilder() : CachingEngineBuilder("BlackOrBachelier", "BlackIborCouponPricer") {}
+    CapFlooredIborLegEngineBuilder()
+        : CachingEngineBuilder("BlackOrBachelier", "BlackIborCouponPricer", {"CapFlooredIborLeg"}) {}
 
 protected:
-    virtual string keyImpl(const Currency& ccy) override { return ccy.code(); }
-    virtual boost::shared_ptr<FloatingRateCouponPricer> engineImpl(const Currency& ccy) override;
+    string keyImpl(const string& index) override { return index; }
+    boost::shared_ptr<FloatingRateCouponPricer> engineImpl(const string& index) override;
 };
-}
-}
+
+} // namespace data
+} // namespace ore

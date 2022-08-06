@@ -16,19 +16,19 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <qle/models/linkablecalibratedmodel.hpp>
 #include <ql/math/optimization/problem.hpp>
-#include <ql/math/optimization/projection.hpp>
 #include <ql/math/optimization/projectedconstraint.hpp>
+#include <ql/math/optimization/projection.hpp>
+#include <qle/models/linkablecalibratedmodel.hpp>
 
-using std::vector;
 using boost::shared_ptr;
+using std::vector;
 
 namespace QuantExt {
 
 namespace {
 void no_deletion(void*) {}
-}
+} // namespace
 
 LinkableCalibratedModel::LinkableCalibratedModel()
     : constraint_(new PrivateConstraint(arguments_)), endCriteria_(EndCriteria::None) {}
@@ -41,7 +41,7 @@ public:
 
     virtual ~CalibrationFunction() {}
 
-    virtual Real value(const Array& params) const {
+    virtual Real value(const Array& params) const override {
         model_->setParams(projection_.include(params));
         Real value = 0.0;
         for (Size i = 0; i < instruments_.size(); i++) {
@@ -51,7 +51,7 @@ public:
         return std::sqrt(value);
     }
 
-    virtual Disposable<Array> values(const Array& params) const {
+    virtual Disposable<Array> values(const Array& params) const override {
         model_->setParams(projection_.include(params));
         Array values(instruments_.size());
         for (Size i = 0; i < instruments_.size(); i++) {
@@ -60,7 +60,7 @@ public:
         return values;
     }
 
-    virtual Real finiteDifferenceEpsilon() const { return 1e-6; }
+    virtual Real finiteDifferenceEpsilon() const override { return 1e-6; }
 
 private:
     shared_ptr<LinkableCalibratedModel> model_;
@@ -68,6 +68,16 @@ private:
     vector<Real> weights_;
     const Projection projection_;
 };
+
+void LinkableCalibratedModel::calibrate(const vector<ext::shared_ptr<BlackCalibrationHelper> >& instruments,
+                                        OptimizationMethod& method, const EndCriteria& endCriteria,
+                                        const Constraint& additionalConstraint, const vector<Real>& weights,
+                                        const vector<bool>& fixParameters) {
+    vector<boost::shared_ptr<CalibrationHelper> > tmp(instruments.size());
+    for (Size i = 0; i < instruments.size(); ++i)
+        tmp[i] = ext::static_pointer_cast<CalibrationHelper>(instruments[i]);
+    calibrate(tmp, method, endCriteria, additionalConstraint, weights, fixParameters);
+}
 
 void LinkableCalibratedModel::calibrate(const vector<shared_ptr<CalibrationHelper> >& instruments,
                                         OptimizationMethod& method, const EndCriteria& endCriteria,
@@ -97,6 +107,14 @@ void LinkableCalibratedModel::calibrate(const vector<shared_ptr<CalibrationHelpe
     problemValues_ = prob.values(result);
 
     notifyObservers();
+}
+
+Real LinkableCalibratedModel::value(const Array& params,
+                                    const vector<boost::shared_ptr<BlackCalibrationHelper> >& instruments) {
+    vector<ext::shared_ptr<CalibrationHelper> > tmp(instruments.size());
+    for (Size i = 0; i < instruments.size(); ++i)
+        tmp[i] = ext::static_pointer_cast<CalibrationHelper>(instruments[i]);
+    return value(params, tmp);
 }
 
 Real LinkableCalibratedModel::value(const Array& params, const vector<shared_ptr<CalibrationHelper> >& instruments) {
@@ -132,4 +150,4 @@ void LinkableCalibratedModel::setParams(const Array& params) {
     generateArguments();
     notifyObservers();
 }
-}
+} // namespace QuantExt

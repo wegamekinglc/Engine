@@ -26,9 +26,8 @@
 
 #include <ql/termstructures/yield/ratehelpers.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Basis Two Swap Helper
 /*! Rate helper for bootstrapping using Libor tenor basis as the
@@ -51,8 +50,8 @@ public:
 
     //! \name RateHelper interface
     //@{
-    Real impliedQuote() const;
-    void setTermStructure(YieldTermStructure*);
+    Real impliedQuote() const override;
+    void setTermStructure(YieldTermStructure*) override;
     //@}
     //! \name BasisTwoSwapHelper inspectors
     //@{
@@ -61,11 +60,11 @@ public:
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 
 protected:
-    void initializeDates();
+    void initializeDates() override;
     Period swapTenor_;
     Calendar calendar_;
     // Long tenor swap
@@ -91,6 +90,6 @@ protected:
 inline boost::shared_ptr<VanillaSwap> BasisTwoSwapHelper::shortSwap() const { return shortSwap_; }
 
 inline boost::shared_ptr<VanillaSwap> BasisTwoSwapHelper::longSwap() const { return longSwap_; }
-}
+} // namespace QuantExt
 
 #endif

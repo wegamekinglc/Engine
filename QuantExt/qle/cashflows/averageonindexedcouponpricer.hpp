@@ -29,27 +29,26 @@
 
 #include <ql/cashflows/couponpricer.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Pricer for average overnight indexed coupons
 /*! \ingroup cashflows
-*/
+ */
 class AverageONIndexedCouponPricer : public FloatingRateCouponPricer {
 public:
     enum Approximation { Takada, None };
 
     AverageONIndexedCouponPricer(Approximation approxType = Takada) : approximationType_(approxType) {}
 
-    void initialize(const FloatingRateCoupon& coupon);
-    Rate swapletRate() const;
+    void initialize(const FloatingRateCoupon& coupon) override;
+    Rate swapletRate() const override;
 
-    Real swapletPrice() const { QL_FAIL("swapletPrice not available"); }
-    Real capletPrice(Rate) const { QL_FAIL("capletPrice not available"); }
-    Rate capletRate(Rate) const { QL_FAIL("capletRate not available"); }
-    Real floorletPrice(Rate) const { QL_FAIL("floorletPrice not available"); }
-    Rate floorletRate(Rate) const { QL_FAIL("floorletRate not available"); }
+    Real swapletPrice() const override { QL_FAIL("swapletPrice not available"); }
+    Real capletPrice(Rate) const override { QL_FAIL("capletPrice not available"); }
+    Rate capletRate(Rate) const override { QL_FAIL("capletRate not available"); }
+    Real floorletPrice(Rate) const override { QL_FAIL("floorletPrice not available"); }
+    Rate floorletRate(Rate) const override { QL_FAIL("floorletRate not available"); }
 
 protected:
     Approximation approximationType_;

@@ -25,21 +25,21 @@
 #ifndef quantext_cclgm_fxoptionengine_hpp
 #define quantext_cclgm_fxoptionengine_hpp
 
-#include <qle/models/crossassetmodel.hpp>
 #include <ql/instruments/vanillaoption.hpp>
+#include <qle/models/crossassetmodel.hpp>
 
 namespace QuantExt {
 
 //! Analytic cc lgm fx option engine
 /*! \ingroup engines
-*/
+ */
 class AnalyticCcLgmFxOptionEngine : public VanillaOption::engine {
 public:
     AnalyticCcLgmFxOptionEngine(const boost::shared_ptr<CrossAssetModel>& model, const Size foreignCurrency);
-    void calculate() const;
+    void calculate() const override;
 
     /*! if cache is enabled, the integrals independent of fx
-      volatility are cached, which can speed up calibtration;
+      volatility are cached, which can speed up calibration;
       remember to flush the cache when the ir parameters
       change, this can be done by another call to cache */
     void cache(bool enable = true);

@@ -19,25 +19,26 @@
 /*! \file crossassetstateprocess.hpp
     \brief crossasset model state process
     \ingroup crossassetmodel
+    \ingroup processes
 */
 
 #ifndef quantext_crossasset_stateprocess_hpp
 #define quantext_crossasset_stateprocess_hpp
 
-#include <ql/stochasticprocess.hpp>
 #include <ql/math/matrixutilities/pseudosqrt.hpp>
+#include <ql/stochasticprocess.hpp>
 
 #include <boost/unordered_map.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 class CrossAssetModel;
 
 //! Cross Asset Model State Process
 /*! \ingroup crossassetmodel
-*/
+ \ingroup processes
+ */
 class CrossAssetStateProcess : public StochasticProcess {
 public:
     enum discretization { exact, euler };
@@ -46,27 +47,35 @@ public:
                            SalvagingAlgorithm::Type salvaging = SalvagingAlgorithm::Spectral);
 
     /*! StochasticProcess interface */
-    Size size() const;
-    Disposable<Array> initialValues() const;
-    Disposable<Array> drift(Time t, const Array& x) const;
-    Disposable<Matrix> diffusion(Time t, const Array& x) const;
+    Size size() const override;
+    Disposable<Array> initialValues() const override;
+    Disposable<Array> drift(Time t, const Array& x) const override;
+    Disposable<Matrix> diffusion(Time t, const Array& x) const override;
+    Disposable<Array> evolve(Time t0, const Array& x0, Time dt, const Array& dw) const override;
 
     /*! specific members */
-    void flushCache() const;
+    virtual void flushCache() const;
 
 protected:
+    virtual Disposable<Array> marginalDiffusion(Time t, const Array& x) const;
     virtual Disposable<Matrix> diffusionImpl(Time t, const Array& x) const;
+    virtual Disposable<Array> marginalDiffusionImpl(Time t, const Array& x) const;
+    void updateSqrtCorrelation() const;
 
     const CrossAssetModel* const model_;
+    std::vector<boost::shared_ptr<StochasticProcess>> crCirpp_;
+    const discretization disc_;
     SalvagingAlgorithm::Type salvaging_;
+    Size cirppCount_;
+    mutable Matrix sqrtCorrelation_;
 
     class ExactDiscretization : public StochasticProcess::discretization {
     public:
         ExactDiscretization(const CrossAssetModel* const model,
                             SalvagingAlgorithm::Type salvaging = SalvagingAlgorithm::Spectral);
-        virtual Disposable<Array> drift(const StochasticProcess&, Time t0, const Array& x0, Time dt) const;
-        virtual Disposable<Matrix> diffusion(const StochasticProcess&, Time t0, const Array& x0, Time dt) const;
-        virtual Disposable<Matrix> covariance(const StochasticProcess&, Time t0, const Array& x0, Time dt) const;
+        virtual Disposable<Array> drift(const StochasticProcess&, Time t0, const Array& x0, Time dt) const override;
+        virtual Disposable<Matrix> diffusion(const StochasticProcess&, Time t0, const Array& x0, Time dt) const override;
+        virtual Disposable<Matrix> covariance(const StochasticProcess&, Time t0, const Array& x0, Time dt) const override;
         void flushCache() const;
 
     protected:
@@ -104,10 +113,10 @@ protected:
         }
     };
 
-    mutable boost::unordered_map<double, Array, cache_hasher> cache_m_;
+    mutable boost::unordered_map<double, Array, cache_hasher> cache_m_, cache_md_;
     mutable boost::unordered_map<double, Matrix, cache_hasher> cache_v_, cache_d_;
 }; // CrossAssetStateProcess
 
-} // namesapce QuantExt
+} // namespace QuantExt
 
 #endif

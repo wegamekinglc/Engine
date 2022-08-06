@@ -24,21 +24,20 @@
 #ifndef quantext_mxntiie_hpp
 #define quantext_mxntiie_hpp
 
-#include <ql/indexes/iborindex.hpp>
 #include <ql/currencies/america.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/time/calendars/mexico.hpp>
 #include <ql/time/daycounters/actual360.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! MXN-TIIE index
 /*! MXN-TIIE rate published by Banco de Mexico.
 
     See <http://www.banxico.org.mx/indexEn.html>.
 
-    \remark Using Mexico calendar, should be Meixco City.
+    \remark Using Mexico calendar, should be Mexico City.
 
     \warning Check roll convention and EOM.
 
@@ -49,6 +48,6 @@ public:
     MXNTiie(const Period& tenor, const Handle<YieldTermStructure>& h = Handle<YieldTermStructure>())
         : IborIndex("MXN-TIIE", tenor, 1, MXNCurrency(), Mexico(), Following, false, Actual360(), h) {}
 };
-}
+} // namespace QuantExt
 
 #endif

@@ -23,16 +23,37 @@
 
 #pragma once
 
-#include <ql/types.hpp>
+#include <qle/indexes/fxindex.hpp>
 #include <ql/handle.hpp>
 #include <ql/quote.hpp>
-#include <map>
-
-using QuantLib::Quote;
-using QuantLib::Handle;
+#include <ql/types.hpp>
+#include <vector>
 
 namespace ore {
 namespace data {
+
+class FxSpotQuote : public QuantLib::Quote, public QuantLib::Observer {
+public:
+    FxSpotQuote(QuantLib::Handle<QuantLib::Quote> todaysQuote,
+                const QuantLib::Handle<QuantLib::YieldTermStructure>& sourceYts,
+                const QuantLib::Handle<QuantLib::YieldTermStructure>& targetYts, QuantLib::Natural fixingDays,
+                const QuantLib::Calendar& fixingCalendar, QuantLib::Date refDate = QuantLib::Date());
+    //! \name Quote interface
+    //@{
+    QuantLib::Real value() const override;
+    bool isValid() const override;
+    //@}
+    //! \name Observer interface
+    //@{
+    void update() override;
+    //@}
+private:
+    const QuantLib::Handle<QuantLib::Quote> todaysQuote_;
+    const QuantLib::Handle<QuantLib::YieldTermStructure> sourceYts_, targetYts_;
+    QuantLib::Natural fixingDays_;
+    QuantLib::Calendar fixingCalendar_;
+    QuantLib::Date refDate_;
+};
 
 //! Intelligent FX price repository
 /*! FX Triangulation is an intelligent price repository that will attempt to calculate FX spot values
@@ -50,6 +71,10 @@ namespace data {
  *  and so if these original quotes change in the future, the constructed quotes will reflect the new
  *  value
  *
+ *  Warning: The result of getQuote() can depend on previous calls to getQuote(), since newly added
+ *  pairs in 3) are candidates for bridging pairs in future calls and the bridging only uses one
+ *  intermediate currency. This state-dependent behaviour will be removed in a future release.
+ *
  *  \ingroup marketdata
  */
 class FXTriangulation {
@@ -58,13 +83,34 @@ public:
     FXTriangulation() {}
 
     //! Add a quote to the repo
-    void addQuote(const std::string& pair, const Handle<Quote>& spot) { map_[pair] = spot; }
+    void addQuote(const std::string& pair, const QuantLib::Handle<QuantLib::Quote>& spot);
 
     //! Get a quote from the repo, this will follow the algorithm described above
-    Handle<Quote> getQuote(const std::string&) const;
+    QuantLib::Handle<QuantLib::Quote> getQuote(const std::string&) const;
+
+    //! Get all quotes currently stored in the triangulation
+    const std::vector<std::pair<std::string, QuantLib::Handle<QuantLib::Quote>>>& quotes() const { return map_; }
 
 private:
-    mutable std::map<std::string, Handle<Quote>> map_;
+    mutable std::vector<std::pair<std::string, QuantLib::Handle<QuantLib::Quote>>> map_;
 };
-}
-}
+
+class FXIndexTriangulation {
+public:
+    //! Default ctor, once built the repo is empty
+    FXIndexTriangulation() {}
+
+    //! Add an index to the repo
+    void addIndex(const std::string& pair, const QuantLib::Handle<QuantExt::FxIndex>& index);
+
+    //! Get a quote from the repo, this will follow the algorithm described above
+    QuantLib::Handle<QuantExt::FxIndex> getIndex(const std::string& pair, bool dontThrow = false) const;
+
+    //! Get all quotes currently stored in the triangulation
+    const std::vector<std::pair<std::string, QuantLib::Handle<QuantExt::FxIndex>>>& indices() const { return map_; }
+
+private:
+    mutable std::vector<std::pair<std::string, QuantLib::Handle<QuantExt::FxIndex>>> map_;
+};
+} // namespace data
+} // namespace ore

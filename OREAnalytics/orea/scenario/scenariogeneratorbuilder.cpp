@@ -18,9 +18,9 @@
 
 #include <orea/scenario/scenariogeneratorbuilder.hpp>
 #include <orea/scenario/simplescenariofactory.hpp>
-#include <orea/scenario/scenariogeneratorbuilder.hpp>
-#include <ored/utilities/parsers.hpp>
 #include <ored/utilities/log.hpp>
+#include <ored/utilities/parsers.hpp>
+#include <qle/methods/pathgeneratorfactory.hpp>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
@@ -42,36 +42,18 @@ boost::shared_ptr<ScenarioGenerator>
 ScenarioGeneratorBuilder::build(boost::shared_ptr<QuantExt::CrossAssetModel> model,
                                 boost::shared_ptr<ScenarioFactory> scenarioFactory,
                                 boost::shared_ptr<ScenarioSimMarketParameters> marketConfig, Date asof,
-                                boost::shared_ptr<ore::data::Market> initMarket, const std::string& configuration) {
+                                boost::shared_ptr<ore::data::Market> initMarket, const std::string& configuration,
+                                const boost::shared_ptr<PathGeneratorFactory>& pf) {
 
-    LOG("ScenarioGeneratorBuilder::build() started");
+    LOG("ScenarioGeneratorBuilder::build() called");
 
     QL_REQUIRE(initMarket != NULL, "ScenarioGeneratorBuilder: initMarket is null");
 
-    boost::shared_ptr<StochasticProcess> stateProcess = model->stateProcess(data_->discretization());
+    auto pathGen = pf->build(data_->sequenceType(), model->stateProcess(data_->discretization()),
+                             data_->getGrid()->timeGrid(), data_->seed(), data_->ordering(), data_->directionIntegers());
 
-    boost::shared_ptr<QuantExt::MultiPathGeneratorBase> pathGen;
-    if (data_->sequenceType() == ScenarioGeneratorData::SequenceType::MersenneTwister)
-        pathGen = boost::make_shared<MultiPathGeneratorMersenneTwister>(stateProcess, data_->grid()->timeGrid(),
-                                                                        data_->seed(), false);
-    else if (data_->sequenceType() == ScenarioGeneratorData::SequenceType::MersenneTwisterAntithetic)
-        pathGen = boost::make_shared<MultiPathGeneratorMersenneTwister>(stateProcess, data_->grid()->timeGrid(),
-                                                                        data_->seed(), true);
-    else if (data_->sequenceType() == ScenarioGeneratorData::SequenceType::Sobol)
-        pathGen = boost::make_shared<QuantExt::MultiPathGeneratorSobol>(stateProcess, data_->grid()->timeGrid());
-    // TODO expose ordering parameter to xml configuration (we hard code Steps / JoeKuoD7 for now)
-    else if (data_->sequenceType() == ScenarioGeneratorData::SequenceType::SobolBrownianBridge)
-        pathGen = boost::make_shared<QuantExt::MultiPathGeneratorSobolBrownianBridge>(
-            stateProcess, data_->grid()->timeGrid(), SobolBrownianGenerator::Steps, data_->seed(), SobolRsg::JoeKuoD7);
-    else
-        QL_FAIL("Sequence type " << data_->sequenceType() << " not covered");
-
-    // boost::shared_ptr<CrossAssetModelScenarioGenerator> scenGen =
-    boost::shared_ptr<ScenarioGenerator> scenGen = boost::make_shared<CrossAssetModelScenarioGenerator>(
-        model, pathGen, scenarioFactory, marketConfig, asof, data_->grid(), initMarket, configuration);
-    LOG("ScenarioGeneratorBuilder::build() done");
-
-    return scenGen;
+    return boost::make_shared<CrossAssetModelScenarioGenerator>(model, pathGen, scenarioFactory, marketConfig, asof,
+                                                                data_->getGrid(), initMarket, configuration);
 }
-}
-}
+} // namespace analytics
+} // namespace ore

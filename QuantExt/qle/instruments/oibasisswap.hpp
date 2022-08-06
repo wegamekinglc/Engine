@@ -25,14 +25,13 @@
 #ifndef quantlib_overnight_indexed_basis_swap_hpp
 #define quantlib_overnight_indexed_basis_swap_hpp
 
+#include <ql/indexes/iborindex.hpp>
 #include <ql/instruments/swap.hpp>
 #include <ql/time/daycounter.hpp>
 #include <ql/time/schedule.hpp>
-#include <ql/indexes/iborindex.hpp>
-
-using namespace QuantLib;
 
 namespace QuantExt {
+using namespace QuantLib;
 
 // class Schedule;
 // class OvernightIndex;
@@ -40,18 +39,18 @@ namespace QuantExt {
 
 //! Overnight indexed basis swap: floating vs compounded overnight rate
 /*! \ingroup instruments
-*/
+ */
 class OvernightIndexedBasisSwap : public Swap {
 public:
     enum Type { Receiver = -1, Payer = 1 };
     OvernightIndexedBasisSwap(Type type, Real nominal, const Schedule& oisSchedule,
                               const boost::shared_ptr<OvernightIndex>& overnightIndex, const Schedule& iborSchedule,
                               const boost::shared_ptr<IborIndex>& iborIndex, Spread oisSpread = 0.0,
-                              Spread iborSpread = 0.0);
+                              Spread iborSpread = 0.0, const bool telescopicValueDates = false);
     OvernightIndexedBasisSwap(Type type, std::vector<Real> nominals, const Schedule& oisSchedule,
                               const boost::shared_ptr<OvernightIndex>& overnightIndex, const Schedule& iborSchedule,
                               const boost::shared_ptr<IborIndex>& iborIndex, Spread oisSpread = 0.0,
-                              Spread iborSpread = 0.0);
+                              Spread iborSpread = 0.0, const bool telescopicValueDates = false);
     //! \name Inspectors
     //@{
     Type type() const { return type_; }
@@ -59,10 +58,10 @@ public:
     std::vector<Real> nominals() const { return nominals_; }
 
     const Schedule& oisSchedule() { return oisSchedule_; }
-    const boost::shared_ptr<OvernightIndex>& overnightIndex();
+    const boost::shared_ptr<OvernightIndex>& overnightIndex() { return overnightIndex_; }
 
     const Schedule& iborSchedule() { return iborSchedule_; }
-    const boost::shared_ptr<IborIndex>& iborIndex();
+    const boost::shared_ptr<IborIndex>& iborIndex() { return iborIndex_; }
 
     Spread oisSpread() { return oisSpread_; }
     Spread iborSpread() { return iborSpread_; }
@@ -90,6 +89,7 @@ private:
     Schedule iborSchedule_;
     boost::shared_ptr<IborIndex> iborIndex_;
     Spread oisSpread_, iborSpread_;
+    bool telescopicValueDates_;
 };
 
 // inline
@@ -98,6 +98,6 @@ inline Real OvernightIndexedBasisSwap::nominal() const {
     QL_REQUIRE(nominals_.size() == 1, "varying nominals");
     return nominals_[0];
 }
-}
+} // namespace QuantExt
 
 #endif

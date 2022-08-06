@@ -26,15 +26,14 @@
 #define quantext_equity_forward_hpp
 
 #include <ql/currency.hpp>
-#include <ql/money.hpp>
 #include <ql/exchangerate.hpp>
 #include <ql/instrument.hpp>
-#include <ql/quote.hpp>
+#include <ql/money.hpp>
 #include <ql/position.hpp>
-
-using namespace QuantLib;
+#include <ql/quote.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 /*! This class holds the term sheet data for an Equity Forward instrument.
 
@@ -60,8 +59,8 @@ public:
         const Real& strike);
     //! \name Instrument interface
     //@{
-    bool isExpired() const;
-    void setupArguments(PricingEngine::arguments*) const;
+    bool isExpired() const override;
+    void setupArguments(PricingEngine::arguments*) const override;
     //@}
 
     //! \name Additional interface
@@ -72,7 +71,6 @@ public:
     Real quantity() const { return quantity_; }
     Date maturityDate() const { return maturityDate_; }
     Real strike() const { return strike_; }
-    boost::shared_ptr<PricingEngine> engine() { return engine_; }
     //@}
 private:
     // data members
@@ -84,6 +82,7 @@ private:
     Real strike_;
 };
 
+//! \ingroup instruments
 class EquityForward::arguments : public virtual PricingEngine::arguments {
 public:
     std::string name;
@@ -92,10 +91,11 @@ public:
     Real quantity;
     Date maturityDate;
     Real strike;
-    void validate() const;
+    void validate() const override;
 };
 
+//! \ingroup instruments
 class EquityForward::engine : public GenericEngine<EquityForward::arguments, Instrument::results> {};
-}
+} // namespace QuantExt
 
 #endif

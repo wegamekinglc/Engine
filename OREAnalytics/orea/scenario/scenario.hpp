@@ -23,25 +23,26 @@
 
 #pragma once
 
-#include <vector>
 #include <map>
+#include <vector>
 
+#include <boost/shared_ptr.hpp>
 #include <ored/utilities/serializationdate.hpp>
+#include <ql/math/array.hpp>
 #include <ql/time/date.hpp>
 #include <ql/types.hpp>
-#include <boost/shared_ptr.hpp>
-
-using QuantLib::Real;
-using QuantLib::Size;
-using QuantLib::Date;
-using std::string;
 
 namespace ore {
 namespace analytics {
+using QuantLib::Array;
+using QuantLib::Date;
+using QuantLib::Real;
+using QuantLib::Size;
+using std::string;
 
 //! Data types stored in the scenario class
 /*! \ingroup scenario
-*/
+ */
 class RiskFactorKey {
 public:
     //! Risk Factor types
@@ -51,11 +52,27 @@ public:
         YieldCurve,
         IndexCurve,
         SwaptionVolatility,
+        YieldVolatility,
         OptionletVolatility,
         FXSpot,
         FXVolatility,
-        EQSpot,
-        EQVolatility
+        EquitySpot,
+        DividendYield,
+        EquityVolatility,
+        SurvivalProbability,
+        RecoveryRate,
+        CDSVolatility,
+        BaseCorrelation,
+        CPIIndex,
+        ZeroInflationCurve,
+        ZeroInflationCapFloorVolatility,
+        YoYInflationCurve,
+        YoYInflationCapFloorVolatility,
+        CommodityCurve,
+        CommodityVolatility,
+        SecuritySpread,
+        Correlation,
+        CPR
     };
 
     //! Constructor
@@ -146,5 +163,5 @@ private:
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive&, const unsigned int) {}
 };
-}
-}
+} // namespace analytics
+} // namespace ore

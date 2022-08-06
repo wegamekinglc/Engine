@@ -28,16 +28,15 @@
 
 #include <ql/termstructures/yieldtermstructure.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Lgm Implied Yield Term Structure
 /*! The termstructure has the reference date of the model's
     termstructure at construction, but you can vary this
     as well as the state.
     The purely time based variant is mainly there for
-    perfomance reasons, note that it does not provide the
+    performance reasons, note that it does not provide the
     full term structure interface and does not send
     notifications on reference time updates.
 
@@ -47,23 +46,28 @@ namespace QuantExt {
 class LgmImpliedYieldTermStructure : public YieldTermStructure {
 public:
     LgmImpliedYieldTermStructure(const boost::shared_ptr<LinearGaussMarkovModel>& model,
-                                 const DayCounter& dc = DayCounter(), const bool purelyTimeBased = false);
+                                 const DayCounter& dc = DayCounter(), const bool purelyTimeBased = false,
+                                 const bool cacheValues = false);
 
-    Date maxDate() const;
-    Time maxTime() const;
+    Date maxDate() const override;
+    Time maxTime() const override;
 
-    const Date& referenceDate() const;
+    const Date& referenceDate() const override;
 
-    void referenceDate(const Date& d);
-    void referenceTime(const Time t);
+    virtual void referenceDate(const Date& d);
+    virtual void referenceTime(const Time t);
     void state(const Real s);
     void move(const Date& d, const Real s);
     void move(const Time t, const Real s);
 
-    void update();
+    virtual void update() override;
 
 protected:
-    Real discountImpl(Time t) const;
+    Real discountImpl(Time t) const override;
+    mutable Real dt_;
+    mutable Real zeta_;
+    mutable Real Ht_;
+    bool cacheValues_;
 
     const boost::shared_ptr<LinearGaussMarkovModel> model_;
     const bool purelyTimeBased_;
@@ -81,10 +85,13 @@ class LgmImpliedYtsFwdFwdCorrected : public LgmImpliedYieldTermStructure {
 public:
     LgmImpliedYtsFwdFwdCorrected(const boost::shared_ptr<LinearGaussMarkovModel>& model,
                                  const Handle<YieldTermStructure> targetCurve, const DayCounter& dc = DayCounter(),
-                                 const bool purelyTimeBased = false);
+                                 const bool purelyTimeBased = false, const bool cacheValues = false);
+
+    void referenceDate(const Date& d) override;
+    void referenceTime(const Time t) override;
 
 protected:
-    Real discountImpl(Time t) const;
+    Real discountImpl(Time t) const override;
 
 private:
     const Handle<YieldTermStructure> targetCurve_;
@@ -100,10 +107,10 @@ class LgmImpliedYtsSpotCorrected : public LgmImpliedYieldTermStructure {
 public:
     LgmImpliedYtsSpotCorrected(const boost::shared_ptr<LinearGaussMarkovModel>& model,
                                const Handle<YieldTermStructure> targetCurve, const DayCounter& dc,
-                               const bool purelyTimeBased);
+                               const bool purelyTimeBased, const bool cacheValues = false);
 
 protected:
-    Real discountImpl(Time t) const;
+    Real discountImpl(Time t) const override;
 
 private:
     const Handle<YieldTermStructure> targetCurve_;
@@ -135,22 +142,55 @@ inline void LgmImpliedYieldTermStructure::referenceDate(const Date& d) {
     update();
 }
 
+inline void LgmImpliedYtsFwdFwdCorrected::referenceDate(const Date& d) {
+    QL_REQUIRE(!purelyTimeBased_, "reference date not available for purely "
+                                  "time based term structure");
+    Date oldDate = referenceDate_;
+    referenceDate_ = d;
+    update();
+    if (cacheValues_ && oldDate != referenceDate_) {
+        dt_ = targetCurve_->discount(relativeTime_);
+        zeta_ = model_->parametrization()->zeta(relativeTime_);
+        Ht_ = model_->parametrization()->H(relativeTime_);
+    }
+}
+
 inline void LgmImpliedYieldTermStructure::referenceTime(const Time t) {
     QL_REQUIRE(purelyTimeBased_, "reference time can only be set for purely "
                                  "time based term structure");
     relativeTime_ = t;
+    notifyObservers();
 }
 
-inline void LgmImpliedYieldTermStructure::state(const Real s) { state_ = s; }
+inline void LgmImpliedYtsFwdFwdCorrected::referenceTime(const Time t) {
+    QL_REQUIRE(purelyTimeBased_, "reference time can only be set for purely "
+                                 "time based term structure");
+    if (cacheValues_ && relativeTime_ != t) {
+        dt_ = targetCurve_->discount(t);
+        zeta_ = model_->parametrization()->zeta(t);
+        Ht_ = model_->parametrization()->H(t);
+    }
+    relativeTime_ = t;
+
+    notifyObservers();
+}
+
+inline void LgmImpliedYieldTermStructure::state(const Real s) {
+    state_ = s;
+    notifyObservers();
+}
 
 inline void LgmImpliedYieldTermStructure::move(const Date& d, const Real s) {
-    state(s);
+
+    state_ = s;
     referenceDate(d);
 }
 
 inline void LgmImpliedYieldTermStructure::move(const Time t, const Real s) {
-    state(s);
+    state_ = s;
     referenceTime(t);
+
+    notifyObservers();
 }
 
 inline void LgmImpliedYieldTermStructure::update() {
@@ -158,6 +198,7 @@ inline void LgmImpliedYieldTermStructure::update() {
         relativeTime_ =
             dayCounter().yearFraction(model_->parametrization()->termStructure()->referenceDate(), referenceDate_);
     }
+
     notifyObservers();
 }
 
@@ -168,9 +209,19 @@ inline Real LgmImpliedYieldTermStructure::discountImpl(Time t) const {
 
 inline Real LgmImpliedYtsFwdFwdCorrected::discountImpl(Time t) const {
     QL_REQUIRE(t >= 0.0, "negative time (" << t << ") given");
-    return LgmImpliedYieldTermStructure::discountImpl(t) * targetCurve_->discount(relativeTime_ + t) /
-           targetCurve_->discount(relativeTime_) * model_->parametrization()->termStructure()->discount(relativeTime_) /
-           model_->parametrization()->termStructure()->discount(relativeTime_ + t);
+    // if relativeTime_ is close to zero, we return the discount factor directly from the target curve
+    if (QuantLib::close_enough(relativeTime_, 0.0)) {
+        return targetCurve_->discount(t);
+    } else {
+        Real HT = model_->parametrization()->H(relativeTime_ + t);
+        if (!cacheValues_) {
+            dt_ = targetCurve_->discount(relativeTime_);
+            zeta_ = model_->parametrization()->zeta(relativeTime_);
+            Ht_ = model_->parametrization()->H(relativeTime_);
+        }
+        return std::exp(-(HT - Ht_) * state_ - 0.5 * (HT * HT - Ht_ * Ht_) * zeta_) *
+               targetCurve_->discount(relativeTime_ + t) / dt_;
+    }
 }
 
 inline Real LgmImpliedYtsSpotCorrected::discountImpl(Time t) const {

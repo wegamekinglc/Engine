@@ -23,29 +23,28 @@
 
 #pragma once
 
-#include <set>
-#include <map>
-#include <boost/optional.hpp>
 #include <boost/none.hpp>
+#include <boost/optional.hpp>
 #include <boost/shared_ptr.hpp>
+#include <map>
+#include <ored/configuration/bootstrapconfig.hpp>
+#include <ored/configuration/curveconfig.hpp>
+#include <ored/utilities/xmlutils.hpp>
 #include <ql/patterns/visitor.hpp>
 #include <ql/types.hpp>
-#include <ored/utilities/xmlutils.hpp>
-
-using std::string;
-using std::vector;
-using std::set;
-using std::pair;
-using std::map;
-using boost::optional;
-using ore::data::XMLSerializable;
-using ore::data::XMLNode;
-using ore::data::XMLDocument;
-using QuantLib::AcyclicVisitor;
-using QuantLib::Real;
+#include <set>
 
 namespace ore {
 namespace data {
+using boost::optional;
+using ore::data::XMLNode;
+using QuantLib::AcyclicVisitor;
+using QuantLib::Real;
+using std::map;
+using std::pair;
+using std::set;
+using std::string;
+using std::vector;
 
 //! Base class for yield curve segments.
 /*!
@@ -66,16 +65,23 @@ public:
         AverageOIS,
         TenorBasis,
         TenorBasisTwo,
+        BMABasis,
         FXForward,
-        CrossCcyBasis
+        CrossCcyBasis,
+        CrossCcyFixFloat,
+        DiscountRatio,
+        FittedBond,
+        WeightedAverage,
+        YieldPlusDefault,
+        IborFallback
     };
     //! Default destructor
     virtual ~YieldCurveSegment() {}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node) = 0;
-    virtual XMLNode* toXML(XMLDocument& doc) = 0;
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
@@ -84,6 +90,7 @@ public:
     // TODO: why typeID?
     const string& typeID() const { return typeID_; }
     const string& conventionsID() const { return conventionsID_; }
+    const vector<pair<string, bool>>& quotes() const { return quotes_; }
     //@}
 
     //! \name Visitability
@@ -96,9 +103,19 @@ protected:
     //@{
     //! Default constructor
     YieldCurveSegment() {}
-    //! Detailed constructor
-    YieldCurveSegment(const string& typeID, const string& conventionsID);
+    //! Detailed constructor - assumes all quotes are mandatory
+    YieldCurveSegment(const string& typeID, const string& conventionsID, const vector<string>& quotes);
     //@}
+
+    //! Quote and optional flag pair
+    vector<pair<string, bool>> quotes_;
+
+    //! Utility to build a quote, optional flag defaults to false
+    pair<string, bool> quote(const string& name, bool opt = false) { return make_pair(name, opt); }
+
+    //! Utility method to read quotes from XML
+    void loadQuotesFromXML(XMLNode* node);
+    //! Utility method to write quotes to XML
 
 private:
     // TODO: why type and typeID?
@@ -128,22 +145,14 @@ public:
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
-    //@}
-
-    //! \name Inspectors
-    //@{
-    const vector<string>& quotes() const { return quotes_; }
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Visitability
     //@{
-    virtual void accept(AcyclicVisitor&);
+    virtual void accept(AcyclicVisitor&) override;
     //@}
-
-private:
-    vector<string> quotes_;
 };
 
 //! Simple yield curve segment
@@ -168,27 +177,25 @@ public:
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const vector<string>& quotes() const { return quotes_; }
     const string& projectionCurveID() const { return projectionCurveID_; }
     //@}
 
     //! \name Visitability
     //@{
-    virtual void accept(AcyclicVisitor&);
+    virtual void accept(AcyclicVisitor&) override;
     //@}
 
 private:
-    vector<string> quotes_;
     string projectionCurveID_;
 };
 
-//! Avergae OIS yield curve segment
+//! Average OIS yield curve segment
 /*!
   The average OIS yield curve segment is used e.g. for USD OIS curve building where
   the curve segment is determined by  a set of composite quotes and a projection curve.
@@ -203,32 +210,30 @@ public:
     //@{
     //! Default constructor
     AverageOISYieldCurveSegment() {}
-    //! Detailec constructor
-    AverageOISYieldCurveSegment(const string& typeID, const string& conventionsID,
-                                const vector<pair<string, string>>& quotes, const string& projectionCurveID);
+    //! Detailed constructor
+    AverageOISYieldCurveSegment(const string& typeID, const string& conventionsID, const vector<string>& quotes,
+                                const string& projectionCurveID);
     //! Default destructor
     virtual ~AverageOISYieldCurveSegment() {}
     //@}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const vector<pair<string, string>>& quotes() const { return quotes_; }
     const string& projectionCurveID() const { return projectionCurveID_; }
     //@}
 
     //! \name Visitability
     //@{
-    virtual void accept(AcyclicVisitor&);
+    virtual void accept(AcyclicVisitor&) override;
     //@}
 
 private:
-    vector<pair<string, string>> quotes_;
     string projectionCurveID_;
 };
 
@@ -255,24 +260,22 @@ public:
 
     //!\name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const vector<string>& quotes() const { return quotes_; }
     const string& shortProjectionCurveID() const { return shortProjectionCurveID_; }
     const string& longProjectionCurveID() const { return longProjectionCurveID_; }
     //@}
 
     //! \name Visitability
     //@{
-    virtual void accept(AcyclicVisitor&);
+    virtual void accept(AcyclicVisitor&) override;
     //@}
 
 private:
-    vector<string> quotes_;
     string shortProjectionCurveID_;
     string longProjectionCurveID_;
 };
@@ -304,13 +307,12 @@ public:
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const vector<string>& quotes() const { return quotes_; }
     const string& spotRateID() const { return spotRateID_; }
     const string& foreignDiscountCurveID() const { return foreignDiscountCurveID_; }
     const string& domesticProjectionCurveID() const { return domesticProjectionCurveID_; }
@@ -319,11 +321,10 @@ public:
 
     //! \name Visitability
     //@{
-    virtual void accept(AcyclicVisitor&);
+    virtual void accept(AcyclicVisitor&) override;
     //@}
 
 private:
-    vector<string> quotes_;
     string spotRateID_;
     string foreignDiscountCurveID_;
     string domesticProjectionCurveID_;
@@ -339,7 +340,7 @@ private:
 */
 class ZeroSpreadedYieldCurveSegment : public YieldCurveSegment {
 public:
-    //! \name COnstructors/Destructors
+    //! \name Constructors/Destructors
     //@{
     //! Default constructor
     ZeroSpreadedYieldCurveSegment() {}
@@ -352,24 +353,239 @@ public:
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const vector<string>& quotes() const { return quotes_; }
     const string& referenceCurveID() const { return referenceCurveID_; }
     //@}
 
     //! \name Visitability
     //@{
-    virtual void accept(AcyclicVisitor&);
+    virtual void accept(AcyclicVisitor&) override;
     //@}
 
 private:
-    vector<string> quotes_;
     string referenceCurveID_;
+};
+
+//! Weighted average yield curve segment
+/*!
+  A weighted average segment is used to build a yield curve from two source curves and weights. The
+  resulting discount factor is the weighted sum of the source curves' discount factors.
+
+  \ingroup configuration
+*/
+class WeightedAverageYieldCurveSegment : public YieldCurveSegment {
+public:
+    //! \name Constructors/Destructors
+    //@{
+    //! Default constructor
+    WeightedAverageYieldCurveSegment() {}
+    //! Detailed constructor
+    WeightedAverageYieldCurveSegment(const string& typeID, const string& referenceCurveID1,
+                                     const string& referenceCurveID2, const Real weight1, const Real weight2);
+    //! Default destructor
+    virtual ~WeightedAverageYieldCurveSegment() {}
+    //! \name Serialisation
+    //@{
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+    //@}
+
+    //! \name Inspectors
+    //@{
+    const string& referenceCurveID1() const { return referenceCurveID1_; }
+    const string& referenceCurveID2() const { return referenceCurveID2_; }
+    Real weight1() const { return weight1_; }
+    Real weight2() const { return weight2_; }
+    //@}
+
+    //! \name Visitability
+    //@{
+    virtual void accept(AcyclicVisitor&) override;
+    //@}
+
+private:
+    string referenceCurveID1_, referenceCurveID2_;
+    double weight1_, weight2_;
+};
+
+//! Yield plus default curves segment
+/*!
+  A yield plus default curves segment is used to build a yield curve from a source yield curve and
+  a weighted sum of default curves interpreted as zero curves (zero recovery, hazard rate =
+  instantaneous forward rate)
+
+  \ingroup configuration
+*/
+class YieldPlusDefaultYieldCurveSegment : public YieldCurveSegment {
+public:
+    //! \name Constructors/Destructors
+    //@{
+    //! Default constructor
+    YieldPlusDefaultYieldCurveSegment() {}
+    //! Detailed constructor
+    YieldPlusDefaultYieldCurveSegment(const string& typeID, const string& referenceCurveID,
+                                      const std::vector<std::string>& defaultCurveIDs,
+                                      const std::vector<Real>& weights);
+    //! Default destructor
+    virtual ~YieldPlusDefaultYieldCurveSegment() {}
+    //! \name Serialisation
+    //@{
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+    //@}
+
+    //! \name Inspectors
+    //@{
+    const string& referenceCurveID() const { return referenceCurveID_; }
+    const std::vector<std::string>& defaultCurveIDs() { return defaultCurveIDs_; }
+    const std::vector<Real>& weights() { return weights_; }
+    //@}
+
+    //! \name Visitability
+    //@{
+    virtual void accept(AcyclicVisitor&) override;
+    //@}
+
+private:
+    string referenceCurveID_;
+    std::vector<std::string> defaultCurveIDs_;
+    std::vector<Real> weights_;
+};
+
+//! Discount ratio yield curve segment
+/*! Used to configure a QuantExt::DiscountRatioModifiedCurve.
+
+    \ingroup configuration
+*/
+class DiscountRatioYieldCurveSegment : public YieldCurveSegment {
+public:
+    //! \name Constructors/Destructors
+    //@{
+    //! Default constructor
+    DiscountRatioYieldCurveSegment() {}
+    //! Detailed constructor
+    DiscountRatioYieldCurveSegment(const std::string& typeId, const std::string& baseCurveId,
+                                   const std::string& baseCurveCurrency, const std::string& numeratorCurveId,
+                                   const std::string& numeratorCurveCurrency, const std::string& denominatorCurveId,
+                                   const std::string& denominatorCurveCurrency);
+    //@}
+
+    //! \name Serialisation
+    //@{
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+    //@}
+
+    //! \name Inspectors
+    //@{
+    const string& baseCurveId() const { return baseCurveId_; }
+    const string& baseCurveCurrency() const { return baseCurveCurrency_; }
+    const string& numeratorCurveId() const { return numeratorCurveId_; }
+    const string& numeratorCurveCurrency() const { return numeratorCurveCurrency_; }
+    const string& denominatorCurveId() const { return denominatorCurveId_; }
+    const string& denominatorCurveCurrency() const { return denominatorCurveCurrency_; }
+    //@}
+
+    //! \name Visitability
+    //@{
+    void accept(QuantLib::AcyclicVisitor& v) override;
+    //@}
+
+private:
+    std::string baseCurveId_;
+    std::string baseCurveCurrency_;
+    std::string numeratorCurveId_;
+    std::string numeratorCurveCurrency_;
+    std::string denominatorCurveId_;
+    std::string denominatorCurveCurrency_;
+};
+
+//! FittedBond yield curve segment
+/*!
+  A bond segment is used to build a yield curve from liquid bond quotes.
+
+  \ingroup configuration
+*/
+class FittedBondYieldCurveSegment : public YieldCurveSegment {
+public:
+    //! \name Constructors/Destructors
+    //@{
+    //! Default constructor
+    FittedBondYieldCurveSegment() {}
+    //! Detailed constructor
+    FittedBondYieldCurveSegment(const string& typeID, const vector<string>& quotes,
+                                const map<string, string>& iborIndexCurves, const bool extrapolateFlat,
+                                const Size calibrationTrials);
+
+    //! \name Serialisation
+    //@{
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+    //@}
+
+    //! \name Inspectors
+    //@{
+    const map<string, string>& iborIndexCurves() const { return iborIndexCurves_; }
+    const bool extrapolateFlat() const { return extrapolateFlat_; }
+    const Size calibrationTrials() const { return calibrationTrials_; }
+    //@}
+
+    //! \name Visitability
+    //@{
+    virtual void accept(AcyclicVisitor&) override;
+    //@}
+
+private:
+    map<string, string> iborIndexCurves_;
+    bool extrapolateFlat_;
+    Size calibrationTrials_;
+};
+
+//! Ibor Fallback yield curve segment
+/*!
+  A curve segment to build a Ibor forwarding curve from an OIS RFR index and a fallback spread
+
+  \ingroup configuration
+*/
+class IborFallbackCurveSegment : public YieldCurveSegment {
+public:
+    //! \name Constructors/Destructors
+    //@{
+    //! Default constructor
+    IborFallbackCurveSegment() {}
+    //! Detailed constructor
+    IborFallbackCurveSegment(const string& typeID, const string& iborIndex, const string& rfrCurve,
+                             const boost::optional<string>& rfrIndex, const boost::optional<Real>& spread);
+
+    //! \name Serialisation
+    //@{
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+    //@}
+
+    //! \name Inspectors
+    //@{
+    const string& iborIndex() const { return iborIndex_; }
+    const string& rfrCurve() const { return rfrCurve_; }
+    const boost::optional<string>& rfrIndex() const { return rfrIndex_; }
+    const boost::optional<Real>& spread() const { return spread_; }
+    //@}
+
+    //! \name Visitability
+    //@{
+    virtual void accept(AcyclicVisitor&) override;
+    //@}
+
+private:
+    string iborIndex_;
+    string rfrCurve_;
+    boost::optional<string> rfrIndex_;
+    boost::optional<Real> spread_;
 };
 
 //! Yield Curve configuration
@@ -378,9 +594,9 @@ private:
 
   \ingroup configuration
  */
-class YieldCurveConfig : public XMLSerializable {
+class YieldCurveConfig : public CurveConfig {
 public:
-    //! \name Constructors/Destructurs
+    //! \name Constructors/Destructors
     //@{
     //! Default constructor
     YieldCurveConfig() {}
@@ -388,21 +604,20 @@ public:
     YieldCurveConfig(const string& curveID, const string& curveDescription, const string& currency,
                      const string& discountCurveID, const vector<boost::shared_ptr<YieldCurveSegment>>& curveSegments,
                      const string& interpolationVariable = "Discount", const string& interpolationMethod = "LogLinear",
-                     const string& zeroDayCounter = "A365", bool extrapolation = true, Real tolerance = 1.0e-12);
+                     const string& zeroDayCounter = "A365", bool extrapolation = true,
+                     const BootstrapConfig& bootstrapConfig = BootstrapConfig());
     //! Default destructor
     virtual ~YieldCurveConfig() {}
     //@}
 
-    //! \name Serilalisation
+    //! \name Serialization
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const string& curveID() const { return curveID_; }
-    const string& curveDescription() const { return curveDescription_; }
     const string& currency() const { return currency_; }
     const string& discountCurveID() const { return discountCurveID_; }
     const vector<boost::shared_ptr<YieldCurveSegment>>& curveSegments() const { return curveSegments_; }
@@ -410,8 +625,7 @@ public:
     const string& interpolationMethod() const { return interpolationMethod_; }
     const string& zeroDayCounter() const { return zeroDayCounter_; }
     bool extrapolation() const { return extrapolation_; }
-    Real tolerance() const { return tolerance_; }
-    const set<string>& requiredYieldCurveIDs() const { return requiredYieldCurveIDs_; }
+    const BootstrapConfig& bootstrapConfig() const { return bootstrapConfig_; }
     //@}
 
     //! \name Setters
@@ -420,29 +634,29 @@ public:
     string& interpolationMethod() { return interpolationMethod_; }
     string& zeroDayCounter() { return zeroDayCounter_; }
     bool& extrapolation() { return extrapolation_; }
-    Real& tolerance() { return tolerance_; }
+    void setBootstrapConfig(const BootstrapConfig& bootstrapConfig) { bootstrapConfig_ = bootstrapConfig; }
     //@}
 
+    const vector<string>& quotes() override;
+
 private:
-    void populateRequiredYieldCurveIDs();
+    void populateRequiredCurveIds();
 
     // Mandatory members
-    string curveID_;
-    string curveDescription_;
     string currency_;
     string discountCurveID_;
     vector<boost::shared_ptr<YieldCurveSegment>> curveSegments_;
-    set<string> requiredYieldCurveIDs_;
 
     // Optional members
     string interpolationVariable_;
     string interpolationMethod_;
     string zeroDayCounter_;
     bool extrapolation_;
-    Real tolerance_;
+    BootstrapConfig bootstrapConfig_;
 };
 
 // Map form curveID to YieldCurveConfig
 using YieldCurveConfigMap = std::map<string, boost::shared_ptr<YieldCurveConfig>>;
-}
-}
+
+} // namespace data
+} // namespace ore

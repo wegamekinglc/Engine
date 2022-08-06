@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <boost/make_shared.hpp>
 #include <orea/scenario/scenariofactory.hpp>
 #include <orea/scenario/simplescenario.hpp>
 
@@ -31,14 +32,14 @@ namespace analytics {
 
 //! Factory class for building simple scenario objects
 /*! \ingroup scenario
-*/
+ */
 class SimpleScenarioFactory : public ScenarioFactory {
 public:
     const boost::shared_ptr<Scenario> buildScenario(Date asof, const std::string& label = "",
-                                                    Real numeraire = 0.0) const {
+                                                    Real numeraire = 0.0) const override {
         return boost::make_shared<SimpleScenario>(asof, label, numeraire);
     }
 };
 
-} // namesapce scenario
+} // namespace analytics
 } // namespace ore

@@ -23,24 +23,19 @@
 
 #pragma once
 
-#include <ql/termstructures/volatility/swaption/swaptionvolmatrix.hpp>
-#include <ored/marketdata/loader.hpp>
-#include <ored/marketdata/curvespec.hpp>
-#include <ored/configuration/conventions.hpp>
 #include <ored/configuration/curveconfigurations.hpp>
-
-using QuantLib::Date;
-using QuantLib::SwaptionVolatilityMatrix;
-using ore::data::CurveConfigurations;
+#include <ored/marketdata/genericyieldvolcurve.hpp>
 
 namespace ore {
 namespace data {
+using ore::data::CurveConfigurations;
+using QuantLib::Date;
 
 //! Wrapper class for building Swaption volatility structures
 /*!
   \ingroup curves
 */
-class SwaptionVolCurve {
+class SwaptionVolCurve : public GenericYieldVolCurve {
 public:
     //! \name Constructors
     //@{
@@ -48,18 +43,19 @@ public:
     SwaptionVolCurve() {}
     //! Detailed constructor
     SwaptionVolCurve(Date asof, SwaptionVolatilityCurveSpec spec, const Loader& loader,
-                     const CurveConfigurations& curveConfigs);
+                     const CurveConfigurations& curveConfigs,
+                     const map<string, boost::shared_ptr<SwapIndex>>& requiredSwapIndices = {},
+                     const map<string, boost::shared_ptr<GenericYieldVolCurve>>& requiredVolCurves = {},
+                     const bool buildCalibrationInfo = true);
     //@}
 
     //! \name Inspectors
     //@{
     const SwaptionVolatilityCurveSpec& spec() const { return spec_; }
-
-    const boost::shared_ptr<SwaptionVolatilityStructure>& volTermStructure() { return vol_; }
     //@}
+
 private:
     SwaptionVolatilityCurveSpec spec_;
-    boost::shared_ptr<SwaptionVolatilityStructure> vol_;
 };
-}
-}
+} // namespace data
+} // namespace ore

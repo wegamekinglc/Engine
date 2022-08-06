@@ -45,12 +45,16 @@ public:
                   // multiplier as seen from the option holder
                   const Real multiplier = 1.0,
                   // undMultiplier w.r.t. underlying as seen from the option holder
-                  const Real undMultiplier = 1.0);
+                  const Real undMultiplier = 1.0,
+                  const std::vector<boost::shared_ptr<QuantLib::Instrument>>& additionalInstruments =
+                      std::vector<boost::shared_ptr<QuantLib::Instrument>>(),
+                  const std::vector<Real>& additionalMultipliers = std::vector<Real>());
     //! \name InstrumentWrapper interface
     //@{
     void initialise(const std::vector<QuantLib::Date>& dates) override;
     void reset() override;
     QuantLib::Real NPV() const override;
+    const std::map<std::string, boost::any>& additionalResults() const override;
     void updateQlInstruments() override {
         for (QuantLib::Size i = 0; i < underlyingInstruments_.size(); ++i)
             underlyingInstruments_[i]->update();
@@ -64,8 +68,13 @@ public:
         return underlyingInstruments_;
     }
 
-    //! return the active underlying instrument
-    const boost::shared_ptr<QuantLib::Instrument>& activeUnderlyingInstrument() const {
+    /*! return the active underlying instrument
+        Pass true if you trigger a calculation on the returned instrument and want to record
+        the timing for that calculation. If in doubt whether a calculation is triggered, pass false. */
+    const boost::shared_ptr<QuantLib::Instrument>& activeUnderlyingInstrument(const bool calculate = false) const {
+        if (calculate && activeUnderlyingInstrument_ != nullptr) {
+            getTimedNPV(activeUnderlyingInstrument_);
+        }
         return activeUnderlyingInstrument_;
     }
 
@@ -81,6 +90,12 @@ public:
     //! the underlying multiplier
     Real underlyingMultiplier() const { return undMultiplier_; }
 
+    //! disable exercise decisions
+    void enableExercise() { exercisable_ = true; }
+
+    //! enable exercise decisions
+    void disableExercise() { exercisable_ = false; }
+
 protected:
     bool isLong_;
     bool isPhysicalDelivery_;
@@ -90,6 +105,7 @@ protected:
     mutable boost::shared_ptr<QuantLib::Instrument> activeUnderlyingInstrument_;
     Real undMultiplier_;
     mutable bool exercised_;
+    bool exercisable_;
     mutable QuantLib::Date exerciseDate_;
 
     virtual bool exercise() const = 0;
@@ -106,9 +122,13 @@ public:
                           // multiplier as seen from the option holder
                           const Real multiplier = 1.0,
                           // undMultiplier w.r.t. underlying as seen from the option holder
-                          const Real undMultiplier = 1.0)
+                          const Real undMultiplier = 1.0,
+                          const std::vector<boost::shared_ptr<QuantLib::Instrument>>& additionalInstruments =
+                              std::vector<boost::shared_ptr<QuantLib::Instrument>>(),
+                          const std::vector<Real>& additionalMultipliers = std::vector<Real>())
         : OptionWrapper(inst, isLongOption, std::vector<QuantLib::Date>(1, exerciseDate), isPhysicalDelivery,
-                        std::vector<boost::shared_ptr<QuantLib::Instrument>>(1, undInst), multiplier, undMultiplier) {}
+                        std::vector<boost::shared_ptr<QuantLib::Instrument>>(1, undInst), multiplier, undMultiplier,
+                        additionalInstruments, additionalMultipliers) {}
 
 protected:
     bool exercise() const override;
@@ -126,9 +146,13 @@ public:
                           // multiplier as seen from the option holder
                           const Real multiplier = 1.0,
                           // undMultiplier w.r.t. underlying as seen from the option holder
-                          const Real undMultiplier = 1.0)
+                          const Real undMultiplier = 1.0,
+                          const std::vector<boost::shared_ptr<QuantLib::Instrument>>& additionalInstruments =
+                              std::vector<boost::shared_ptr<QuantLib::Instrument>>(),
+                          const std::vector<Real>& additionalMultipliers = std::vector<Real>())
         : OptionWrapper(inst, isLongOption, std::vector<QuantLib::Date>(1, exerciseDate), isPhysicalDelivery,
-                        std::vector<boost::shared_ptr<QuantLib::Instrument>>(1, undInst), multiplier, undMultiplier) {}
+                        std::vector<boost::shared_ptr<QuantLib::Instrument>>(1, undInst), multiplier, undMultiplier,
+                        additionalInstruments, additionalMultipliers) {}
 
 protected:
     bool exercise() const override;
@@ -137,7 +161,7 @@ protected:
 //! Bermudan Option Wrapper
 /*! A Bermudan Option Wrapper will exercise when the relevant underlying's NPV exceeds the
  *  option NPV. If only one exercise date is remaining, an analytic European pricing engine is used.
-*/
+ */
 class BermudanOptionWrapper : public OptionWrapper {
 public:
     BermudanOptionWrapper(const boost::shared_ptr<QuantLib::Instrument>& inst, const bool isLongOption,
@@ -146,8 +170,12 @@ public:
                           // multiplier as seen from the option holder
                           const Real multiplier = 1.0,
                           // undMultiplier w.r.t. underlying as seen from the option holder
-                          const Real undMultiplier = 1.0)
-        : OptionWrapper(inst, isLongOption, exerciseDates, isPhysicalDelivery, undInsts, multiplier, undMultiplier) {
+                          const Real undMultiplier = 1.0,
+                          const std::vector<boost::shared_ptr<QuantLib::Instrument>>& additionalInstruments =
+                              std::vector<boost::shared_ptr<QuantLib::Instrument>>(),
+                          const std::vector<Real>& additionalMultipliers = std::vector<Real>())
+        : OptionWrapper(inst, isLongOption, exerciseDates, isPhysicalDelivery, undInsts, multiplier, undMultiplier,
+                        additionalInstruments, additionalMultipliers) {
         QL_REQUIRE(exerciseDates.size() == undInsts.size(),
                    "sizes of exercise date and underlying instrument vectors do not match");
     }
@@ -160,5 +188,5 @@ private:
     bool convertToEuropean() const;
     boost::shared_ptr<QuantLib::Instrument> getUnderlying() const;
 };
-}
-}
+} // namespace data
+} // namespace ore

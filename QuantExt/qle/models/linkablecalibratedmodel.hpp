@@ -24,25 +24,24 @@
 #ifndef quantext_calibrated_model_hpp
 #define quantext_calibrated_model_hpp
 
-#include <ql/models/calibrationhelper.hpp>
-#include <ql/patterns/observable.hpp>
-#include <ql/option.hpp>
-#include <ql/math/optimization/method.hpp>
-#include <ql/models/parameter.hpp>
 #include <ql/math/optimization/endcriteria.hpp>
-
-using namespace QuantLib;
+#include <ql/math/optimization/method.hpp>
+#include <ql/models/calibrationhelper.hpp>
+#include <ql/models/parameter.hpp>
+#include <ql/option.hpp>
+#include <ql/patterns/observable.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Calibrated model class with linkable parameters
 /*! \ingroup models
-*/
+ */
 class LinkableCalibratedModel : public virtual Observer, public virtual Observable {
 public:
     LinkableCalibratedModel();
 
-    void update() {
+    void update() override {
         generateArguments();
         notifyObservers();
     }
@@ -56,7 +55,16 @@ public:
                            const std::vector<Real>& weights = std::vector<Real>(),
                            const std::vector<bool>& fixParameters = std::vector<bool>());
 
+    //! for backward compatibility
+    virtual void calibrate(const std::vector<boost::shared_ptr<BlackCalibrationHelper> >&, OptimizationMethod& method,
+                           const EndCriteria& endCriteria, const Constraint& constraint = Constraint(),
+                           const std::vector<Real>& weights = std::vector<Real>(),
+                           const std::vector<bool>& fixParameters = std::vector<bool>());
+
     Real value(const Array& params, const std::vector<boost::shared_ptr<CalibrationHelper> >&);
+
+    //! for backward compatibility
+    Real value(const Array& params, const std::vector<boost::shared_ptr<BlackCalibrationHelper> >&);
 
     const boost::shared_ptr<Constraint>& constraint() const;
 
@@ -88,14 +96,14 @@ private:
 
 //! Linkable Calibrated Model
 /*! \ingroup models
-*/
+ */
 class LinkableCalibratedModel::PrivateConstraint : public Constraint {
 private:
     class Impl : public Constraint::Impl {
     public:
         Impl(const std::vector<boost::shared_ptr<Parameter> >& arguments) : arguments_(arguments) {}
 
-        bool test(const Array& params) const {
+        bool test(const Array& params) const override {
             Size k = 0;
             for (Size i = 0; i < arguments_.size(); i++) {
                 Size size = arguments_[i]->size();
@@ -108,7 +116,7 @@ private:
             return true;
         }
 
-        Array upperBound(const Array& params) const {
+        Array upperBound(const Array& params) const override {
             Size k = 0, k2 = 0;
             Size totalSize = 0;
             for (Size i = 0; i < arguments_.size(); i++) {
@@ -127,7 +135,7 @@ private:
             return result;
         }
 
-        Array lowerBound(const Array& params) const {
+        Array lowerBound(const Array& params) const override {
             Size k = 0, k2 = 0;
             Size totalSize = 0;
             for (Size i = 0; i < arguments_.size(); i++) {

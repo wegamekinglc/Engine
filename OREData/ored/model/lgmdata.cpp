@@ -17,24 +17,24 @@
 */
 
 #include <ored/model/lgmdata.hpp>
-#include <ored/utilities/parsers.hpp>
 #include <ored/utilities/correlationmatrix.hpp>
 #include <ored/utilities/log.hpp>
+#include <ored/utilities/parsers.hpp>
 #include <ored/utilities/to_string.hpp>
 
-#include <qle/models/irlgm1fpiecewiseconstantparametrization.hpp>
-#include <qle/models/irlgm1fpiecewiselinearparametrization.hpp>
-#include <qle/models/irlgm1fconstantparametrization.hpp>
-#include <qle/models/irlgm1fpiecewiseconstanthullwhiteadaptor.hpp>
 #include <qle/models/fxbsconstantparametrization.hpp>
 #include <qle/models/fxbspiecewiseconstantparametrization.hpp>
-#include <qle/pricingengines/analyticlgmswaptionengine.hpp>
-#include <qle/pricingengines/analyticcclgmfxoptionengine.hpp>
 #include <qle/models/fxeqoptionhelper.hpp>
+#include <qle/models/irlgm1fconstantparametrization.hpp>
+#include <qle/models/irlgm1fpiecewiseconstanthullwhiteadaptor.hpp>
+#include <qle/models/irlgm1fpiecewiseconstantparametrization.hpp>
+#include <qle/models/irlgm1fpiecewiselinearparametrization.hpp>
+#include <qle/pricingengines/analyticcclgmfxoptionengine.hpp>
+#include <qle/pricingengines/analyticlgmswaptionengine.hpp>
 
 #include <ql/math/optimization/levenbergmarquardt.hpp>
-#include <ql/quotes/simplequote.hpp>
 #include <ql/models/shortrate/calibrationhelpers/swaptionhelper.hpp>
+#include <ql/quotes/simplequote.hpp>
 #include <ql/utilities/dataformatters.hpp>
 
 #include <boost/algorithm/string/case_conv.hpp>
@@ -45,12 +45,12 @@ namespace data {
 
 bool LgmData::operator==(const LgmData& rhs) {
 
-    if (ccy_ != rhs.ccy_ || calibrationType_ != rhs.calibrationType_ || revType_ != rhs.revType_ ||
+    if (qualifier_ != rhs.qualifier_ || calibrationType_ != rhs.calibrationType_ || revType_ != rhs.revType_ ||
         volType_ != rhs.volType_ || calibrateH_ != rhs.calibrateH_ || hType_ != rhs.hType_ || hTimes_ != rhs.hTimes_ ||
         hValues_ != rhs.hValues_ || calibrateA_ != rhs.calibrateA_ || aType_ != rhs.aType_ || aTimes_ != rhs.aTimes_ ||
-        aValues_ != rhs.aValues_ || scaling_ != rhs.scaling_ || swaptionExpiries_ != rhs.swaptionExpiries_ ||
-        swaptionTerms_ != rhs.swaptionTerms_ || swaptionStrikes_ != rhs.swaptionStrikes_ ||
-        calibrationStrategy_ != rhs.calibrationStrategy_) {
+        aValues_ != rhs.aValues_ || shiftHorizon_ != rhs.shiftHorizon_ || scaling_ != rhs.scaling_ ||
+        optionExpiries_ != rhs.optionExpiries_ || optionTerms_ != rhs.optionTerms_ ||
+        optionStrikes_ != rhs.optionStrikes_) {
         return false;
     }
     return true;
@@ -138,55 +138,48 @@ std::ostream& operator<<(std::ostream& oss, const LgmData::VolatilityType& type)
     return oss;
 }
 
-LgmData::CalibrationStrategy parseCalibrationStrategy(const string& s) {
+CalibrationStrategy parseCalibrationStrategy(const string& s) {
     if (boost::algorithm::to_upper_copy(s) == "COTERMINALATM")
-        return LgmData::CalibrationStrategy::CoterminalATM;
+        return CalibrationStrategy::CoterminalATM;
+    else if (boost::algorithm::to_upper_copy(s) == "COTERMINALDEALSTRIKE")
+        return CalibrationStrategy::CoterminalDealStrike;
+    else if (boost::algorithm::to_upper_copy(s) == "UNDERLYINGATM")
+        return CalibrationStrategy::UnderlyingATM;
+    else if (boost::algorithm::to_upper_copy(s) == "UNDERLYINGDEALSTRIKE")
+        return CalibrationStrategy::UnderlyingDealStrike;
     else if (boost::algorithm::to_upper_copy(s) == "NONE")
-        return LgmData::CalibrationStrategy::None;
+        return CalibrationStrategy::None;
     else
-        QL_FAIL("Bermudan strategy " << s << " not recognized");
+        QL_FAIL("Calibration strategy " << s << " not recognized");
 }
 
-std::ostream& operator<<(std::ostream& oss, const LgmData::CalibrationStrategy& type) {
-    if (type == LgmData::CalibrationStrategy::CoterminalATM)
+std::ostream& operator<<(std::ostream& oss, const CalibrationStrategy& type) {
+    if (type == CalibrationStrategy::CoterminalATM)
         oss << "COTERMINALATM";
-    else if (type == LgmData::CalibrationStrategy::None)
+    else if (type == CalibrationStrategy::CoterminalDealStrike)
+        oss << "COTERMINALDEALSTRIKE";
+    else if (type == CalibrationStrategy::UnderlyingATM)
+        oss << "UNDERLYINGATM";
+    else if (type == CalibrationStrategy::UnderlyingDealStrike)
+        oss << "UNDERLYINGDEALSTRIKE";
+    else if (type == CalibrationStrategy::None)
         oss << "NONE";
     else
-        QL_FAIL("Bermudan strategy not covered");
+        QL_FAIL("Calibration strategy not covered");
     return oss;
-}
-
-// TODO: use fromXML here, filtering is not done during parsing.
-void LgmData::fromFile(const std::string& fileName, const std::string& ccy) {
-    LOG("load model configuration from " << fileName);
-    clear();
-    XMLDocument doc(fileName);
-    XMLNode* root = doc.getFirstNode("Models");
-    Size count = 0;
-    for (XMLNode* child = XMLUtils::getChildNode(root, "LGM"); child; child = XMLUtils::getNextSibling(child, "LGM")) {
-        std::string childCcy = XMLUtils::getAttribute(child, "ccy");
-        if (ccy == childCcy) {
-            fromXML(child);
-            count++;
-            break;
-        }
-    }
-    QL_REQUIRE(count == 1, "LGM configuration not found for ccy '" << ccy << "'");
-    LOG("load model configuration from " << fileName << " done.");
 }
 
 void LgmData::clear() {
 
-    swaptionExpiries_.clear();
-    swaptionTerms_.clear();
-    swaptionStrikes_.clear();
+    optionExpiries_.clear();
+    optionTerms_.clear();
+    optionStrikes_.clear();
 }
 
 void LgmData::reset() {
     clear();
 
-    ccy_ = "";
+    qualifier_ = "";
     calibrationType_ = CalibrationType::Bootstrap;
     revType_ = ReversionType::HullWhite;
     volType_ = VolatilityType::HullWhite;
@@ -200,15 +193,11 @@ void LgmData::reset() {
     aValues_ = {0.01};
     shiftHorizon_ = 0.0;
     scaling_ = 1.0;
-    calibrationStrategy_ = CalibrationStrategy::CoterminalATM;
 }
 
 void LgmData::fromXML(XMLNode* node) {
     // XMLUtils::checkNode(node, "Models");
     // XMLNode* modelNode = XMLUtils::getChildNode(node, "LGM");
-
-    ccy_ = XMLUtils::getAttribute(node, "ccy");
-    LOG("LGM with attribute (ccy) = " << ccy_);
 
     std::string calibTypeString = XMLUtils::getChildValue(node, "CalibrationType", true);
     calibrationType_ = parseCalibrationType(calibTypeString);
@@ -265,39 +254,12 @@ void LgmData::fromXML(XMLNode* node) {
     scaling_ = XMLUtils::getChildValueAsDouble(tranformNode, "Scaling", true);
     LOG("LGM scaling = " << scaling_);
 
-    // Calibration Swaptions
-
-    XMLNode* swaptionsNode = XMLUtils::getChildNode(node, "CalibrationSwaptions");
-
-    string calibrationStrategyStr = XMLUtils::getChildValue(swaptionsNode, "CalibrationStrategy", false);
-    if (calibrationStrategyStr != "") {
-        calibrationStrategy_ = parseCalibrationStrategy(calibrationStrategyStr);
-        LOG("LGM Bermudan Calibration Strategy " << calibrationStrategy_);
-    }
-
-    swaptionExpiries_ = XMLUtils::getChildrenValuesAsStrings(swaptionsNode, "Expiries", false);
-    swaptionTerms_ = XMLUtils::getChildrenValuesAsStrings(swaptionsNode, "Terms", false);
-    QL_REQUIRE(swaptionExpiries_.size() == swaptionTerms_.size(),
-               "vector size mismatch in swaption expiries/terms for ccy " << ccy_);
-    swaptionStrikes_ = XMLUtils::getChildrenValuesAsStrings(swaptionsNode, "Strikes", false);
-    if (swaptionStrikes_.size() > 0) {
-        QL_REQUIRE(swaptionStrikes_.size() == swaptionExpiries_.size(),
-                   "vector size mismatch in swaption expiries/strikes for ccy " << ccy_);
-    } else // Default: ATM
-        swaptionStrikes_.resize(swaptionExpiries_.size(), "ATM");
-
-    for (Size i = 0; i < swaptionExpiries_.size(); i++) {
-        LOG("LGM calibration swaption " << swaptionExpiries_[i] << " x " << swaptionTerms_[i] << " "
-                                        << swaptionStrikes_[i]);
-    }
-
     LOG("LgmData done");
 }
 
 XMLNode* LgmData::toXML(XMLDocument& doc) {
 
     XMLNode* lgmNode = doc.allocNode("LGM");
-    XMLUtils::addAttribute(doc, lgmNode, "ccy", ccy_);
 
     XMLUtils::addGenericChild(doc, lgmNode, "CalibrationType", calibrationType_);
 
@@ -323,13 +285,6 @@ XMLNode* LgmData::toXML(XMLDocument& doc) {
     XMLUtils::addGenericChildAsList(doc, reversionNode, "TimeGrid", hTimes_);
     XMLUtils::addGenericChildAsList(doc, reversionNode, "InitialValue", hValues_);
 
-    // swaption calibration
-    XMLNode* calibrationSwaptionsNode = XMLUtils::addChild(doc, lgmNode, "CalibrationSwaptions");
-    XMLUtils::addGenericChild(doc, calibrationSwaptionsNode, "CalibrationStrategy", calibrationStrategy_);
-    XMLUtils::addGenericChildAsList(doc, calibrationSwaptionsNode, "Expiries", swaptionExpiries_);
-    XMLUtils::addGenericChildAsList(doc, calibrationSwaptionsNode, "Terms", swaptionTerms_);
-    XMLUtils::addGenericChildAsList(doc, calibrationSwaptionsNode, "Strikes", swaptionStrikes_);
-
     // parameter transformation
     XMLNode* parameterTransformationNode = XMLUtils::addChild(doc, lgmNode, "ParameterTransformation");
     XMLUtils::addChild(doc, parameterTransformationNode, "ShiftHorizon", shiftHorizon_);
@@ -337,5 +292,33 @@ XMLNode* LgmData::toXML(XMLDocument& doc) {
 
     return lgmNode;
 }
+
+LgmReversionTransformation::LgmReversionTransformation()
+    : horizon_(0.0), scaling_(1.0) {}
+
+LgmReversionTransformation::LgmReversionTransformation(Time horizon, Real scaling)
+    : horizon_(horizon), scaling_(scaling) {}
+
+Time LgmReversionTransformation::horizon() const {
+    return horizon_;
 }
+
+Real LgmReversionTransformation::scaling() const {
+    return scaling_;
 }
+
+void LgmReversionTransformation::fromXML(XMLNode* node) {
+    XMLUtils::checkNode(node, "ParameterTransformation");
+    horizon_ = XMLUtils::getChildValueAsDouble(node, "ShiftHorizon", true);
+    scaling_ = XMLUtils::getChildValueAsDouble(node, "Scaling", true);
+}
+
+XMLNode* LgmReversionTransformation::toXML(XMLDocument& doc) {
+    XMLNode* node = doc.allocNode("ParameterTransformation");
+    XMLUtils::addChild(doc, node, "ShiftHorizon", horizon_);
+    XMLUtils::addChild(doc, node, "Scaling", scaling_);
+    return node;
+}
+
+} // namespace data
+} // namespace ore

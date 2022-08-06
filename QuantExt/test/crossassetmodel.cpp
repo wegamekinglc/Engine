@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016, 2017 Quaternion Risk Management Ltd
+ Copyright (C) 2016 Quaternion Risk Management Ltd
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -16,12 +16,66 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "crossassetmodel.hpp"
-
+#include "toplevelfixture.hpp"
+#include "utilities.hpp"
+// clang-format off
+#include <boost/test/unit_test.hpp>
+#include <boost/test/data/test_case.hpp>
+// clang-format on
 #include <qle/methods/multipathgeneratorbase.hpp>
-#include <qle/models/all.hpp>
-#include <qle/pricingengines/all.hpp>
-#include <qle/processes/all.hpp>
+#include <qle/models/cdsoptionhelper.hpp>
+#include <qle/models/cirppconstantfellerparametrization.hpp>
+#include <qle/models/cpicapfloorhelper.hpp>
+#include <qle/models/crlgm1fparametrization.hpp>
+#include <qle/models/crossassetanalytics.hpp>
+#include <qle/models/crossassetanalyticsbase.hpp>
+#include <qle/models/crossassetmodel.hpp>
+#include <qle/models/crossassetmodelimpliedeqvoltermstructure.hpp>
+#include <qle/models/crossassetmodelimpliedfxvoltermstructure.hpp>
+#include <qle/models/dkimpliedyoyinflationtermstructure.hpp>
+#include <qle/models/dkimpliedzeroinflationtermstructure.hpp>
+#include <qle/models/eqbsconstantparametrization.hpp>
+#include <qle/models/eqbsparametrization.hpp>
+#include <qle/models/eqbspiecewiseconstantparametrization.hpp>
+#include <qle/models/fxbsconstantparametrization.hpp>
+#include <qle/models/fxbsparametrization.hpp>
+#include <qle/models/fxbspiecewiseconstantparametrization.hpp>
+#include <qle/models/fxeqoptionhelper.hpp>
+#include <qle/models/gaussian1dcrossassetadaptor.hpp>
+#include <qle/models/infdkparametrization.hpp>
+#include <qle/models/irlgm1fconstantparametrization.hpp>
+#include <qle/models/irlgm1fparametrization.hpp>
+#include <qle/models/irlgm1fpiecewiseconstanthullwhiteadaptor.hpp>
+#include <qle/models/irlgm1fpiecewiseconstantparametrization.hpp>
+#include <qle/models/irlgm1fpiecewiselinearparametrization.hpp>
+#include <qle/models/jyimpliedzeroinflationtermstructure.hpp>
+#include <qle/models/lgm.hpp>
+#include <qle/models/lgmimplieddefaulttermstructure.hpp>
+#include <qle/models/lgmimpliedyieldtermstructure.hpp>
+#include <qle/models/linkablecalibratedmodel.hpp>
+#include <qle/models/parametrization.hpp>
+#include <qle/models/piecewiseconstanthelper.hpp>
+#include <qle/models/pseudoparameter.hpp>
+#include <qle/pricingengines/analyticcclgmfxoptionengine.hpp>
+#include <qle/pricingengines/analyticdkcpicapfloorengine.hpp>
+#include <qle/pricingengines/analyticlgmcdsoptionengine.hpp>
+#include <qle/pricingengines/analyticlgmswaptionengine.hpp>
+#include <qle/pricingengines/analyticxassetlgmeqoptionengine.hpp>
+#include <qle/pricingengines/blackcdsoptionengine.hpp>
+#include <qle/pricingengines/crossccyswapengine.hpp>
+#include <qle/pricingengines/depositengine.hpp>
+#include <qle/pricingengines/discountingcommodityforwardengine.hpp>
+#include <qle/pricingengines/discountingcurrencyswapengine.hpp>
+#include <qle/pricingengines/discountingequityforwardengine.hpp>
+#include <qle/pricingengines/discountingfxforwardengine.hpp>
+#include <qle/pricingengines/discountingriskybondengine.hpp>
+#include <qle/pricingengines/discountingswapenginemulticurve.hpp>
+#include <qle/pricingengines/midpointcdsengine.hpp>
+#include <qle/pricingengines/numericlgmmultilegoptionengine.hpp>
+#include <qle/pricingengines/oiccbasisswapengine.hpp>
+#include <qle/pricingengines/paymentdiscountingengine.hpp>
+#include <qle/processes/crossassetstateprocess.hpp>
+#include <qle/processes/irlgm1fstateprocess.hpp>
 
 #include <ql/currencies/america.hpp>
 #include <ql/currencies/europe.hpp>
@@ -29,6 +83,7 @@
 #include <ql/indexes/ibor/gbplibor.hpp>
 #include <ql/indexes/ibor/usdlibor.hpp>
 #include <ql/indexes/inflation/euhicp.hpp>
+#include <ql/indexes/inflation/ukrpi.hpp>
 #include <ql/instruments/cpicapfloor.hpp>
 #include <ql/instruments/vanillaoption.hpp>
 #include <ql/math/optimization/levenbergmarquardt.hpp>
@@ -38,7 +93,6 @@
 #include <ql/methods/montecarlo/pathgenerator.hpp>
 #include <ql/models/shortrate/calibrationhelpers/swaptionhelper.hpp>
 #include <ql/models/shortrate/onefactormodels/gsr.hpp>
-#include <ql/pricingengines/credit/midpointcdsengine.hpp>
 #include <ql/pricingengines/swaption/gaussian1dswaptionengine.hpp>
 #include <ql/quotes/simplequote.hpp>
 #include <ql/termstructures/credit/flathazardrate.hpp>
@@ -48,8 +102,6 @@
 #include <ql/time/calendars/target.hpp>
 #include <ql/time/daycounters/actual360.hpp>
 #include <ql/time/daycounters/thirty360.hpp>
-
-#include <test-suite/utilities.hpp>
 
 #include <boost/make_shared.hpp>
 // fix for boost 1.64, see https://lists.boost.org/Archives/boost/2016/11/231756.php
@@ -70,6 +122,8 @@ using namespace CrossAssetModelTypes;
 
 using boost::unit_test_framework::test_suite;
 using namespace boost::accumulators;
+namespace bdata = boost::unit_test::data;
+using std::vector;
 
 namespace {
 
@@ -83,7 +137,7 @@ struct BermudanTestData {
           floatingSchedule(startDate, maturityDate, 6 * Months, TARGET(), ModifiedFollowing, ModifiedFollowing,
                            DateGeneration::Forward, false),
           underlying(
-              boost::make_shared<VanillaSwap>(VanillaSwap(VanillaSwap::Payer, 1.0, fixedSchedule, 0.02, Thirty360(),
+              boost::make_shared<VanillaSwap>(VanillaSwap(VanillaSwap::Payer, 1.0, fixedSchedule, 0.02, Thirty360(Thirty360::BondBasis),
                                                           floatingSchedule, euribor6m, 0.0, Actual360()))),
           reversion(0.03) {
         Settings::instance().evaluationDate() = evalDate;
@@ -122,9 +176,11 @@ struct BermudanTestData {
 
 } // anonymous namespace
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(QuantExtTestSuite, qle::test::TopLevelFixture)
 
-void CrossAssetModelTest::testBermudanLgm1fGsr() {
+BOOST_AUTO_TEST_SUITE(CrossAssetModelTest)
+
+BOOST_AUTO_TEST_CASE(testBermudanLgm1fGsr) {
 
     BOOST_TEST_MESSAGE("Testing consistency of Bermudan swaption pricing in "
                        "LGM 1F and GSR models...");
@@ -172,7 +228,7 @@ void CrossAssetModelTest::testBermudanLgm1fGsr() {
                     << npvLgm2 << ") and Gsr (" << npvGsr << ") models, tolerance is " << tol);
 }
 
-void CrossAssetModelTest::testBermudanLgmInvariances() {
+BOOST_AUTO_TEST_CASE(testBermudanLgmInvariances) {
 
     BOOST_TEST_MESSAGE("Testing LGM model invariances for Bermudan "
                        "swaption pricing...");
@@ -209,7 +265,7 @@ void CrossAssetModelTest::testBermudanLgmInvariances() {
 
 } // testBermudanLgm1fGsr
 
-void CrossAssetModelTest::testNonstandardBermudanSwaption() {
+BOOST_AUTO_TEST_CASE(testNonstandardBermudanSwaption) {
 
     BOOST_TEST_MESSAGE("Testing numeric LGM swaption engine for non-standard swaption...");
 
@@ -239,7 +295,7 @@ void CrossAssetModelTest::testNonstandardBermudanSwaption() {
                     << (npv - ns_npv) << ", tolerance is " << tol);
 } // testNonstandardBermudanSwaption
 
-void CrossAssetModelTest::testLgm1fCalibration() {
+BOOST_AUTO_TEST_CASE(testLgm1fCalibration) {
 
     BOOST_TEST_MESSAGE("Testing calibration of LGM 1F model (analytic engine) "
                        "against GSR parameters...");
@@ -256,14 +312,14 @@ void CrossAssetModelTest::testLgm1fCalibration() {
 
     // coterminal basket 1y-9y, 2y-8y, ... 9y-1y
 
-    std::vector<boost::shared_ptr<CalibrationHelper> > basket;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > basket;
     Real impliedVols[] = { 0.4, 0.39, 0.38, 0.35, 0.35, 0.34, 0.33, 0.32, 0.31 };
     std::vector<Date> expiryDates;
 
     for (Size i = 0; i < 9; ++i) {
-        boost::shared_ptr<CalibrationHelper> helper = boost::make_shared<SwaptionHelper>(
+        boost::shared_ptr<BlackCalibrationHelper> helper = boost::make_shared<SwaptionHelper>(
             (i + 1) * Years, (9 - i) * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(impliedVols[i])), euribor6m,
-            1 * Years, Thirty360(), Actual360(), yts);
+            1 * Years, Thirty360(Thirty360::BondBasis), Actual360(), yts);
         basket.push_back(helper);
         expiryDates.push_back(
             boost::static_pointer_cast<SwaptionHelper>(helper)->swaption()->exercise()->dates().back());
@@ -394,7 +450,7 @@ void CrossAssetModelTest::testLgm1fCalibration() {
 
 } // testLgm1fCalibration
 
-void CrossAssetModelTest::testCcyLgm3fForeignPayouts() {
+BOOST_AUTO_TEST_CASE(testCcyLgm3fForeignPayouts) {
 
     BOOST_TEST_MESSAGE("Testing pricing of foreign payouts under domestic "
                        "measure in Ccy LGM 3F model...");
@@ -709,15 +765,18 @@ struct Lgm5fTestData {
 }; // LGM5FTestData
 
 struct IrFxCrModelTestData {
-    IrFxCrModelTestData()
-        : referenceDate(30, July, 2015), eurYts(boost::make_shared<FlatForward>(referenceDate, 0.02, Actual365Fixed())),
+    IrFxCrModelTestData(bool includeCirr = false)
+        : referenceDate(30, July, 2015), N(includeCirr ? 11 : 8),
+          eurYts(boost::make_shared<FlatForward>(referenceDate, 0.02, Actual365Fixed())),
           usdYts(boost::make_shared<FlatForward>(referenceDate, 0.05, Actual365Fixed())),
           gbpYts(boost::make_shared<FlatForward>(referenceDate, 0.04, Actual365Fixed())),
           fxEurUsd(boost::make_shared<SimpleQuote>(0.90)), fxEurGbp(boost::make_shared<SimpleQuote>(1.35)),
           n1Ts(boost::make_shared<FlatHazardRate>(referenceDate, 0.01, Actual365Fixed())),
           n2Ts(boost::make_shared<FlatHazardRate>(referenceDate, 0.05, Actual365Fixed())),
           n3Ts(boost::make_shared<FlatHazardRate>(referenceDate, 0.10, Actual365Fixed())), n1Alpha(0.01), n1Kappa(0.01),
-          n2Alpha(0.015), n2Kappa(0.015), n3Alpha(0.0050), n3Kappa(0.0050), c(8, 8, 0.0) {
+          n2Alpha(0.015), n2Kappa(0.015), n3Alpha(0.0050), n3Kappa(0.0050),
+          cirppKappa(0.206), cirppTheta(0.04), cirppSigma(sqrt(2 * cirppKappa * cirppTheta) - 1E-10),
+          cirppY0(cirppTheta), c(N, N, 0.0) {
 
         Settings::instance().evaluationDate() = referenceDate;
         volstepdates.push_back(Date(15, July, 2016));
@@ -779,10 +838,18 @@ struct IrFxCrModelTestData {
         fxGbp_p = boost::make_shared<FxBsPiecewiseConstantParametrization>(GBPCurrency(), fxEurGbp, volsteptimesFx_a,
                                                                            fxSigmasGbp_a);
 
-        // credit
+        // credit LGM
         n1_p = boost::make_shared<CrLgm1fConstantParametrization>(EURCurrency(), n1Ts, n1Alpha, n1Kappa);
         n2_p = boost::make_shared<CrLgm1fConstantParametrization>(EURCurrency(), n2Ts, n2Alpha, n2Kappa);
         n3_p = boost::make_shared<CrLgm1fConstantParametrization>(EURCurrency(), n3Ts, n3Alpha, n3Kappa);
+
+        // credit cir++ (shifted = true), parameters are taken from CrCirppModelTest
+        n1_cirpp = boost::make_shared<CrCirppConstantWithFellerParametrization>(
+            EURCurrency(), n1Ts, cirppKappa, cirppTheta, cirppSigma, cirppY0, true);
+        n2_cirpp = boost::make_shared<CrCirppConstantWithFellerParametrization>(
+            USDCurrency(), n2Ts, cirppKappa, cirppTheta, cirppSigma, cirppY0, true);
+        n3_cirpp = boost::make_shared<CrCirppConstantWithFellerParametrization>(
+            GBPCurrency(), n3Ts, cirppKappa, cirppTheta, cirppSigma, cirppY0, true);
 
         singleModels.push_back(eurLgm_p);
         singleModels.push_back(usdLgm_p);
@@ -792,32 +859,65 @@ struct IrFxCrModelTestData {
         singleModels.push_back(n1_p);
         singleModels.push_back(n2_p);
         singleModels.push_back(n3_p);
+        if (includeCirr) {
+            singleModels.push_back(n1_cirpp);
+            singleModels.push_back(n2_cirpp);
+            singleModels.push_back(n3_cirpp);
+        }
 
-        Real tmp[8][8] = {
-            // EUR   USD   GBP    FX1  FX2   N1   N2   N3
-            { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // EUR
-            { 0.6, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // USD
-            { 0.3, 0.1, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // GBP
-            { 0.2, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 }, // FX1
-            { 0.3, 0.1, 0.1, 0.3, 1.0, 0.0, 0.0, 0.0 }, // FX2
-            { 0.8, 0.2, 0.1, 0.4, 0.2, 1.0, 0.0, 0.0 }, // N1
-            { 0.6, 0.1, 0.2, 0.2, 0.5, 0.5, 1.0, 0.0 }, // N2
-            { 0.3, 0.2, 0.1, 0.1, 0.3, 0.4, 0.2, 1.0 }  // N3
+        std::vector<std::vector<Real>> tmp;
+        if (includeCirr) {
+            tmp = {
+                // EUR USD  GBP  FX1  FX2   N1   N2   N3  NC1  NC2  NC3
+                { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // EUR
+                { 0.6, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // USD
+                { 0.3, 0.1, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // GBP
+                { 0.2, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // FX1
+                { 0.3, 0.1, 0.1, 0.3, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // FX2
+                { 0.8, 0.2, 0.1, 0.4, 0.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // N1
+                { 0.6, 0.1, 0.2, 0.2, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0 }, // N2
+                { 0.3, 0.2, 0.1, 0.1, 0.3, 0.4, 0.2, 1.0, 0.0, 0.0, 0.0 }, // N3
+                { 0.0, 0.2, 0.1, 0.4, 0.2, 0.5, 0.3, 0.2, 1.0, 0.0, 0.0 }, // N1 (CIR++)
+                { 0.0, 0.1, 0.2, 0.0, 0.5, 0.4, 0.2, 0.1, 0.4, 1.0, 0.0 }, // N2 (CIR++)
+                { 0.0, 0.2, 0.1, 0.1, 0.0, 0.3, 0.2, 0.2, 0.3, 0.5, 1.0 } // N3 (CIR++)
+            };
+        } else {
+            tmp = {
+                // EUR USD  GBP  FX1  FX2   N1   N2   N3
+                { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // EUR
+                { 0.6, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // USD
+                { 0.3, 0.1, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // GBP
+                { 0.2, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 }, // FX1
+                { 0.3, 0.1, 0.1, 0.3, 1.0, 0.0, 0.0, 0.0 }, // FX2
+                { 0.8, 0.2, 0.1, 0.4, 0.2, 1.0, 0.0, 0.0 }, // N1
+                { 0.6, 0.1, 0.2, 0.2, 0.5, 0.5, 1.0, 0.0 }, // N2
+                { 0.3, 0.2, 0.1, 0.1, 0.3, 0.4, 0.2, 1.0 } // N3
+            };
         };
 
-        for (Size i = 0; i < 8; ++i) {
+        for (Size i = 0; i < N; ++i) {
             for (Size j = 0; j <= i; ++j) {
                 c[i][j] = c[j][i] = tmp[i][j];
             }
         }
 
-        BOOST_TEST_MESSAGE("correlation matrix is\n" << c);
-
-        model = boost::make_shared<CrossAssetModel>(singleModels, c, SalvagingAlgorithm::None);
+        BOOST_TEST_MESSAGE("input correlation matrix is\n" << c);
+        Matrix ctmp = pseudoSqrt(c, SalvagingAlgorithm::Spectral);
+        Matrix cs = ctmp * transpose(ctmp);
+        // this leads technically to non-zero correlations EUR/CIR++ and FX/CIR++, but
+        // these are small, so that the missing drift adjustment in the state process
+        // evolve method can be ignored
+        BOOST_TEST_MESSAGE("salvaged correlation matrix is\n" << cs);
+        if (includeCirr)
+            model = boost::make_shared<CrossAssetModel>(singleModels, cs, SalvagingAlgorithm::None);
+        else
+            model = boost::make_shared<CrossAssetModel>(singleModels, c, SalvagingAlgorithm::None);
+        BOOST_TEST_MESSAGE("cam+ model built.");
     }
 
     SavedSettings backup;
     Date referenceDate;
+    Size N;
     // ir-fx
     Handle<YieldTermStructure> eurYts, usdYts, gbpYts;
     std::vector<Date> volstepdates, volstepdatesFx;
@@ -830,8 +930,12 @@ struct IrFxCrModelTestData {
     boost::shared_ptr<FxBsParametrization> fxUsd_p, fxGbp_p;
     // cr
     Handle<DefaultProbabilityTermStructure> n1Ts, n2Ts, n3Ts;
+    // LGM
     boost::shared_ptr<CrLgm1fParametrization> n1_p, n2_p, n3_p;
     Real n1Alpha, n1Kappa, n2Alpha, n2Kappa, n3Alpha, n3Kappa;
+    // CIR++
+    boost::shared_ptr<CrCirppParametrization> n1_cirpp, n2_cirpp, n3_cirpp;
+    Real cirppKappa, cirppTheta, cirppSigma, cirppY0;
     // model
     std::vector<boost::shared_ptr<Parametrization> > singleModels;
     Matrix c;
@@ -840,7 +944,7 @@ struct IrFxCrModelTestData {
 
 } // anonymous namespace
 
-void CrossAssetModelTest::testLgm5fFxCalibration() {
+BOOST_AUTO_TEST_CASE(testLgm5fFxCalibration) {
 
     BOOST_TEST_MESSAGE("Testing fx calibration in Ccy LGM 5F model...");
 
@@ -881,13 +985,13 @@ void CrossAssetModelTest::testLgm5fFxCalibration() {
 
     // while the initial fx vol starts at 0.2 for usd and 0.15 for gbp
     // we calibrate to helpers with 0.15 and 0.2 target implied vol
-    std::vector<boost::shared_ptr<CalibrationHelper> > helpersUsd, helpersGbp;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > helpersUsd, helpersGbp;
     for (Size i = 0; i <= d.volstepdatesFx.size(); ++i) {
-        boost::shared_ptr<CalibrationHelper> tmpUsd = boost::make_shared<FxEqOptionHelper>(
+        boost::shared_ptr<BlackCalibrationHelper> tmpUsd = boost::make_shared<FxEqOptionHelper>(
             i < d.volstepdatesFx.size() ? d.volstepdatesFx[i] : d.volstepdatesFx.back() + 365, 0.90, d.fxEurUsd,
             Handle<Quote>(boost::make_shared<SimpleQuote>(0.15)), d.ccLgm->irlgm1f(0)->termStructure(),
             d.ccLgm->irlgm1f(1)->termStructure());
-        boost::shared_ptr<CalibrationHelper> tmpGbp = boost::make_shared<FxEqOptionHelper>(
+        boost::shared_ptr<BlackCalibrationHelper> tmpGbp = boost::make_shared<FxEqOptionHelper>(
             i < d.volstepdatesFx.size() ? d.volstepdatesFx[i] : d.volstepdatesFx.back() + 365, 1.35, d.fxEurGbp,
             Handle<Quote>(boost::make_shared<SimpleQuote>(0.20)), d.ccLgm->irlgm1f(0)->termStructure(),
             d.ccLgm->irlgm1f(2)->termStructure());
@@ -955,7 +1059,7 @@ void CrossAssetModelTest::testLgm5fFxCalibration() {
 
 } // testLgm5fFxCalibration
 
-void CrossAssetModelTest::testLgm5fFullCalibration() {
+BOOST_AUTO_TEST_CASE(testLgm5fFullCalibration) {
 
     BOOST_TEST_MESSAGE("Testing full calibration of Ccy LGM 5F model...");
 
@@ -963,7 +1067,7 @@ void CrossAssetModelTest::testLgm5fFullCalibration() {
 
     // calibration baskets
 
-    std::vector<boost::shared_ptr<CalibrationHelper> > basketEur, basketUsd, basketGbp, basketEurUsd, basketEurGbp;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > basketEur, basketUsd, basketGbp, basketEurUsd, basketEurGbp;
 
     boost::shared_ptr<IborIndex> euribor6m = boost::make_shared<Euribor>(6 * Months, d.eurYts);
     boost::shared_ptr<IborIndex> usdLibor3m = boost::make_shared<USDLibor>(3 * Months, d.usdYts);
@@ -973,16 +1077,17 @@ void CrossAssetModelTest::testLgm5fFullCalibration() {
         Date tmp = i < d.volstepdates.size() ? d.volstepdates[i] : d.volstepdates.back() + 365;
         // EUR: atm+200bp, 150bp normal vol
         basketEur.push_back(boost::shared_ptr<SwaptionHelper>(new SwaptionHelper(
-            tmp, 10 * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(0.015)), euribor6m, 1 * Years, Thirty360(),
-            Actual360(), d.eurYts, CalibrationHelper::RelativePriceError, 0.04, 1.0, Normal)));
+            tmp, 10 * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(0.015)), euribor6m, 1 * Years, Thirty360(Thirty360::BondBasis),
+            Actual360(), d.eurYts, BlackCalibrationHelper::RelativePriceError, 0.04, 1.0, Normal)));
         // USD: atm, 20%, lognormal vol
-        basketUsd.push_back(boost::shared_ptr<SwaptionHelper>(new SwaptionHelper(
-            tmp, 10 * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(0.30)), usdLibor3m, 1 * Years, Thirty360(),
-            Actual360(), d.usdYts, CalibrationHelper::RelativePriceError, Null<Real>(), 1.0, ShiftedLognormal, 0.0)));
+        basketUsd.push_back(boost::shared_ptr<SwaptionHelper>(
+            new SwaptionHelper(tmp, 10 * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(0.30)), usdLibor3m,
+                               1 * Years, Thirty360(Thirty360::BondBasis), Actual360(), d.usdYts,
+                               BlackCalibrationHelper::RelativePriceError, Null<Real>(), 1.0, ShiftedLognormal, 0.0)));
         // GBP: atm-200bp, 10%, shifted lognormal vol with shift = 2%
         basketGbp.push_back(boost::shared_ptr<SwaptionHelper>(new SwaptionHelper(
-            tmp, 10 * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(0.30)), gbpLibor3m, 1 * Years, Thirty360(),
-            Actual360(), d.usdYts, CalibrationHelper::RelativePriceError, 0.02, 1.0, ShiftedLognormal, 0.02)));
+            tmp, 10 * Years, Handle<Quote>(boost::make_shared<SimpleQuote>(0.30)), gbpLibor3m, 1 * Years, Thirty360(Thirty360::BondBasis),
+            Actual360(), d.usdYts, BlackCalibrationHelper::RelativePriceError, 0.02, 1.0, ShiftedLognormal, 0.02)));
     }
 
     for (Size i = 0; i < d.volstepdatesFx.size(); ++i) {
@@ -990,11 +1095,11 @@ void CrossAssetModelTest::testLgm5fFullCalibration() {
         // EUR-USD: atm, 30% (lognormal) vol
         basketEurUsd.push_back(boost::make_shared<FxEqOptionHelper>(
             tmp, Null<Real>(), d.fxEurUsd, Handle<Quote>(boost::make_shared<SimpleQuote>(0.20)), d.eurYts, d.usdYts,
-            CalibrationHelper::RelativePriceError));
+            BlackCalibrationHelper::RelativePriceError));
         // EUR-GBP: atm, 10% (lognormal) vol
         basketEurGbp.push_back(boost::make_shared<FxEqOptionHelper>(
             tmp, Null<Real>(), d.fxEurGbp, Handle<Quote>(boost::make_shared<SimpleQuote>(0.20)), d.eurYts, d.gbpYts,
-            CalibrationHelper::RelativePriceError));
+            BlackCalibrationHelper::RelativePriceError));
     }
 
     // pricing engines
@@ -1086,7 +1191,7 @@ void CrossAssetModelTest::testLgm5fFullCalibration() {
     }
 }
 
-void CrossAssetModelTest::testLgm5fMoments() {
+BOOST_AUTO_TEST_CASE(testLgm5fMoments) {
 
     BOOST_TEST_MESSAGE("Testing analytic moments vs. Euler and exact discretization "
                        "in Ccy LGM 5F model...");
@@ -1133,17 +1238,21 @@ void CrossAssetModelTest::testLgm5fMoments() {
     for (Size i = 0; i < 5; ++i) {
         // check expectation against analytical calculation (Euler)
         if (std::fabs(mean(e_eu[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Euler "
-                                                   "discretization, " << mean(e_eu[i]) << "), error is "
-                        << e_an[i] - mean(e_eu[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (Euler "
+                                                                    "discretization, "
+                                                                 << mean(e_eu[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
         // check expectation against analytical calculation (exact disc)
         if (std::fabs(mean(e_eu2[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Exact "
-                                                   "discretization, " << mean(e_eu2[i]) << "), error is "
-                        << e_an[i] - mean(e_eu2[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (Exact "
+                                                                    "discretization, "
+                                                                 << mean(e_eu2[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu2[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
     }
 
@@ -1169,23 +1278,25 @@ void CrossAssetModelTest::testLgm5fMoments() {
             if (std::fabs(covariance(v_eu[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Euler discretization, " << covariance(v_eu[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (Euler discretization, "
+                                                         << covariance(v_eu[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu[i][j]) << " tolerance is "
+                                                         << tol);
             }
             if (std::fabs(covariance(v_eu2[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Exact discretization, " << covariance(v_eu2[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu2[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (Exact discretization, "
+                                                         << covariance(v_eu2[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu2[i][j]) << " tolerance is "
+                                                         << tol);
             }
         }
     }
 
 } // testLgm5fMoments
 
-void CrossAssetModelTest::testLgmGsrEquivalence() {
+BOOST_AUTO_TEST_CASE(testLgmGsrEquivalence) {
 
     BOOST_TEST_MESSAGE("Testing equivalence of GSR and LGM models...");
 
@@ -1275,7 +1386,7 @@ void CrossAssetModelTest::testLgmGsrEquivalence() {
 
 } // testLgmGsrEquivalence
 
-void CrossAssetModelTest::testLgmMcWithShift() {
+BOOST_AUTO_TEST_CASE(testLgmMcWithShift) {
     BOOST_TEST_MESSAGE("Testing LGM1F Monte Carlo simulation with shifted H...");
 
     // cashflow time
@@ -1324,32 +1435,35 @@ void CrossAssetModelTest::testLgmMcWithShift() {
         }
 
         if (std::fabs(mean(e_eu) / discount - 1.0) > eom_tol[ii]) {
-            BOOST_ERROR("estimated error for shifted mc simulation with shift "
-                        << T_shift[ii] << " can not "
-                                          "be verified (" << mean(e_eu) / discount - 1.0 << "), tolerance is 1E-8");
+            BOOST_ERROR("estimated error for shifted mc simulation with shift " << T_shift[ii]
+                                                                                << " can not "
+                                                                                   "be verified ("
+                                                                                << mean(e_eu) / discount - 1.0
+                                                                                << "), tolerance is 1E-8");
         }
     }
 
 } // testLgmMcWithShift
 
-void CrossAssetModelTest::testIrFxCrMartingaleProperty() {
+BOOST_AUTO_TEST_CASE(testIrFxCrCirppMartingaleProperty) {
 
-    BOOST_TEST_MESSAGE("Testing martingale property in ir-fx-cr model for "
+    BOOST_TEST_MESSAGE("Testing martingale property in ir-fx-cr(lgm)-cf(cir++) model for "
                        "Euler and exact discretizations...");
 
-    IrFxCrModelTestData d;
+    IrFxCrModelTestData d(false);
+    IrFxCrModelTestData d_cirpp(true);
 
     boost::shared_ptr<StochasticProcess> process1 = d.model->stateProcess(CrossAssetStateProcess::exact);
-    boost::shared_ptr<StochasticProcess> process2 = d.model->stateProcess(CrossAssetStateProcess::euler);
+    boost::shared_ptr<StochasticProcess> process2 = d_cirpp.model->stateProcess(CrossAssetStateProcess::euler);
 
     Size n = 50000;                         // number of paths
     Size seed = 18;                         // rng seed
     Time T = 10.0;                          // maturity of payoff
     Time T2 = 20.0;                         // zerobond maturity
-    Size steps = static_cast<Size>(T * 24); // number of steps taken (euler)
+    Size steps = static_cast<Size>(T * 24); // number of steps taken (euler / Brigo-Alfonsi)
 
     LowDiscrepancy::rsg_type sg1 = LowDiscrepancy::make_sequence_generator(d.model->dimension() * 1, seed);
-    LowDiscrepancy::rsg_type sg2 = LowDiscrepancy::make_sequence_generator(d.model->dimension() * steps, seed);
+    LowDiscrepancy::rsg_type sg2 = LowDiscrepancy::make_sequence_generator(d_cirpp.model->dimension() * steps, seed);
 
     TimeGrid grid1(T, 1);
     MultiPathGenerator<LowDiscrepancy::rsg_type> pg1(process1, grid1, sg1, false);
@@ -1359,7 +1473,7 @@ void CrossAssetModelTest::testIrFxCrMartingaleProperty() {
     accumulator_set<double, stats<tag::mean, tag::error_of<tag::mean> > > eurzb1, usdzb1, gbpzb1, n1eur1, n2usd1,
         n3gbp1;
     accumulator_set<double, stats<tag::mean, tag::error_of<tag::mean> > > eurzb2, usdzb2, gbpzb2, n1eur2, n2usd2,
-        n3gbp2;
+        n3gbp2, n1cir2, n2cir2, n3cir2;
 
     for (Size j = 0; j < n; ++j) {
         Sample<MultiPath> path1 = pg1.next();
@@ -1382,12 +1496,18 @@ void CrossAssetModelTest::testIrFxCrMartingaleProperty() {
         Real zgbp2 = path2.value[2][l2];
         Real fxusd2 = std::exp(path2.value[3][l2]);
         Real fxgbp2 = std::exp(path2.value[4][l2]);
-        Real crzn12 = path2.value[5][l2];
+        Real crzn12 = path2.value[5][l2]; // CR LGM
         Real cryn12 = path2.value[6][l2];
         Real crzn22 = path2.value[7][l2];
         Real cryn22 = path2.value[8][l2];
         Real crzn32 = path2.value[9][l2];
         Real cryn32 = path2.value[10][l2];
+        Real ciry12 = path2.value[11][l2]; // CR CIR++
+        Real cirn12 = path2.value[12][l2];
+        Real ciry22 = path2.value[13][l2];
+        Real cirn22 = path2.value[14][l2];
+        Real ciry32 = path2.value[15][l2];
+        Real cirn32 = path2.value[16][l2];
 
         // EUR zerobond
         eurzb1(d.model->discountBond(0, T, T2, zeur1) / d.model->numeraire(0, T, zeur1));
@@ -1408,22 +1528,33 @@ void CrossAssetModelTest::testIrFxCrMartingaleProperty() {
                d.model->numeraire(0, T, zeur1));
 
         // EUR zerobond
-        eurzb2(d.model->discountBond(0, T, T2, zeur2) / d.model->numeraire(0, T, zeur2));
+        eurzb2(d_cirpp.model->discountBond(0, T, T2, zeur2) / d_cirpp.model->numeraire(0, T, zeur2));
         // USD zerobond
-        usdzb2(d.model->discountBond(1, T, T2, zusd2) * fxusd2 / d.model->numeraire(0, T, zeur2));
+        usdzb2(d_cirpp.model->discountBond(1, T, T2, zusd2) * fxusd2 / d_cirpp.model->numeraire(0, T, zeur2));
         // GBP zerobond
-        gbpzb2(d.model->discountBond(2, T, T2, zgbp2) * fxgbp2 / d.model->numeraire(0, T, zeur2));
+        gbpzb2(d_cirpp.model->discountBond(2, T, T2, zgbp2) * fxgbp2 / d_cirpp.model->numeraire(0, T, zeur2));
         // EUR defaultable zerobond for name 1
-        std::pair<Real, Real> sn12 = d.model->crlgm1fS(0, 0, T, T2, crzn12, cryn12);
-        n1eur2(sn12.first * sn12.second * d.model->discountBond(0, T, T2, zeur2) / d.model->numeraire(0, T, zeur2));
+        std::pair<Real, Real> sn12 = d_cirpp.model->crlgm1fS(0, 0, T, T2, crzn12, cryn12);
+        n1eur2(sn12.first * sn12.second * d_cirpp.model->discountBond(0, T, T2, zeur2) / d_cirpp.model->numeraire(0, T, zeur2));
         // USD defaultable zerobond for name 2
-        std::pair<Real, Real> sn22 = d.model->crlgm1fS(1, 1, T, T2, crzn22, cryn22);
-        n2usd2(sn22.first * sn22.second * d.model->discountBond(1, T, T2, zusd2) * fxusd2 /
-               d.model->numeraire(0, T, zeur2));
+        std::pair<Real, Real> sn22 = d_cirpp.model->crlgm1fS(1, 1, T, T2, crzn22, cryn22);
+        n2usd2(sn22.first * sn22.second * d_cirpp.model->discountBond(1, T, T2, zusd2) * fxusd2 /
+               d_cirpp.model->numeraire(0, T, zeur2));
         // GBP defaultable zerobond for name 3
-        std::pair<Real, Real> sn32 = d.model->crlgm1fS(2, 2, T, T2, crzn32, cryn32);
-        n3gbp2(sn32.first * sn32.second * d.model->discountBond(2, T, T2, zgbp2) * fxgbp2 /
-               d.model->numeraire(0, T, zeur2));
+        std::pair<Real, Real> sn32 = d_cirpp.model->crlgm1fS(2, 2, T, T2, crzn32, cryn32);
+        n3gbp2(sn32.first * sn32.second * d_cirpp.model->discountBond(2, T, T2, zgbp2) * fxgbp2 /
+               d_cirpp.model->numeraire(0, T, zeur2));
+        // EUR defaultable zerobond for name 1 (CIR++)
+        std::pair<Real, Real> sc12 = d_cirpp.model->crcirppS(3, T, T2, ciry12, cirn12);
+        n1cir2(sc12.first * sc12.second * d_cirpp.model->discountBond(0, T, T2, zeur2) / d_cirpp.model->numeraire(0, T, zeur2));
+        // USD defaultable zerobond for name 2 (CIR++)
+        std::pair<Real, Real> sc22 = d_cirpp.model->crcirppS(4, T, T2, ciry22, cirn22);
+        n2cir2(sc22.first * sc22.second * d_cirpp.model->discountBond(1, T, T2, zusd2) * fxusd2 /
+               d_cirpp.model->numeraire(0, T, zeur2));
+        // GBP defaultable zerobond for name 3 (CIR++)
+        std::pair<Real, Real> sc32 = d_cirpp.model->crcirppS(5, T, T2, ciry32, cirn32);
+        n3cir2(sc32.first * sc32.second * d_cirpp.model->discountBond(2, T, T2, zgbp2) * fxgbp2 /
+               d_cirpp.model->numeraire(0, T, zeur2));
     }
 
     BOOST_TEST_MESSAGE("EXACT:");
@@ -1444,76 +1575,100 @@ void CrossAssetModelTest::testIrFxCrMartingaleProperty() {
 
     BOOST_TEST_MESSAGE("\nEULER:");
     BOOST_TEST_MESSAGE("EUR zb = " << mean(eurzb2) << " +- " << error_of<tag::mean>(eurzb2) << " vs analytical "
-                                   << d.eurYts->discount(T2));
+                                   << d_cirpp.eurYts->discount(T2));
     BOOST_TEST_MESSAGE("USD zb = " << mean(usdzb2) << " +- " << error_of<tag::mean>(usdzb2) << " vs analytical "
-                                   << d.usdYts->discount(T2) * d.fxEurUsd->value());
+                                   << d_cirpp.usdYts->discount(T2) * d_cirpp.fxEurUsd->value());
     BOOST_TEST_MESSAGE("GBP zb = " << mean(gbpzb2) << " +- " << error_of<tag::mean>(gbpzb2) << " vs analytical "
-                                   << d.gbpYts->discount(T2) * d.fxEurGbp->value());
+                                   << d_cirpp.gbpYts->discount(T2) * d_cirpp.fxEurGbp->value());
     BOOST_TEST_MESSAGE("N1 zb EUR = " << mean(n1eur2) << " +- " << error_of<tag::mean>(n1eur2) << " vs analytical "
-                                      << d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2));
+                                      << d_cirpp.eurYts->discount(T2) * d_cirpp.n1Ts->survivalProbability(T2));
     BOOST_TEST_MESSAGE("N2 zb USD = " << mean(n2usd2) << " +- " << error_of<tag::mean>(n2usd2) << " vs analytical "
-                                      << d.fxEurUsd->value() * d.usdYts->discount(T2) *
-                                             d.n2Ts->survivalProbability(T2));
+                                      << d_cirpp.fxEurUsd->value() * d_cirpp.usdYts->discount(T2) *
+                                             d_cirpp.n2Ts->survivalProbability(T2));
     BOOST_TEST_MESSAGE("N3 zb GBP = " << mean(n3gbp2) << " +- " << error_of<tag::mean>(n3gbp2) << " vs analytical "
-                                      << d.fxEurGbp->value() * d.gbpYts->discount(T2) *
-                                             d.n3Ts->survivalProbability(T2));
+                                      << d_cirpp.fxEurGbp->value() * d_cirpp.gbpYts->discount(T2) *
+                                             d_cirpp.n3Ts->survivalProbability(T2));
+    BOOST_TEST_MESSAGE("N1 zb EUR = " << mean(n1cir2) << " +- " << error_of<tag::mean>(n1cir2) << " vs analytical "
+                                      << d_cirpp.eurYts->discount(T2) * d_cirpp.n1Ts->survivalProbability(T2));
+    BOOST_TEST_MESSAGE("N2 zb USD = " << mean(n2cir2) << " +- " << error_of<tag::mean>(n2cir2) << " vs analytical "
+                                      << d_cirpp.fxEurUsd->value() * d_cirpp.usdYts->discount(T2) *
+                                             d_cirpp.n2Ts->survivalProbability(T2));
+    BOOST_TEST_MESSAGE("N3 zb GBP = " << mean(n3cir2) << " +- " << error_of<tag::mean>(n3cir2) << " vs analytical "
+                                      << d_cirpp.fxEurGbp->value() * d_cirpp.gbpYts->discount(T2) *
+                                             d_cirpp.n3Ts->survivalProbability(T2));
 
     Real tol1 = 2.0E-4;  // EXACT
     Real tol2 = 12.0E-4; // EULER
 
     Real ev = d.eurYts->discount(T2);
     if (std::abs(mean(eurzb1) - ev) > tol1)
-        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), excpected " << ev << ", got " << mean(eurzb1)
+        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), expected " << ev << ", got " << mean(eurzb1)
                                                                                  << ", tolerance " << tol1);
     ev = d.usdYts->discount(T2) * d.fxEurUsd->value();
     if (std::abs(mean(usdzb1) - ev) > tol1)
-        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), excpected " << ev << ", got " << mean(usdzb1)
+        BOOST_FAIL("Martingale test failed for usdzb (exact discr.), expected " << ev << ", got " << mean(usdzb1)
                                                                                  << ", tolerance " << tol1);
     ev = d.gbpYts->discount(T2) * d.fxEurGbp->value();
     if (std::abs(mean(gbpzb1) - ev) > tol1)
-        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), excpected " << ev << ", got " << mean(gbpzb1)
+        BOOST_FAIL("Martingale test failed for gbpzb (exact discr.), expected " << ev << ", got " << mean(gbpzb1)
                                                                                  << ", tolerance " << tol1);
     ev = d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2);
     if (std::abs(mean(n1eur1) - ev) > tol1)
-        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), excpected " << ev << ", got " << mean(n1eur1)
+        BOOST_FAIL("Martingale test failed for n1eur (exact discr.), expected " << ev << ", got " << mean(n1eur1)
                                                                                  << ", tolerance " << tol1);
     ev = d.fxEurUsd->value() * d.usdYts->discount(T2) * d.n2Ts->survivalProbability(T2);
     if (std::abs(mean(n2usd1) - ev) > tol1)
-        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), excpected " << ev << ", got " << mean(n2usd1)
+        BOOST_FAIL("Martingale test failed for n2usd (exact discr.), expected " << ev << ", got " << mean(n2usd1)
                                                                                  << ", tolerance " << tol1);
     ev = d.fxEurGbp->value() * d.gbpYts->discount(T2) * d.n3Ts->survivalProbability(T2);
     if (std::abs(mean(n3gbp1) - ev) > tol1)
-        BOOST_FAIL("Martingale test failed for eurzb (exact discr.), excpected " << ev << ", got " << mean(n3gbp1)
+        BOOST_FAIL("Martingale test failed for n3gbp (exact discr.), expected " << ev << ", got " << mean(n3gbp1)
                                                                                  << ", tolerance " << tol1);
 
-    ev = d.eurYts->discount(T2);
+    ev = d_cirpp.eurYts->discount(T2);
     if (std::abs(mean(eurzb2) - ev) > tol2)
-        BOOST_FAIL("Martingale test failed for eurzb (Euler discr.), excpected " << ev << ", got " << mean(eurzb2)
+        BOOST_FAIL("Martingale test failed for eurzb (Euler discr.), expected " << ev << ", got " << mean(eurzb2)
                                                                                  << ", tolerance " << tol2);
-    ev = d.usdYts->discount(T2) * d.fxEurUsd->value();
+    ev = d_cirpp.usdYts->discount(T2) * d_cirpp.fxEurUsd->value();
     if (std::abs(mean(usdzb2) - ev) > tol2)
-        BOOST_FAIL("Martingale test failed for usdzb (Euler discr.), excpected "
+        BOOST_FAIL("Martingale test failed for usdzb (Euler discr.), expected "
                    << ev << ", got " << mean(usdzb2) << ", tolerance " << tol2 * error_of<tag::mean>(usdzb2));
-    ev = d.gbpYts->discount(T2) * d.fxEurGbp->value();
+    ev = d_cirpp.gbpYts->discount(T2) * d_cirpp.fxEurGbp->value();
     if (std::abs(mean(gbpzb2) - ev) > tol2)
-        BOOST_FAIL("Martingale test failed for gbpzb (Euler discr.), excpected " << ev << ", got " << mean(gbpzb2)
+        BOOST_FAIL("Martingale test failed for gbpzb (Euler discr.), expected " << ev << ", got " << mean(gbpzb2)
                                                                                  << ", tolerance " << tol2);
-    ev = d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2);
+
+    // CR LGM
+    ev = d_cirpp.eurYts->discount(T2) * d_cirpp.n1Ts->survivalProbability(T2);
     if (std::abs(mean(n1eur2) - ev) > tol2)
-        BOOST_FAIL("Martingale test failed for n1eur (Euler discr.), excpected " << ev << ", got " << mean(n1eur2)
+        BOOST_FAIL("Martingale test failed for n1eur (Euler discr.), expected " << ev << ", got " << mean(n1eur2)
                                                                                  << ", tolerance " << tol2);
-    ev = d.fxEurUsd->value() * d.usdYts->discount(T2) * d.n2Ts->survivalProbability(T2);
+    ev = d_cirpp.fxEurUsd->value() * d_cirpp.usdYts->discount(T2) * d_cirpp.n2Ts->survivalProbability(T2);
     if (std::abs(mean(n2usd2) - ev) > tol2)
-        BOOST_FAIL("Martingale test failed for n2usd (Euler discr.), excpected " << ev << ", got " << mean(n2usd2)
+        BOOST_FAIL("Martingale test failed for n2usd (Euler discr.), expected " << ev << ", got " << mean(n2usd2)
                                                                                  << ", tolerance " << tol2);
-    ev = d.fxEurGbp->value() * d.gbpYts->discount(T2) * d.n3Ts->survivalProbability(T2);
+    ev = d_cirpp.fxEurGbp->value() * d_cirpp.gbpYts->discount(T2) * d_cirpp.n3Ts->survivalProbability(T2);
     if (std::abs(mean(n3gbp2) - ev) > tol2)
-        BOOST_FAIL("Martingale test failed for n3gbp (Euler discr.), excpected " << ev << ", got " << mean(n3gbp2)
+        BOOST_FAIL("Martingale test failed for n3gbp (Euler discr.), expected " << ev << ", got " << mean(n3gbp2)
+                                                                                 << ", tolerance " << tol2);
+
+    // CR CIR
+    ev = d_cirpp.eurYts->discount(T2) * d_cirpp.n1Ts->survivalProbability(T2);
+    if (std::abs(mean(n1cir2) - ev) > tol2)
+        BOOST_FAIL("Martingale test failed for n1cir (Euler discr.), expected " << ev << ", got " << mean(n1cir2)
+                                                                                 << ", tolerance " << tol2);
+    ev = d_cirpp.fxEurUsd->value() * d_cirpp.usdYts->discount(T2) * d_cirpp.n2Ts->survivalProbability(T2);
+    if (std::abs(mean(n2cir2) - ev) > tol2)
+        BOOST_FAIL("Martingale test failed for n2cir2 (Euler discr.), expected " << ev << ", got " << mean(n2cir2)
+                                                                                 << ", tolerance " << tol2);
+    ev = d_cirpp.fxEurGbp->value() * d_cirpp.gbpYts->discount(T2) * d_cirpp.n3Ts->survivalProbability(T2);
+    if (std::abs(mean(n3cir2) - ev) > tol2)
+        BOOST_FAIL("Martingale test failed for n3cir2 (Euler discr.), expected " << ev << ", got " << mean(n3cir2)
                                                                                  << ", tolerance " << tol2);
 
 } // testIrFxCrMartingaleProperty
 
-void CrossAssetModelTest::testIrFxCrMoments() {
+BOOST_AUTO_TEST_CASE(testIrFxCrMoments) {
 
     BOOST_TEST_MESSAGE("Testing analytic moments vs. Euler and exact discretization "
                        "in ir-fx-cr model...");
@@ -1598,17 +1753,21 @@ void CrossAssetModelTest::testIrFxCrMoments() {
     for (Size i = 0; i < 11; ++i) {
         // check expectation against analytical calculation (Euler)
         if (std::fabs(mean(e_eu[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Euler "
-                                                   "discretization, " << mean(e_eu[i]) << "), error is "
-                        << e_an[i] - mean(e_eu[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (Euler "
+                                                                    "discretization, "
+                                                                 << mean(e_eu[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
         // check expectation against analytical calculation (exact disc)
         if (std::fabs(mean(e_eu2[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (exact "
-                                                   "discretization, " << mean(e_eu2[i]) << "), error is "
-                        << e_an[i] - mean(e_eu2[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (exact "
+                                                                    "discretization, "
+                                                                 << mean(e_eu2[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu2[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
     }
 
@@ -1621,23 +1780,25 @@ void CrossAssetModelTest::testIrFxCrMoments() {
             if (std::fabs(covariance(v_eu[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Euler discretization, " << covariance(v_eu[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (Euler discretization, "
+                                                         << covariance(v_eu[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu[i][j]) << " tolerance is "
+                                                         << tol);
             }
             if (std::fabs(covariance(v_eu2[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (exact discretization, " << covariance(v_eu2[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu2[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (exact discretization, "
+                                                         << covariance(v_eu2[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu2[i][j]) << " tolerance is "
+                                                         << tol);
             }
         }
     }
 
 } // testIrFxCrMoments
 
-void CrossAssetModelTest::testIrFxCrCorrelationRecovery() {
+BOOST_AUTO_TEST_CASE(testIrFxCrCorrelationRecovery) {
 
     BOOST_TEST_MESSAGE("Test if random correlation input is recovered for "
                        "small dt in ir-fx-cr model...");
@@ -1733,13 +1894,14 @@ void CrossAssetModelTest::testIrFxCrCorrelationRecovery() {
                     boost::make_shared<CrLgm1fConstantParametrization>(pseudoCcy[0], hts, 0.01, 0.01));
             }
 
+            // get QuantLib::Error: negative eigenvalue(s) (-3.649315e-16) with SalvagingAlgorithm::None
             boost::shared_ptr<CrossAssetModel> model =
-                boost::make_shared<CrossAssetModel>(parametrizations, c, SalvagingAlgorithm::None);
+                boost::make_shared<CrossAssetModel>(parametrizations, c, SalvagingAlgorithm::Spectral);
 
             boost::shared_ptr<StochasticProcess> peuler = model->stateProcess(CrossAssetStateProcess::euler);
             boost::shared_ptr<StochasticProcess> pexact = model->stateProcess(CrossAssetStateProcess::exact);
 
-            Matrix c1 = peuler->covariance(0.0, peuler->initialValues(), dt);
+            Matrix c1 = peuler->covariance(dt, peuler->initialValues(), dt);
             Matrix c2 = pexact->covariance(0.0, peuler->initialValues(), dt);
 
             Matrix r1(dim, dim), r2(dim, dim);
@@ -1751,10 +1913,12 @@ void CrossAssetModelTest::testIrFxCrCorrelationRecovery() {
                     Size subj = j < 2 * currencies[ii] - 1 ? 1 : 2;
                     for (Size k1 = 0; k1 < subi; ++k1) {
                         for (Size k2 = 0; k2 < subj; ++k2) {
-                            Size i0 = i < 2 * currencies[ii] - 1 ? i : 2 * currencies[ii] - 1 +
-                                                                           2 * (i - (2 * currencies[ii] - 1)) + k1;
-                            Size j0 = j < 2 * currencies[ii] - 1 ? j : 2 * currencies[ii] - 1 +
-                                                                           2 * (j - (2 * currencies[ii] - 1)) + k2;
+                            Size i0 = i < 2 * currencies[ii] - 1
+                                          ? i
+                                          : 2 * currencies[ii] - 1 + 2 * (i - (2 * currencies[ii] - 1)) + k1;
+                            Size j0 = j < 2 * currencies[ii] - 1
+                                          ? j
+                                          : 2 * currencies[ii] - 1 + 2 * (j - (2 * currencies[ii] - 1)) + k2;
                             r1[i][j] = r1[j][i] = c1[i0][j0] / std::sqrt(c1[i0][i0] * c1[j0][j0]);
                             r2[i][j] = r2[j][i] = c2[i0][j0] / std::sqrt(c2[i0][i0] * c2[j0][j0]);
                             if (std::fabs(r1[i][j] - c[i][j]) > tol) {
@@ -1783,173 +1947,272 @@ void CrossAssetModelTest::testIrFxCrCorrelationRecovery() {
                 }
             }
         } // for creditnames
-    }     // for currenciess
+    }     // for currencies
 
 } // testIrFxCrCorrelationRecovery
 
 namespace {
 
 struct IrFxInfCrModelTestData {
-    IrFxInfCrModelTestData()
-        : referenceDate(30, July, 2015), eurYts(boost::make_shared<FlatForward>(referenceDate, 0.02, Actual365Fixed())),
-          usdYts(boost::make_shared<FlatForward>(referenceDate, 0.05, Actual365Fixed())),
-          gbpYts(boost::make_shared<FlatForward>(referenceDate, 0.04, Actual365Fixed())),
-          fxEurUsd(boost::make_shared<SimpleQuote>(0.90)), fxEurGbp(boost::make_shared<SimpleQuote>(1.35)),
-          infEurAlpha(0.01), infEurKappa(0.01), infGbpAlpha(0.01), infGbpKappa(0.01),
-          n1Ts(boost::make_shared<FlatHazardRate>(referenceDate, 0.01, Actual365Fixed())), n1Alpha(0.01), n1Kappa(0.01),
-          c(8, 8, 0.0) {
-
-        std::vector<Date> infDates;
-        std::vector<Real> infRates;
-        infDates.push_back(Date(30, April, 2015));
-        infDates.push_back(Date(30, July, 2015));
-        infRates.push_back(0.01);
-        infRates.push_back(0.01);
-        infEurTs = Handle<ZeroInflationTermStructure>(boost::make_shared<ZeroInflationCurve>(
-            referenceDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, eurYts, infDates, infRates));
-        infGbpTs = Handle<ZeroInflationTermStructure>(boost::make_shared<ZeroInflationCurve>(
-            referenceDate, UnitedKingdom(), Actual365Fixed(), 3 * Months, Monthly, false, eurYts, infDates, infRates));
-        infEurTs->enableExtrapolation();
-        infGbpTs->enableExtrapolation();
-        // same for eur and gbp (doesn't matter anyway, since we are
-        // using flat ts here)
-        infLag =
-            inflationYearFraction(Monthly, false, Actual365Fixed(), infEurTs->baseDate(), infEurTs->referenceDate());
+    
+    IrFxInfCrModelTestData(bool infEurIsDK = true, bool infGbpIsDK = true, bool flatVols = false)
+        : referenceDate(30, July, 2015),
+          dc(Actual365Fixed()),
+          eurYts(boost::make_shared<FlatForward>(referenceDate, 0.02, dc)),
+          usdYts(boost::make_shared<FlatForward>(referenceDate, 0.05, dc)),
+          gbpYts(boost::make_shared<FlatForward>(referenceDate, 0.04, dc)),
+          fxEurUsd(boost::make_shared<SimpleQuote>(0.90)),
+          fxEurGbp(boost::make_shared<SimpleQuote>(1.35)),
+          n1Ts(boost::make_shared<FlatHazardRate>(referenceDate, 0.01, dc)) {
 
         Settings::instance().evaluationDate() = referenceDate;
-        volstepdates.push_back(Date(15, July, 2016));
-        volstepdates.push_back(Date(15, July, 2017));
-        volstepdates.push_back(Date(15, July, 2018));
-        volstepdates.push_back(Date(15, July, 2019));
-        volstepdates.push_back(Date(15, July, 2020));
+        
+        // Store the individual models that will be fed to the CAM.
+        vector<boost::shared_ptr<Parametrization> > singleModels;
 
-        volstepdatesFx.push_back(Date(15, July, 2016));
-        volstepdatesFx.push_back(Date(15, October, 2016));
-        volstepdatesFx.push_back(Date(15, May, 2017));
-        volstepdatesFx.push_back(Date(13, September, 2017));
-        volstepdatesFx.push_back(Date(15, July, 2018));
+        // IR parameterisations
+        addSingleIrModel(flatVols, EURCurrency(), eurYts, 0.02, 0.0050, 0.0080, singleModels);
+        addSingleIrModel(flatVols, USDCurrency(), usdYts, 0.03, 0.0030, 0.0110, singleModels);
+        addSingleIrModel(flatVols, GBPCurrency(), gbpYts, 0.04, 0.0070, 0.0095, singleModels);
 
-        volsteptimes_a = Array(volstepdates.size());
-        volsteptimesFx_a = Array(volstepdatesFx.size());
-        for (Size i = 0; i < volstepdates.size(); ++i) {
-            volsteptimes_a[i] = eurYts->timeFromReference(volstepdates[i]);
-        }
-        for (Size i = 0; i < volstepdatesFx.size(); ++i) {
-            volsteptimesFx_a[i] = eurYts->timeFromReference(volstepdatesFx[i]);
-        }
+        // FX parameterisations
+        addSingleFxModel(flatVols, USDCurrency(), fxEurUsd, 0.15, 0.20, singleModels);
+        addSingleFxModel(flatVols, GBPCurrency(), fxEurGbp, 0.10, 0.15, singleModels);
 
-        for (Size i = 0; i < volstepdates.size() + 1; ++i) {
-            eurVols.push_back(0.0050 + (0.0080 - 0.0050) * std::exp(-0.3 * static_cast<double>(i)));
-        }
-        for (Size i = 0; i < volstepdates.size() + 1; ++i) {
-            usdVols.push_back(0.0030 + (0.0110 - 0.0030) * std::exp(-0.3 * static_cast<double>(i)));
-        }
-        for (Size i = 0; i < volstepdates.size() + 1; ++i) {
-            gbpVols.push_back(0.0070 + (0.0095 - 0.0070) * std::exp(-0.3 * static_cast<double>(i)));
-        }
-        for (Size i = 0; i < volstepdatesFx.size() + 1; ++i) {
-            fxSigmasUsd.push_back(0.15 + (0.20 - 0.15) * std::exp(-0.3 * static_cast<double>(i)));
-        }
-        for (Size i = 0; i < volstepdatesFx.size() + 1; ++i) {
-            fxSigmasGbp.push_back(0.10 + (0.15 - 0.10) * std::exp(-0.3 * static_cast<double>(i)));
-        }
-        eurVols_a = Array(eurVols.begin(), eurVols.end());
-        usdVols_a = Array(usdVols.begin(), usdVols.end());
-        gbpVols_a = Array(gbpVols.begin(), gbpVols.end());
-        fxSigmasUsd_a = Array(fxSigmasUsd.begin(), fxSigmasUsd.end());
-        fxSigmasGbp_a = Array(fxSigmasGbp.begin(), fxSigmasGbp.end());
+        // Add the inflation parameterisations.
+        vector<Date> infDates{ Date(30, April, 2015), Date(30, July, 2015) };
+        vector<Real> infRates{ 0.01, 0.01 };
+        
+        infEurTs = Handle<ZeroInflationTermStructure>(boost::make_shared<ZeroInflationCurve>(
+            referenceDate, TARGET(), dc, 3 * Months, Monthly, false, infDates, infRates));
+        infEurTs->enableExtrapolation();
+        
+        infLag = inflationYearFraction(Monthly, false, dc, infEurTs->baseDate(), infEurTs->referenceDate());
 
-        notimes_a = Array(0);
-        eurKappa_a = Array(1, 0.02);
-        usdKappa_a = Array(1, 0.03);
-        gbpKappa_a = Array(1, 0.04);
-
-        eurLgm_p = boost::make_shared<IrLgm1fPiecewiseConstantParametrization>(EURCurrency(), eurYts, volsteptimes_a,
-                                                                               eurVols_a, notimes_a, eurKappa_a);
-        usdLgm_p = boost::make_shared<IrLgm1fPiecewiseConstantParametrization>(USDCurrency(), usdYts, volsteptimes_a,
-                                                                               usdVols_a, notimes_a, usdKappa_a);
-        gbpLgm_p = boost::make_shared<IrLgm1fPiecewiseConstantParametrization>(GBPCurrency(), gbpYts, volsteptimes_a,
-                                                                               gbpVols_a, notimes_a, gbpKappa_a);
-
-        fxUsd_p = boost::make_shared<FxBsPiecewiseConstantParametrization>(USDCurrency(), fxEurUsd, volsteptimesFx_a,
-                                                                           fxSigmasUsd_a);
-        fxGbp_p = boost::make_shared<FxBsPiecewiseConstantParametrization>(GBPCurrency(), fxEurGbp, volsteptimesFx_a,
-                                                                           fxSigmasGbp_a);
-
-        // inflation
-        infEur_p = boost::make_shared<InfDkConstantParametrization>(EURCurrency(), infEurTs, infEurAlpha, infEurKappa);
-        infGbp_p = boost::make_shared<InfDkConstantParametrization>(GBPCurrency(), infGbpTs, infGbpAlpha, infGbpKappa);
-
-        // credit
-        n1_p = boost::make_shared<CrLgm1fConstantParametrization>(EURCurrency(), n1Ts, n1Alpha, n1Kappa);
-
-        singleModels.push_back(eurLgm_p);
-        singleModels.push_back(usdLgm_p);
-        singleModels.push_back(gbpLgm_p);
-        singleModels.push_back(fxUsd_p);
-        singleModels.push_back(fxGbp_p);
-        singleModels.push_back(infEur_p);
-        singleModels.push_back(infGbp_p);
-        singleModels.push_back(n1_p);
-
-        Real tmp[8][8] = {
-            // EUR  USD GBP  FX1  FX2  CR INF_EUR INF_GBP
-            { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // EUR
-            { 0.6, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // USD
-            { 0.3, 0.1, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // GBP
-            { 0.2, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 }, // FX1
-            { 0.3, 0.1, 0.1, 0.3, 1.0, 0.0, 0.0, 0.0 }, // FX2
-            { 0.8, 0.2, 0.1, 0.4, 0.2, 1.0, 0.0, 0.0 }, // CR
-            { 0.6, 0.1, 0.2, 0.2, 0.5, 0.5, 1.0, 0.0 }, // INF_EUR
-            { 0.3, 0.2, 0.1, 0.1, 0.3, 0.4, 0.2, 1.0 }  // INF_GBP
-        };
-
-        for (Size i = 0; i < 8; ++i) {
-            for (Size j = 0; j <= i; ++j) {
-                c[i][j] = c[j][i] = tmp[i][j];
-            }
+        Real infEurAlpha = 0.01;
+        Real infEurKappa = 0.01;
+        if (infEurIsDK) {
+            singleModels.push_back(boost::make_shared<InfDkConstantParametrization>(
+                EURCurrency(), infEurTs, infEurAlpha, infEurKappa));
+        } else {
+            Real infEurSigma = 0.15;
+            Handle<Quote> baseCpiQuote(boost::make_shared<SimpleQuote>(1.0));
+            auto index = boost::make_shared<EUHICP>(false);
+            auto realRateParam = boost::make_shared<Lgm1fConstantParametrization<ZeroInflationTermStructure>>(
+                EURCurrency(), infEurTs, infEurAlpha, infEurKappa);
+            auto indexParam = boost::make_shared<FxBsConstantParametrization>(
+                EURCurrency(), baseCpiQuote, infEurSigma);
+            singleModels.push_back(boost::make_shared<InfJyParameterization>(realRateParam, indexParam, index));
         }
 
+        infGbpTs = Handle<ZeroInflationTermStructure>(boost::make_shared<ZeroInflationCurve>(referenceDate,
+            UnitedKingdom(), dc, 3 * Months, Monthly, false, infDates, infRates));
+        infGbpTs->enableExtrapolation();
+
+        Real infGbpAlpha = 0.01;
+        Real infGbpKappa = 0.01;
+        if (infGbpIsDK) {
+            singleModels.push_back(boost::make_shared<InfDkConstantParametrization>(
+                GBPCurrency(), infGbpTs, infGbpAlpha, infGbpKappa));
+        } else {
+            Real infGbpSigma = 0.10;
+            Handle<Quote> baseCpiQuote(boost::make_shared<SimpleQuote>(1.0));
+            auto index = boost::make_shared<UKRPI>(false);
+            auto realRateParam = boost::make_shared<Lgm1fConstantParametrization<ZeroInflationTermStructure>>(
+                GBPCurrency(), infGbpTs, infGbpAlpha, infGbpKappa);
+            auto indexParam = boost::make_shared<FxBsConstantParametrization>(
+                GBPCurrency(), baseCpiQuote, infGbpSigma);
+            singleModels.push_back(boost::make_shared<InfJyParameterization>(realRateParam, indexParam, index));
+        }
+
+        // Add the credit parameterisation.
+        singleModels.push_back(boost::make_shared<CrLgm1fConstantParametrization>(
+            EURCurrency(), n1Ts, 0.01, 0.01));
+
+        // Create the correlation matrix.
+        Matrix c = createCorrelation(infEurIsDK, infGbpIsDK);
         BOOST_TEST_MESSAGE("correlation matrix is\n" << c);
 
         model = boost::make_shared<CrossAssetModel>(singleModels, c, SalvagingAlgorithm::None);
     }
 
+    // Add an IR model with flat or time depending volatilities.
+    void addSingleIrModel(bool flatVols, const Currency& ccy, Handle<YieldTermStructure> yts, Real kappa,
+        Volatility lowerBound, Volatility upperBound,
+        vector<boost::shared_ptr<Parametrization> >& singleModels) {
+
+        // If use flat vols, add the parameterisation and return.
+        if (flatVols) {
+            singleModels.push_back(boost::make_shared<IrLgm1fConstantParametrization>(ccy, yts, lowerBound, kappa));
+            return;
+        }
+
+        // Use non-flat volatilities
+        static vector<Date> vDates{
+            Date(15, July, 2016),
+            Date(15, July, 2017),
+            Date(15, July, 2018),
+            Date(15, July, 2019),
+            Date(15, July, 2020)
+        };
+
+        Array vTimes(vDates.size());
+        for (Size i = 0; i < vTimes.size(); ++i) {
+            vTimes[i] = yts->timeFromReference(vDates[i]);
+        }
+
+        Array vols(vDates.size() + 1);
+        for (Size i = 0; i < vols.size(); ++i) {
+            vols[i] = lowerBound + (upperBound - lowerBound) * std::exp(-0.3 * i);
+        }
+
+        singleModels.push_back(boost::make_shared<IrLgm1fPiecewiseConstantParametrization>(
+            ccy, yts, vTimes, vols, Array(), Array(1, kappa)));
+    }
+
+    // Add an FX model with flat or time depending volatilities.
+    void addSingleFxModel(bool flatVols, const Currency& ccy, Handle<Quote> spot,
+        Volatility lowerBound, Volatility upperBound,
+        vector<boost::shared_ptr<Parametrization> >& singleModels) {
+
+        // If use flat vols, add the parameterisation and return.
+        if (flatVols) {
+            singleModels.push_back(boost::make_shared<FxBsConstantParametrization>(ccy, spot, lowerBound));
+            return;
+        }
+
+        // Use non-flat volatilities
+        static vector<Date> vDates{
+            Date(15, July, 2016),
+            Date(15, October, 2016),
+            Date(15, May, 2017),
+            Date(13, September, 2017),
+            Date(15, July, 2018)
+        };
+
+        Array vTimes(vDates.size());
+        for (Size i = 0; i < vTimes.size(); ++i) {
+            vTimes[i] = dc.yearFraction(referenceDate, vDates[i]);
+        }
+
+        Array vols(vDates.size() + 1);
+        for (Size i = 0; i < vols.size(); ++i) {
+            vols[i] = lowerBound + (upperBound - lowerBound) * std::exp(-0.3 * i);
+        }
+
+        singleModels.push_back(boost::make_shared<FxBsPiecewiseConstantParametrization>(
+            ccy, spot, vTimes, vols));
+    }
+
+    // Create the correlation matrix.
+    Matrix createCorrelation(bool infEurIsDK, bool infGbpIsDK) {
+
+        // Four different correlation matrices depending on type of two inflation components.
+        vector<vector<Real>> tmp;
+        if (infEurIsDK && infGbpIsDK) {
+            tmp = {
+                // EUR  USD GBP  FX1  FX2  INF_EUR INF_GBP CR
+                { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // EUR
+                { 0.6, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // USD
+                { 0.3, 0.1, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, // GBP
+                { 0.2, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 }, // FX1
+                { 0.3, 0.1, 0.1, 0.3, 1.0, 0.0, 0.0, 0.0 }, // FX2
+                { 0.8, 0.2, 0.1, 0.4, 0.2, 1.0, 0.0, 0.0 }, // INF_EUR
+                { 0.6, 0.1, 0.2, 0.2, 0.5, 0.5, 1.0, 0.0 }, // INF_GBP
+                { 0.3, 0.2, 0.1, 0.1, 0.3, 0.4, 0.2, 1.0 }  // CR
+            };
+        } else if (!infEurIsDK && infGbpIsDK) {
+            tmp = {
+                {1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_EUR
+                {0.600, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_USD
+                {0.300, 0.100, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_GBP
+                {0.200, 0.200, 0.000, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // FX_EURUSD
+                {0.300, 0.100, 0.100, 0.300, 1.000, 0.000, 0.000, 0.000, 0.000}, // FX_EURGBP
+                {0.400, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000}, // INF_EUR_RR
+                {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000}, // INF_EUR_IDX
+                {0.000, 0.000, 0.600, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000}, // INF_GBP
+                {0.300, 0.200, 0.100, 0.100, 0.300, 0.400, 0.000, 0.200, 1.000}  // CR
+            };
+        } else if (infEurIsDK && !infGbpIsDK) {
+            tmp = {
+                {1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_EUR
+                {0.600, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_USD
+                {0.300, 0.100, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_GBP
+                {0.200, 0.200, 0.000, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // FX_EURUSD
+                {0.300, 0.100, 0.100, 0.300, 1.000, 0.000, 0.000, 0.000, 0.000}, // FX_EURGBP
+                {0.600, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000}, // INF_EUR
+                {0.000, 0.000, 0.400, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000}, // INF_GBP_RR
+                {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000}, // INF_GBP_IDX
+                {0.300, 0.200, 0.100, 0.100, 0.300, 0.400, 0.200, 0.000, 1.000}  // CR
+            };
+        } else {
+            tmp = {
+                {1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_EUR
+                {0.600, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_USD
+                {0.300, 0.100, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // IR_GBP
+                {0.200, 0.200, 0.000, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // FX_EURUSD
+                {0.300, 0.100, 0.100, 0.300, 1.000, 0.000, 0.000, 0.000, 0.000, 0.000}, // FX_EURGBP
+                {0.600, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000, 0.000}, // INF_EUR_RR
+                {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000}, // INF_EUR_IDX
+                {0.000, 0.000, 0.600, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000}, // INF_GBP_RR
+                {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000}, // INF_GBP_IDX
+                {0.300, 0.200, 0.100, 0.100, 0.300, 0.400, 0.000, 0.200, 0.000, 1.000}  // CR
+            };
+        }
+
+        Matrix c(tmp.size(), tmp.size());
+        for (Size i = 0; i < tmp.size(); ++i) {
+            for (Size j = 0; j <= i; ++j) {
+                c[i][j] = c[j][i] = tmp[i][j];
+            }
+        }
+
+        return c;
+    }
+
     SavedSettings backup;
     Date referenceDate;
-    // ir-fx
-    Handle<YieldTermStructure> eurYts, usdYts, gbpYts;
-    std::vector<Date> volstepdates, volstepdatesFx;
-    Array volsteptimes_a, volsteptimesFx_a;
-    std::vector<Real> eurVols, usdVols, gbpVols, fxSigmasUsd, fxSigmasGbp;
-    Handle<Quote> fxEurUsd, fxEurGbp;
-    Array eurVols_a, usdVols_a, gbpVols_a, fxSigmasUsd_a, fxSigmasGbp_a;
-    Array notimes_a, eurKappa_a, usdKappa_a, gbpKappa_a;
-    boost::shared_ptr<IrLgm1fParametrization> eurLgm_p, usdLgm_p, gbpLgm_p;
-    boost::shared_ptr<FxBsParametrization> fxUsd_p, fxGbp_p;
-    // inf
-    Handle<ZeroInflationTermStructure> infEurTs, infGbpTs;
-    boost::shared_ptr<InfDkParametrization> infEur_p, infGbp_p;
-    Real infEurAlpha, infEurKappa, infGbpAlpha, infGbpKappa;
+    DayCounter dc;
+    
+    // IR
+    Handle<YieldTermStructure> eurYts;
+    Handle<YieldTermStructure> usdYts;
+    Handle<YieldTermStructure> gbpYts;
+
+    // FX
+    Handle<Quote> fxEurUsd;
+    Handle<Quote> fxEurGbp;
+    
+    // Inflation
+    Handle<ZeroInflationTermStructure> infEurTs;
+    Handle<ZeroInflationTermStructure> infGbpTs;
     Real infLag;
-    // cr
-    Handle<DefaultProbabilityTermStructure> n1Ts, n2Ts, n3Ts;
-    boost::shared_ptr<CrLgm1fParametrization> n1_p, n2_p, n3_p;
-    Real n1Alpha, n1Kappa, n2Alpha, n2Kappa, n3Alpha, n3Kappa;
-    // model
-    std::vector<boost::shared_ptr<Parametrization> > singleModels;
-    Matrix c;
+
+    // Credit
+    Handle<DefaultProbabilityTermStructure> n1Ts;
+    
+    // Model
     boost::shared_ptr<CrossAssetModel> model;
+
 }; // IrFxInfCrModelTestData
 
 } // anonymous namespace
 
-void CrossAssetModelTest::testIrFxInfCrMartingaleProperty() {
+// Test case options
+vector<bool> infEurFlags{ true, false };
+vector<bool> infGbpFlags{ true, false };
+vector<bool> flatVolsFlags{ true, false };
 
-    BOOST_TEST_MESSAGE("Testing martingale property in ir-fx-inf-cr model for "
-                       "Euler and exact discretizations...");
+BOOST_DATA_TEST_CASE(testIrFxInfCrMartingaleProperty,
+    bdata::make(infEurFlags) * bdata::make(infGbpFlags) * bdata::make(flatVolsFlags),
+    infEurIsDk, infGbpIsDk, flatVols) {
 
-    IrFxInfCrModelTestData d;
+    BOOST_TEST_MESSAGE("Testing martingale property in ir-fx-inf-cr model for Euler and exact discretizations...");
+    BOOST_TEST_MESSAGE("EUR inflation model is: " << (infEurIsDk ? "DK" : "JY"));
+    BOOST_TEST_MESSAGE("GBP inflation model is: " << (infGbpIsDk ? "DK" : "JY"));
+    BOOST_TEST_MESSAGE("Using " << (flatVols ? "" : "non-") << "flat volatilities.");
+
+    IrFxInfCrModelTestData d(infEurIsDk, infGbpIsDk, flatVols);
 
     boost::shared_ptr<StochasticProcess> process1 = d.model->stateProcess(CrossAssetStateProcess::exact);
     boost::shared_ptr<StochasticProcess> process2 = d.model->stateProcess(CrossAssetStateProcess::euler);
@@ -1958,10 +2221,8 @@ void CrossAssetModelTest::testIrFxInfCrMartingaleProperty() {
     Size seed = 18;                         // rng seed
     Time T = 10.0;                          // maturity of payoff
     Time T2 = 20.0;                         // zerobond maturity
-    Size steps = static_cast<Size>(T * 24); // number of steps taken (euler)
+    Size steps = static_cast<Size>(T * 40); // number of steps taken (euler)
 
-    // this can be made more accurate by using LowDiscrepancy instead
-    // of PseudoRandom, but we use an error estimator for the check
     LowDiscrepancy::rsg_type sg1 = LowDiscrepancy::make_sequence_generator(d.model->dimension() * 1, seed);
     LowDiscrepancy::rsg_type sg2 = LowDiscrepancy::make_sequence_generator(d.model->dimension() * steps, seed);
 
@@ -2010,13 +2271,24 @@ void CrossAssetModelTest::testIrFxInfCrMartingaleProperty() {
         // GBP zerobond
         gbpzb1(d.model->discountBond(2, T, T2, zgbp1) * fxgbp1 / d.model->numeraire(0, T, zeur1));
         // EUR CPI indexed bond
-        std::pair<Real, Real> sinfeur1 = d.model->infdkI(0, T, T2, infeurz1, infeury1);
-        infeur1(sinfeur1.first * sinfeur1.second * d.model->discountBond(0, T, T2, zeur1) /
+        bool indexIsInterpolated = true;
+        if (infEurIsDk) {
+            std::pair<Real, Real> sinfeur1 = d.model->infdkI(0, T, T2, infeurz1, infeury1);
+            infeur1(sinfeur1.first * sinfeur1.second * d.model->discountBond(0, T, T2, zeur1) /
                 d.model->numeraire(0, T, zeur1));
+        } else {
+            infeur1(exp(infeury1) * inflationGrowth(d.model, 0, T, T2, zeur1, infeurz1, indexIsInterpolated) *
+                d.model->discountBond(0, T, T2, zeur1) / d.model->numeraire(0, T, zeur1));
+        }
         // GBP CPI indexed bond
-        std::pair<Real, Real> sinfgbp1 = d.model->infdkI(1, T, T2, infgbpz1, infgbpy1);
-        infgbp1(sinfgbp1.first * sinfgbp1.second * d.model->discountBond(2, T, T2, zgbp1) * fxgbp1 /
+        if (infGbpIsDk) {
+            std::pair<Real, Real> sinfgbp1 = d.model->infdkI(1, T, T2, infgbpz1, infgbpy1);
+            infgbp1(sinfgbp1.first * sinfgbp1.second * d.model->discountBond(2, T, T2, zgbp1) * fxgbp1 /
                 d.model->numeraire(0, T, zeur1));
+        } else {
+            infgbp1(exp(infgbpy1) * inflationGrowth(d.model, 1, T, T2, zgbp1, infgbpz1, indexIsInterpolated) *
+                d.model->discountBond(2, T, T2, zgbp1) * fxgbp1 / d.model->numeraire(0, T, zeur1));
+        }
         // EUR defaultable zerobond
         std::pair<Real, Real> sn11 = d.model->crlgm1fS(0, 0, T, T2, crzn11, cryn11);
         n1eur1(sn11.first * sn11.second * d.model->discountBond(0, T, T2, zeur1) / d.model->numeraire(0, T, zeur1));
@@ -2028,13 +2300,23 @@ void CrossAssetModelTest::testIrFxInfCrMartingaleProperty() {
         // GBP zerobond
         gbpzb2(d.model->discountBond(2, T, T2, zgbp2) * fxgbp2 / d.model->numeraire(0, T, zeur2));
         // EUR CPI indexed bond
-        std::pair<Real, Real> sinfeur2 = d.model->infdkI(0, T, T2, infeurz2, infeury2);
-        infeur2(sinfeur2.first * sinfeur2.second * d.model->discountBond(0, T, T2, zeur2) /
+        if (infEurIsDk) {
+            std::pair<Real, Real> sinfeur2 = d.model->infdkI(0, T, T2, infeurz2, infeury2);
+            infeur2(sinfeur2.first * sinfeur2.second * d.model->discountBond(0, T, T2, zeur2) /
                 d.model->numeraire(0, T, zeur2));
+        } else {
+            infeur2(exp(infeury2) * inflationGrowth(d.model, 0, T, T2, zeur2, infeurz2, indexIsInterpolated) *
+                d.model->discountBond(0, T, T2, zeur2) / d.model->numeraire(0, T, zeur2));
+        }
         // GBP CPI indexed bond
-        std::pair<Real, Real> sinfgbp2 = d.model->infdkI(1, T, T2, infgbpz2, infgbpy2);
-        infgbp2(sinfgbp2.first * sinfgbp2.second * d.model->discountBond(2, T, T2, zgbp2) * fxgbp2 /
+        if (infGbpIsDk) {
+            std::pair<Real, Real> sinfgbp2 = d.model->infdkI(1, T, T2, infgbpz2, infgbpy2);
+            infgbp2(sinfgbp2.first * sinfgbp2.second * d.model->discountBond(2, T, T2, zgbp2) * fxgbp2 /
                 d.model->numeraire(0, T, zeur2));
+        } else {
+            infgbp2(exp(infgbpy2) * inflationGrowth(d.model, 1, T, T2, zgbp2, infgbpz2, indexIsInterpolated) *
+                d.model->discountBond(2, T, T2, zgbp2) * fxgbp2 / d.model->numeraire(0, T, zeur2));
+        }
         // EUR defaultable zerobond
         std::pair<Real, Real> sn12 = d.model->crlgm1fS(0, 0, T, T2, crzn12, cryn12);
         n1eur2(sn12.first * sn12.second * d.model->discountBond(0, T, T2, zeur2) / d.model->numeraire(0, T, zeur2));
@@ -2082,75 +2364,79 @@ void CrossAssetModelTest::testIrFxInfCrMartingaleProperty() {
     Real ev = d.eurYts->discount(T2);
     if (std::abs(mean(eurzb1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eurzb1) << ", tolerance " << tol1);
     ev = d.usdYts->discount(T2) * d.fxEurUsd->value();
     if (std::abs(mean(usdzb1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(usdzb1) << ", tolerance " << tol1);
     ev = d.gbpYts->discount(T2) * d.fxEurGbp->value();
     if (std::abs(mean(gbpzb1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(gbpzb1) << ", tolerance " << tol1);
     ev = d.eurYts->discount(T2) * std::pow(1.0 + d.infEurTs->zeroRate(T2 - d.infLag), T2);
     if (std::abs(mean(infeur1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for idx eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infeur1) << ", tolerance " << tol1);
     ev = d.gbpYts->discount(T2) * std::pow(1.0 + d.infGbpTs->zeroRate(T2 - d.infLag), T2) * d.fxEurGbp->value();
     if (std::abs(mean(infgbp1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for idx gbpzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infgbp1) << ", tolerance " << tol1);
     ev = d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2);
     if (std::abs(mean(n1eur1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for def eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(n1eur1) << ", tolerance " << tol1);
 
     ev = d.eurYts->discount(T2);
     if (std::abs(mean(eurzb2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for eurzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eurzb2) << ", tolerance " << tol2);
     ev = d.usdYts->discount(T2) * d.fxEurUsd->value();
     if (std::abs(mean(usdzb2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for usdzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(usdzb2) << ", tolerance " << tol2 * error_of<tag::mean>(usdzb2));
     ev = d.gbpYts->discount(T2) * d.fxEurGbp->value();
     if (std::abs(mean(gbpzb2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for gbpzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(gbpzb2) << ", tolerance " << tol2);
     ev = d.eurYts->discount(T2) * std::pow(1.0 + d.infEurTs->zeroRate(T2 - d.infLag), T2);
     if (std::abs(mean(infeur2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for idx eurzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infeur2) << ", tolerance " << tol1);
     ev = d.gbpYts->discount(T2) * std::pow(1.0 + d.infGbpTs->zeroRate(T2 - d.infLag), T2) * d.fxEurGbp->value();
     if (std::abs(mean(infgbp2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for idx gbpzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infgbp2) << ", tolerance " << tol1);
     ev = d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2);
     if (std::abs(mean(n1eur2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for def eurzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(n1eur1) << ", tolerance " << tol1);
 
 } // testIrFxInfCrMartingaleProperty
 
-void CrossAssetModelTest::testIrFxInfCrMoments() {
+BOOST_DATA_TEST_CASE(testIrFxInfCrMoments,
+    bdata::make(infEurFlags) * bdata::make(infGbpFlags) * bdata::make(flatVolsFlags),
+    infEurIsDk, infGbpIsDk, flatVols) {
 
-    BOOST_TEST_MESSAGE("Testing analytic moments vs. Euler and exact discretization "
-                       "in ir-fx-inf-cr model...");
+    BOOST_TEST_MESSAGE("Testing analytic moments vs. Euler and exact discretization in ir-fx-inf-cr model...");
+    BOOST_TEST_MESSAGE("EUR inflation model is: " << (infEurIsDk ? "DK" : "JY"));
+    BOOST_TEST_MESSAGE("GBP inflation model is: " << (infGbpIsDk ? "DK" : "JY"));
+    BOOST_TEST_MESSAGE("Using " << (flatVols ? "" : "non-") << "flat volatilities.");
 
-    IrFxInfCrModelTestData d;
+    IrFxInfCrModelTestData d(infEurIsDk, infGbpIsDk, flatVols);
 
-    const Size n = 11; // d.model->dimension();
+    Size n = d.model->dimension();
 
     boost::shared_ptr<StochasticProcess> p_exact = d.model->stateProcess(CrossAssetStateProcess::exact);
     boost::shared_ptr<StochasticProcess> p_euler = d.model->stateProcess(CrossAssetStateProcess::euler);
@@ -2170,8 +2456,14 @@ void CrossAssetModelTest::testIrFxInfCrMoments() {
     MultiPathGeneratorSobolBrownianBridge pgen2(p_exact, grid, SobolBrownianGenerator::Diagonal, seed,
                                                 SobolRsg::JoeKuoD7);
 
-    accumulator_set<double, stats<tag::mean, tag::error_of<tag::mean> > > e_eu[n], e_eu2[n];
-    accumulator_set<double, stats<tag::covariance<double, tag::covariate1> > > v_eu[n][n], v_eu2[n][n];
+    vector<accumulator_set<double, stats<tag::mean, tag::error_of<tag::mean> > > > e_eu(n);
+    vector<accumulator_set<double, stats<tag::mean, tag::error_of<tag::mean> > > > e_eu2(n);
+    vector<vector<accumulator_set<double, stats<tag::covariance<double, tag::covariate1> > > > > v_eu(n);
+    vector<vector<accumulator_set<double, stats<tag::covariance<double, tag::covariate1> > > > > v_eu2(n);
+    for (Size i = 0; i < n; ++i) {
+        v_eu[i] = vector<accumulator_set<double, stats<tag::covariance<double, tag::covariate1> > > >(n);
+        v_eu2[i] = vector<accumulator_set<double, stats<tag::covariance<double, tag::covariate1> > > >(n);
+    }
 
     for (Size i = 0; i < paths; ++i) {
         Sample<MultiPath> path = pgen.next();
@@ -2191,7 +2483,8 @@ void CrossAssetModelTest::testIrFxInfCrMoments() {
     }
 
     for (Size i = 0; i < n; ++i) {
-        BOOST_TEST_MESSAGE("E_" << i << " " << e_an[i] << " " << mean(e_eu[i]) << " " << mean(e_eu2[i]));
+        BOOST_TEST_MESSAGE("E_" << i << " " << std::fixed << std::setprecision(12) <<
+            e_an[i] << " " << mean(e_eu[i]) << " " << mean(e_eu2[i]));
     }
     BOOST_TEST_MESSAGE("==================");
 
@@ -2225,22 +2518,26 @@ void CrossAssetModelTest::testIrFxInfCrMoments() {
     }
     BOOST_TEST_MESSAGE("==================");
 
-    Real errTolLd[] = { 0.5E-4, 0.5E-4, 0.5E-4, 10.0E-4, 10.0E-4, 0.7E-4, 0.7E-4, 0.7E-4, 0.7E-4, 0.7E-4, 0.7E-4 };
+    Real errTolLd[] = { 0.5E-4, 0.5E-4, 0.5E-4, 10.0E-4, 10.0E-4, 0.9E-4, 0.8E-4, 0.7E-4, 0.7E-4, 0.7E-4, 0.7E-4 };
 
     for (Size i = 0; i < n; ++i) {
         // check expectation against analytical calculation (Euler)
         if (std::fabs(mean(e_eu[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Euler "
-                                                   "discretization, " << mean(e_eu[i]) << "), error is "
-                        << e_an[i] - mean(e_eu[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (Euler "
+                                                                    "discretization, "
+                                                                 << mean(e_eu[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
         // check expectation against analytical calculation (exact disc)
         if (std::fabs(mean(e_eu2[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (exact "
-                                                   "discretization, " << mean(e_eu2[i]) << "), error is "
-                        << e_an[i] - mean(e_eu2[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (exact "
+                                                                    "discretization, "
+                                                                 << mean(e_eu2[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu2[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
     }
 
@@ -2253,16 +2550,18 @@ void CrossAssetModelTest::testIrFxInfCrMoments() {
             if (std::fabs(covariance(v_eu[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Euler discretization, " << covariance(v_eu[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (Euler discretization, "
+                                                         << covariance(v_eu[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu[i][j]) << " tolerance is "
+                                                         << tol);
             }
             if (std::fabs(covariance(v_eu2[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (exact discretization, " << covariance(v_eu2[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu2[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (exact discretization, "
+                                                         << covariance(v_eu2[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu2[i][j]) << " tolerance is "
+                                                         << tol);
             }
         }
     }
@@ -2291,9 +2590,9 @@ struct IrFxInfCrEqModelTestData {
         infRates.push_back(0.01);
         infRates.push_back(0.01);
         infEurTs = Handle<ZeroInflationTermStructure>(boost::make_shared<ZeroInflationCurve>(
-            referenceDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, eurYts, infDates, infRates));
+            referenceDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, infDates, infRates));
         infGbpTs = Handle<ZeroInflationTermStructure>(boost::make_shared<ZeroInflationCurve>(
-            referenceDate, UnitedKingdom(), Actual365Fixed(), 3 * Months, Monthly, false, eurYts, infDates, infRates));
+            referenceDate, UnitedKingdom(), Actual365Fixed(), 3 * Months, Monthly, false, infDates, infRates));
         infEurTs->enableExtrapolation();
         infGbpTs->enableExtrapolation();
         // same for eur and gbp (doesn't matter anyway, since we are
@@ -2477,7 +2776,7 @@ struct IrFxInfCrEqModelTestData {
 
 } // anonymous namespace
 
-void CrossAssetModelTest::testIrFxInfCrEqMartingaleProperty() {
+BOOST_AUTO_TEST_CASE(testIrFxInfCrEqMartingaleProperty) {
 
     BOOST_TEST_MESSAGE("Testing martingale property in ir-fx-inf-cr-eq model for "
                        "Euler and exact discretizations...");
@@ -2633,88 +2932,88 @@ void CrossAssetModelTest::testIrFxInfCrEqMartingaleProperty() {
     Real ev = d.eurYts->discount(T2);
     if (std::abs(mean(eurzb1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eurzb1) << ", tolerance " << tol1);
     ev = d.usdYts->discount(T2) * d.fxEurUsd->value();
     if (std::abs(mean(usdzb1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(usdzb1) << ", tolerance " << tol1);
     ev = d.gbpYts->discount(T2) * d.fxEurGbp->value();
     if (std::abs(mean(gbpzb1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(gbpzb1) << ", tolerance " << tol1);
     ev = d.eurYts->discount(T2) * std::pow(1.0 + d.infEurTs->zeroRate(T2 - d.infLag), T2);
     if (std::abs(mean(infeur1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for idx eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infeur1) << ", tolerance " << tol1);
     ev = d.gbpYts->discount(T2) * std::pow(1.0 + d.infGbpTs->zeroRate(T2 - d.infLag), T2) * d.fxEurGbp->value();
     if (std::abs(mean(infgbp1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for idx gbpzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infgbp1) << ", tolerance " << tol1);
     ev = d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2);
     if (std::abs(mean(n1eur1) - ev) > tol1)
         BOOST_FAIL("Martingale test failed for def eurzb (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(n1eur1) << ", tolerance " << tol1);
     ev = d.spSpotToday->value() * d.eqDivSp->discount(T) * d.fxEurUsd->value();
     if (std::abs(mean(eqsp1) - ev) / ev > tol1r)
         BOOST_FAIL("Martingale test failed for eq sp (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eqsp1) << ", rel tolerance " << tol1r);
     ev = d.lhSpotToday->value() * d.eqDivLh->discount(T);
     if (std::abs(mean(eqlh1) - ev) / ev > tol1r)
         BOOST_FAIL("Martingale test failed for eq lh (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eqlh1) << ", rel tolerance " << tol1r);
 
     ev = d.eurYts->discount(T2);
     if (std::abs(mean(eurzb2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for eurzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eurzb2) << ", tolerance " << tol2);
     ev = d.usdYts->discount(T2) * d.fxEurUsd->value();
     if (std::abs(mean(usdzb2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for usdzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(usdzb2) << ", tolerance " << tol2 * error_of<tag::mean>(usdzb2));
     ev = d.gbpYts->discount(T2) * d.fxEurGbp->value();
     if (std::abs(mean(gbpzb2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for gbpzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(gbpzb2) << ", tolerance " << tol2);
     ev = d.eurYts->discount(T2) * std::pow(1.0 + d.infEurTs->zeroRate(T2 - d.infLag), T2);
     if (std::abs(mean(infeur2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for idx eurzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infeur2) << ", tolerance " << tol2);
     ev = d.gbpYts->discount(T2) * std::pow(1.0 + d.infGbpTs->zeroRate(T2 - d.infLag), T2) * d.fxEurGbp->value();
     if (std::abs(mean(infgbp2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for idx gbpzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(infgbp2) << ", tolerance " << tol2);
     ev = d.eurYts->discount(T2) * d.n1Ts->survivalProbability(T2);
     if (std::abs(mean(n1eur2) - ev) > tol2)
         BOOST_FAIL("Martingale test failed for def eurzb (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(n1eur1) << ", tolerance " << tol2);
     ev = d.spSpotToday->value() * d.eqDivSp->discount(T) * d.fxEurUsd->value();
     if (std::abs(mean(eqsp2) - ev) / ev > tol2r)
         BOOST_FAIL("Martingale test failed for eq sp (Euler discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eqsp2) << ", rel tolerance " << tol2r);
     ev = d.lhSpotToday->value() * d.eqDivLh->discount(T);
     if (std::abs(mean(eqlh2) - ev) / ev > tol2r)
         BOOST_FAIL("Martingale test failed for eq lh (exact discr.),"
-                   "excpected "
+                   "expected "
                    << ev << ", got " << mean(eqlh2) << ", rel tolerance " << tol2r);
 
 } // testIrFxInfCrEqMartingaleProperty
 
-void CrossAssetModelTest::testIrFxInfCrEqMoments() {
+BOOST_AUTO_TEST_CASE(testIrFxInfCrEqMoments) {
 
     BOOST_TEST_MESSAGE("Testing analytic moments vs. Euler and exact discretization "
                        "in ir-fx-inf-cr-eq model...");
@@ -2804,17 +3103,21 @@ void CrossAssetModelTest::testIrFxInfCrEqMoments() {
     for (Size i = 0; i < n; ++i) {
         // check expectation against analytical calculation (Euler)
         if (std::fabs(mean(e_eu[i]) - e_an[i]) > errTolLdEuler[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Euler "
-                                                   "discretization, " << mean(e_eu[i]) << "), error is "
-                        << e_an[i] - mean(e_eu[i]) << " tolerance is " << errTolLdEuler[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (Euler "
+                                                                    "discretization, "
+                                                                 << mean(e_eu[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu[i]) << " tolerance is "
+                                                                 << errTolLdEuler[i]);
         }
         // check expectation against analytical calculation (exact disc)
         if (std::fabs(mean(e_eu2[i]) - e_an[i]) > errTolLd[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (exact "
-                                                   "discretization, " << mean(e_eu2[i]) << "), error is "
-                        << e_an[i] - mean(e_eu2[i]) << " tolerance is " << errTolLd[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (exact "
+                                                                    "discretization, "
+                                                                 << mean(e_eu2[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu2[i]) << " tolerance is "
+                                                                 << errTolLd[i]);
         }
     }
 
@@ -2827,16 +3130,18 @@ void CrossAssetModelTest::testIrFxInfCrEqMoments() {
             if (std::fabs(covariance(v_eu[i][j]) - v_an[i][j]) > tolEuler) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Euler discretization, " << covariance(v_eu[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu[i][j])
-                                                         << " tolerance is " << tolEuler);
+                                                            "value (Euler discretization, "
+                                                         << covariance(v_eu[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu[i][j]) << " tolerance is "
+                                                         << tolEuler);
             }
             if (std::fabs(covariance(v_eu2[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (exact discretization, " << covariance(v_eu2[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu2[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (exact discretization, "
+                                                         << covariance(v_eu2[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu2[i][j]) << " tolerance is "
+                                                         << tol);
             }
         }
     }
@@ -2996,7 +3301,7 @@ struct IrFxEqModelTestData {
 
 } // anonymous namespace
 
-void CrossAssetModelTest::testEqLgm5fPayouts() {
+BOOST_AUTO_TEST_CASE(testEqLgm5fPayouts) {
 
     BOOST_TEST_MESSAGE("Testing pricing of equity payouts under domestic "
                        "measure in CrossAsset LGM model...");
@@ -3139,7 +3444,7 @@ void CrossAssetModelTest::testEqLgm5fPayouts() {
 
 } // testEqLgm5fPayouts
 
-void CrossAssetModelTest::testEqLgm5fCalibration() {
+BOOST_AUTO_TEST_CASE(testEqLgm5fCalibration) {
 
     BOOST_TEST_MESSAGE("Testing EQ calibration of IR-FX-EQ LGM 5F model...");
 
@@ -3147,19 +3452,19 @@ void CrossAssetModelTest::testEqLgm5fCalibration() {
     Settings::instance().evaluationDate() = d.referenceDate;
 
     // calibration baskets
-    std::vector<boost::shared_ptr<CalibrationHelper> > basketSp, basketLh;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > basketSp, basketLh;
 
     for (Size i = 0; i < d.volstepdatesEqSp.size(); ++i) {
         Date tmp = i < d.volstepdatesEqSp.size() ? d.volstepdatesEqSp[i] : d.volstepdatesEqSp.back() + 365;
         basketSp.push_back(boost::make_shared<FxEqOptionHelper>(
             tmp, Null<Real>(), d.spSpotToday, Handle<Quote>(boost::make_shared<SimpleQuote>(0.20)), d.usdYts, d.eqDivSp,
-            CalibrationHelper::RelativePriceError));
+            BlackCalibrationHelper::RelativePriceError));
     }
     for (Size i = 0; i < d.volstepdatesEqLh.size(); ++i) {
         Date tmp = i < d.volstepdatesEqLh.size() ? d.volstepdatesEqLh[i] : d.volstepdatesEqLh.back() + 365;
         basketLh.push_back(boost::make_shared<FxEqOptionHelper>(
             tmp, Null<Real>(), d.lhSpotToday, Handle<Quote>(boost::make_shared<SimpleQuote>(0.20)), d.eurYts, d.eqDivLh,
-            CalibrationHelper::RelativePriceError));
+            BlackCalibrationHelper::RelativePriceError));
     }
 
     // pricing engines
@@ -3206,7 +3511,7 @@ void CrossAssetModelTest::testEqLgm5fCalibration() {
     }
 } // testEqLgm5fCalibration
 
-void CrossAssetModelTest::testEqLgm5fMoments() {
+BOOST_AUTO_TEST_CASE(testEqLgm5fMoments) {
 
     // TODO : REVIEW TOLERANCES
     BOOST_TEST_MESSAGE("Testing analytic moments vs. Euler and exact discretization "
@@ -3259,16 +3564,19 @@ void CrossAssetModelTest::testEqLgm5fMoments() {
         // check expectation against analytical calculation (Euler)
         if (std::fabs(mean(e_eu[i]) - e_an[i]) > errTol[i]) {
             BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Euler "
-                                                   "discretization, " << mean(e_eu[i]) << "), error is "
-                        << e_an[i] - mean(e_eu[i]) << " tolerance is " << errTol[i]);
+                        << i << " (" << e_an[i]
+                        << ") is inconsistent with numerical value (Euler "
+                           "discretization, "
+                        << mean(e_eu[i]) << "), error is " << e_an[i] - mean(e_eu[i]) << " tolerance is " << errTol[i]);
         }
         // check expectation against analytical calculation (exact disc)
         if (std::fabs(mean(e_eu2[i]) - e_an[i]) > errTol[i]) {
-            BOOST_ERROR("analytical expectation for component #"
-                        << i << " (" << e_an[i] << ") is inconsistent with numerical value (Exact "
-                                                   "discretization, " << mean(e_eu2[i]) << "), error is "
-                        << e_an[i] - mean(e_eu2[i]) << " tolerance is " << errTol[i]);
+            BOOST_ERROR("analytical expectation for component #" << i << " (" << e_an[i]
+                                                                 << ") is inconsistent with numerical value (Exact "
+                                                                    "discretization, "
+                                                                 << mean(e_eu2[i]) << "), error is "
+                                                                 << e_an[i] - mean(e_eu2[i]) << " tolerance is "
+                                                                 << errTol[i]);
         }
     }
 
@@ -3297,16 +3605,18 @@ void CrossAssetModelTest::testEqLgm5fMoments() {
             if (std::fabs(covariance(v_eu[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Euler discretization, " << covariance(v_eu[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (Euler discretization, "
+                                                         << covariance(v_eu[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu[i][j]) << " tolerance is "
+                                                         << tol);
             }
             if (std::fabs(covariance(v_eu2[i][j]) - v_an[i][j]) > tol) {
                 BOOST_ERROR("analytical covariance at (" << i << "," << j << ") (" << v_an[i][j]
                                                          << ") is inconsistent with numerical "
-                                                            "value (Exact discretization, " << covariance(v_eu2[i][j])
-                                                         << "), error is " << v_an[i][j] - covariance(v_eu2[i][j])
-                                                         << " tolerance is " << tol);
+                                                            "value (Exact discretization, "
+                                                         << covariance(v_eu2[i][j]) << "), error is "
+                                                         << v_an[i][j] - covariance(v_eu2[i][j]) << " tolerance is "
+                                                         << tol);
             }
         }
     }
@@ -3365,7 +3675,7 @@ void CrossAssetModelTest::testEqLgm5fMoments() {
     }
 } // testEqLgm5fMoments
 
-void CrossAssetModelTest::testCorrelationRecovery() {
+BOOST_AUTO_TEST_CASE(testCorrelationRecovery) {
 
     BOOST_TEST_MESSAGE("Test if random correlation input is recovered for "
                        "small dt in Ccy LGM model...");
@@ -3457,7 +3767,7 @@ void CrossAssetModelTest::testCorrelationRecovery() {
         boost::shared_ptr<StochasticProcess> peuler = model->stateProcess(CrossAssetStateProcess::euler);
         boost::shared_ptr<StochasticProcess> pexact = model->stateProcess(CrossAssetStateProcess::exact);
 
-        Matrix c1 = peuler->covariance(0.0, peuler->initialValues(), dt);
+        Matrix c1 = peuler->covariance(dt, peuler->initialValues(), dt);
         Matrix c2 = pexact->covariance(0.0, peuler->initialValues(), dt);
 
         Matrix r1(dim, dim), r2(dim, dim);
@@ -3485,7 +3795,7 @@ void CrossAssetModelTest::testCorrelationRecovery() {
 
 } // test correlation recovery
 
-void CrossAssetModelTest::testIrFxInfCrCorrelationRecovery() {
+BOOST_AUTO_TEST_CASE(testIrFxInfCrCorrelationRecovery) {
 
     BOOST_TEST_MESSAGE("Test if random correlation input is recovered for "
                        "small dt in ir-fx-inf-cr model...");
@@ -3524,7 +3834,7 @@ void CrossAssetModelTest::testIrFxInfCrCorrelationRecovery() {
     infRates.push_back(0.01);
     Handle<ZeroInflationTermStructure> its(
         boost::make_shared<ZeroInflationCurve>(Settings::instance().evaluationDate(), NullCalendar(), Actual365Fixed(),
-                                               3 * Months, Monthly, false, yts, infDates, infRates));
+                                               3 * Months, Monthly, false, infDates, infRates));
 
     Handle<DefaultProbabilityTermStructure> hts(
         boost::make_shared<FlatHazardRate>(0, NullCalendar(), 0.01, Actual365Fixed()));
@@ -3601,13 +3911,14 @@ void CrossAssetModelTest::testIrFxInfCrCorrelationRecovery() {
                         boost::make_shared<CrLgm1fConstantParametrization>(pseudoCcy[0], hts, 0.01, 0.01));
                 }
 
+                // get QuantLib::Error: negative eigenvalue(s) (-3.649315e-16) with SalvagingAlgorithm::None
                 boost::shared_ptr<CrossAssetModel> model =
-                    boost::make_shared<CrossAssetModel>(parametrizations, c, SalvagingAlgorithm::None);
+                    boost::make_shared<CrossAssetModel>(parametrizations, c, SalvagingAlgorithm::Spectral);
 
                 boost::shared_ptr<StochasticProcess> peuler = model->stateProcess(CrossAssetStateProcess::euler);
                 boost::shared_ptr<StochasticProcess> pexact = model->stateProcess(CrossAssetStateProcess::exact);
 
-                Matrix c1 = peuler->covariance(0.0, peuler->initialValues(), dt);
+                Matrix c1 = peuler->covariance(dt, peuler->initialValues(), dt);
                 Matrix c2 = pexact->covariance(0.0, peuler->initialValues(), dt);
 
                 Matrix r1(dim, dim), r2(dim, dim);
@@ -3620,10 +3931,12 @@ void CrossAssetModelTest::testIrFxInfCrCorrelationRecovery() {
                         Size subj = j < 2 * currencies[ii] - 1 ? 1 : 2;
                         for (Size k1 = 0; k1 < subi; ++k1) {
                             for (Size k2 = 0; k2 < subj; ++k2) {
-                                Size i0 = i < 2 * currencies[ii] - 1 ? i : 2 * currencies[ii] - 1 +
-                                                                               2 * (i - (2 * currencies[ii] - 1)) + k1;
-                                Size j0 = j < 2 * currencies[ii] - 1 ? j : 2 * currencies[ii] - 1 +
-                                                                               2 * (j - (2 * currencies[ii] - 1)) + k2;
+                                Size i0 = i < 2 * currencies[ii] - 1
+                                              ? i
+                                              : 2 * currencies[ii] - 1 + 2 * (i - (2 * currencies[ii] - 1)) + k1;
+                                Size j0 = j < 2 * currencies[ii] - 1
+                                              ? j
+                                              : 2 * currencies[ii] - 1 + 2 * (j - (2 * currencies[ii] - 1)) + k2;
                                 r1[i][j] = r1[j][i] = c1[i0][j0] / std::sqrt(c1[i0][i0] * c1[j0][j0]);
                                 r2[i][j] = r2[j][i] = c2[i0][j0] / std::sqrt(c2[i0][i0] * c2[j0][j0]);
                                 if (std::fabs(r1[i][j] - c[i][j]) > tol) {
@@ -3657,10 +3970,10 @@ void CrossAssetModelTest::testIrFxInfCrCorrelationRecovery() {
                 }
             } // for creditnames
         }     // for cpiindexes
-    }         // for currenciess
+    }         // for currencies
 } // testIrFxInfCrCorrelationRecovery
 
-void CrossAssetModelTest::testIrFxInfCrEqCorrelationRecovery() {
+BOOST_AUTO_TEST_CASE(testIrFxInfCrEqCorrelationRecovery) {
 
     BOOST_TEST_MESSAGE("Test if random correlation input is recovered for "
                        "small dt in ir-fx-inf-cr-eq model...");
@@ -3700,7 +4013,7 @@ void CrossAssetModelTest::testIrFxInfCrEqCorrelationRecovery() {
     infRates.push_back(0.01);
     Handle<ZeroInflationTermStructure> its(
         boost::make_shared<ZeroInflationCurve>(Settings::instance().evaluationDate(), NullCalendar(), Actual365Fixed(),
-                                               3 * Months, Monthly, false, yts, infDates, infRates));
+                                               3 * Months, Monthly, false, infDates, infRates));
 
     Handle<DefaultProbabilityTermStructure> hts(
         boost::make_shared<FlatHazardRate>(0, NullCalendar(), 0.01, Actual365Fixed()));
@@ -3783,13 +4096,14 @@ void CrossAssetModelTest::testIrFxInfCrEqCorrelationRecovery() {
                             pseudoCcy[0], "dummy", eqspot, fxspot, notimes, eqsigma, yts, yts));
                     }
 
+                    // get QuantLib::Error: negative eigenvalue(s) (-3.649315e-16) with SalvagingAlgorithm::None
                     boost::shared_ptr<CrossAssetModel> model =
-                        boost::make_shared<CrossAssetModel>(parametrizations, c, SalvagingAlgorithm::None);
+                        boost::make_shared<CrossAssetModel>(parametrizations, c, SalvagingAlgorithm::Spectral);
 
                     boost::shared_ptr<StochasticProcess> peuler = model->stateProcess(CrossAssetStateProcess::euler);
                     boost::shared_ptr<StochasticProcess> pexact = model->stateProcess(CrossAssetStateProcess::exact);
 
-                    Matrix c1 = peuler->covariance(0.0, peuler->initialValues(), dt);
+                    Matrix c1 = peuler->covariance(dt, peuler->initialValues(), dt);
                     Matrix c2 = pexact->covariance(0.0, peuler->initialValues(), dt);
 
                     Matrix r1(dim, dim), r2(dim, dim);
@@ -3852,10 +4166,10 @@ void CrossAssetModelTest::testIrFxInfCrEqCorrelationRecovery() {
                 } // for equity
             }     // for creditnames
         }         // for cpiindexes
-    }             // for currenciess
+    }             // for currencies
 } // testIrFxInfCrEqCorrelationRecovery
 
-void CrossAssetModelTest::testCpiCalibrationByAlpha() {
+BOOST_AUTO_TEST_CASE(testCpiCalibrationByAlpha) {
 
     BOOST_TEST_MESSAGE("Testing calibration to ZC CPI Floors (using alpha) and repricing via MC...");
 
@@ -3880,13 +4194,15 @@ void CrossAssetModelTest::testCpiCalibrationByAlpha() {
     infRates.push_back(0.0075);
     infRates.push_back(0.0075);
     Handle<ZeroInflationTermStructure> infEurTs(boost::make_shared<ZeroInflationCurve>(
-        refDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, eurYts, infDates, infRates));
+        refDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, infDates, infRates));
     infEurTs->enableExtrapolation();
     Handle<ZeroInflationIndex> infIndex(boost::make_shared<EUHICPXT>(false, infEurTs));
+    
+    infIndex->addFixing(Date(1, April, 2015), 100);
 
     Real premium[] = { 0.0044, 0.0085, 0.0127, 0.0160, 0.0186 };
 
-    std::vector<boost::shared_ptr<CalibrationHelper> > cpiHelpers;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > cpiHelpers;
     Array volStepTimes(4), noTimes(0);
     Array infVols(5, 0.01), infRev(1, 1.5); // !!
 
@@ -3982,7 +4298,7 @@ void CrossAssetModelTest::testCpiCalibrationByAlpha() {
     }
 } // testCpiCalibrationByAlpha
 
-void CrossAssetModelTest::testCpiCalibrationByH() {
+BOOST_AUTO_TEST_CASE(testCpiCalibrationByH) {
 
     BOOST_TEST_MESSAGE("Testing calibration to ZC CPI Floors (using H) and repricing via MC...");
 
@@ -4007,22 +4323,22 @@ void CrossAssetModelTest::testCpiCalibrationByH() {
     infRates.push_back(0.0075);
     infRates.push_back(0.0075);
     Handle<ZeroInflationTermStructure> infEurTs(boost::make_shared<ZeroInflationCurve>(
-        refDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, eurYts, infDates, infRates));
+        refDate, TARGET(), Actual365Fixed(), 3 * Months, Monthly, false, infDates, infRates));
     infEurTs->enableExtrapolation();
     Handle<ZeroInflationIndex> infIndex(boost::make_shared<EUHICPXT>(false, infEurTs));
-
+    infIndex->addFixing(Date(1, April, 2015), 100);
     Size nMat = 14;
     Real premium[] = { 0.000555, 0.000813, 0.000928, 0.00127, 0.001616, 0.0019, 0.0023,
                        0.0026,   0.0029,   0.0032,   0.0032,  0.0033,   0.0038, 0.0067 };
     Period maturity[] = { 1 * Years, 2 * Years, 3 * Years,  4 * Years,  5 * Years,  6 * Years,  7 * Years,
                           8 * Years, 9 * Years, 10 * Years, 12 * Years, 15 * Years, 20 * Years, 30 * Years };
 
-    std::vector<boost::shared_ptr<CalibrationHelper> > cpiHelpers;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > cpiHelpers;
     Array volStepTimes(13), noTimes(0);
     Array infVols(14, 0.0030), infRev(14, 1.0); // init vol and rev !!
     Real strike = 0.00;                         // strike !!
 
-    Time T;
+    Time T = Null<Time>();
     for (Size i = 1; i <= nMat; ++i) {
         Date mat = refDate + maturity[i - 1];
         boost::shared_ptr<CpiCapFloorHelper> h(new CpiCapFloorHelper(Option::Put, baseCPI, mat, TARGET(),
@@ -4116,7 +4432,7 @@ void CrossAssetModelTest::testCpiCalibrationByH() {
     }
 } // testCpiCalibrationByH
 
-void CrossAssetModelTest::testCrCalibration() {
+BOOST_AUTO_TEST_CASE(testCrCalibration) {
 
     BOOST_TEST_MESSAGE("Testing calibration to CDS Options and repricing via MC...");
 
@@ -4140,11 +4456,11 @@ void CrossAssetModelTest::testCrCalibration() {
     Period maturity[] = { 1 * Years, 2 * Years, 3 * Years, 4 * Years, 5 * Years,
                           6 * Years, 7 * Years, 8 * Years, 9 * Years, 10 * Years };
 
-    std::vector<boost::shared_ptr<CalibrationHelper> > cdsoHelpers;
+    std::vector<boost::shared_ptr<BlackCalibrationHelper> > cdsoHelpers;
     Array volStepTimes(nMat - 1), noTimes(0);
     Array crVols(nMat, 0.0030), crRev(nMat, 0.01); // init vol and rev
 
-    Time T;
+    Time T = Null<Time>();
     Date lastMat;
     for (Size i = 1; i <= nMat; ++i) {
         Date mat = refDate + maturity[i - 1];
@@ -4154,8 +4470,8 @@ void CrossAssetModelTest::testCrCalibration() {
         if (schedule.date(0) < mat)
             schedule = Schedule(schedule.date(1), mat + 10 * Years, 3 * Months, TARGET(), Following, Following,
                                 DateGeneration::CDS, false);
-        QL_REQUIRE(schedule.date(0) >= mat, "CDS start (" << schedule.date(0)
-                                                          << ") should be on or after option maturity (" << mat << ")");
+        QL_REQUIRE(schedule.date(0) >= mat,
+                   "CDS start (" << schedule.date(0) << ") should be on or after option maturity (" << mat << ")");
         boost::shared_ptr<CdsOptionHelper> h(
             new CdsOptionHelper(mat, Handle<Quote>(boost::make_shared<SimpleQuote>(impliedVols[i - 1])),
                                 Protection::Buyer, schedule, Following, Actual360(), prob, 0.4, eurYts));
@@ -4226,9 +4542,9 @@ void CrossAssetModelTest::testCrCalibration() {
 
     accumulator_set<double, stats<tag::mean, tag::error_of<tag::mean> > > cdso;
 
-    boost::shared_ptr<CreditDefaultSwap> underlying =
+    boost::shared_ptr<QuantExt::CreditDefaultSwap> underlying =
         boost::static_pointer_cast<CdsOptionHelper>(cdsoHelpers.back())->underlying();
-    Real K = underlying->fairSpread();
+    Real K = underlying->fairSpreadClean();
     BOOST_TEST_MESSAGE("Last CDSO fair spread is " << K);
 
     Settings::instance().evaluationDate() = lastMat;
@@ -4236,7 +4552,7 @@ void CrossAssetModelTest::testCrCalibration() {
         boost::make_shared<LgmImpliedDefaultTermStructure>(model, 0, 0);
     boost::shared_ptr<LgmImpliedYieldTermStructure> ytsMc =
         boost::make_shared<LgmImpliedYieldTermStructure>(model->lgm(0));
-    boost::shared_ptr<MidPointCdsEngine> dynamicEngine = boost::make_shared<MidPointCdsEngine>(
+    boost::shared_ptr<QuantExt::MidPointCdsEngine> dynamicEngine = boost::make_shared<QuantExt::MidPointCdsEngine>(
         Handle<DefaultProbabilityTermStructure>(probMc), 0.4, Handle<YieldTermStructure>(ytsMc));
     underlying->setPricingEngine(dynamicEngine);
 
@@ -4265,42 +4581,6 @@ void CrossAssetModelTest::testCrCalibration() {
     }
 } // testCrCalibration
 
-test_suite* CrossAssetModelTest::suite() {
-    test_suite* suite = BOOST_TEST_SUITE("CrossAsset model tests");
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testBermudanLgm1fGsr));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testBermudanLgmInvariances));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testNonstandardBermudanSwaption));
+BOOST_AUTO_TEST_SUITE_END()
 
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testLgm1fCalibration));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testCcyLgm3fForeignPayouts));
-
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testLgm5fFxCalibration));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testLgm5fFullCalibration));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testLgm5fMoments));
-
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testLgmGsrEquivalence));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testLgmMcWithShift));
-
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxCrMartingaleProperty));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxCrMoments));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxInfCrMartingaleProperty));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxInfCrMoments));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxInfCrEqMartingaleProperty));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxInfCrEqMoments));
-
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testCpiCalibrationByAlpha));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testCpiCalibrationByH));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testCrCalibration));
-
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testEqLgm5fPayouts));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testEqLgm5fCalibration));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testEqLgm5fMoments));
-
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testCorrelationRecovery));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxCrCorrelationRecovery));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxInfCrCorrelationRecovery));
-    suite->add(QUANTLIB_TEST_CASE(&CrossAssetModelTest::testIrFxInfCrEqCorrelationRecovery));
-
-    return suite;
-} // suite
-}
+BOOST_AUTO_TEST_SUITE_END()

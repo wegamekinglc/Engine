@@ -16,30 +16,38 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <ql/errors.hpp>
 #include <ored/configuration/inflationcurveconfig.hpp>
+#include <ored/marketdata/curvespecparser.hpp>
 #include <ored/utilities/parsers.hpp>
+#include <ored/utilities/to_string.hpp>
 
-#include <iomanip>
+#include <ql/errors.hpp>
 
 using namespace ore::data;
 
 namespace ore {
 namespace data {
 
-InflationCurveConfig::InflationCurveConfig(const string& curveID, const string& curveDescription,
-                                           const string& nominalTermStructure, const Type type,
-                                           const vector<string>& quotes, const string& conventions,
-                                           const bool extrapolate, const Calendar& calendar,
-                                           const DayCounter& dayCounter, const Period& lag, const Frequency& frequency,
-                                           const Real baseRate, const Real tolerance, const Date& seasonalityBaseDate,
-                                           const Frequency& seasonalityFrequency,
-                                           const vector<string>& seasonalityFactors)
-    : curveID_(curveID), curveDescription_(curveDescription), nominalTermStructure_(nominalTermStructure), type_(type),
-      quotes_(quotes), conventions_(conventions), extrapolate_(extrapolate), calendar_(calendar),
-      dayCounter_(dayCounter), lag_(lag), frequency_(frequency), baseRate_(baseRate), tolerance_(tolerance),
+InflationCurveConfig::InflationCurveConfig(
+    const string& curveID, const string& curveDescription, const string& nominalTermStructure, const Type type,
+    const vector<string>& swapQuotes, const string& conventions, const bool extrapolate, const Calendar& calendar,
+    const DayCounter& dayCounter, const Period& lag, const Frequency& frequency, const Real baseRate,
+    const Real tolerance, const Date& seasonalityBaseDate, const Frequency& seasonalityFrequency,
+    const vector<string>& seasonalityFactors, const vector<double>& overrideSeasonalityFactors)
+    : CurveConfig(curveID, curveDescription), swapQuotes_(swapQuotes), nominalTermStructure_(nominalTermStructure),
+      type_(type), conventions_(conventions), extrapolate_(extrapolate), calendar_(calendar), dayCounter_(dayCounter),
+      lag_(lag), frequency_(frequency), baseRate_(baseRate), tolerance_(tolerance),
       seasonalityBaseDate_(seasonalityBaseDate), seasonalityFrequency_(seasonalityFrequency),
-      seasonalityFactors_(seasonalityFactors) {}
+      seasonalityFactors_(seasonalityFactors), overrideSeasonalityFactors_(overrideSeasonalityFactors) {
+    quotes_ = swapQuotes;
+    quotes_.insert(quotes_.end(), seasonalityFactors.begin(), seasonalityFactors.end());
+    populateRequiredCurveIds();
+}
+
+void InflationCurveConfig::populateRequiredCurveIds() {
+    if (!nominalTermStructure().empty())
+        requiredCurveIds_[CurveSpec::CurveType::Yield].insert(parseCurveSpec(nominalTermStructure())->curveConfigID());
+}
 
 void InflationCurveConfig::fromXML(XMLNode* node) {
     XMLUtils::checkNode(node, "InflationCurve");
@@ -56,7 +64,7 @@ void InflationCurveConfig::fromXML(XMLNode* node) {
     } else
         QL_FAIL("Type " << type << " not recognized");
 
-    quotes_ = XMLUtils::getChildrenValues(node, "Quotes", "Quote", true);
+    swapQuotes_ = XMLUtils::getChildrenValues(node, "Quotes", "Quote", true);
 
     conventions_ = XMLUtils::getChildValue(node, "Conventions", true);
     extrapolate_ = XMLUtils::getChildValueAsBool(node, "Extrapolation", false);
@@ -85,18 +93,24 @@ void InflationCurveConfig::fromXML(XMLNode* node) {
     seasonalityBaseDate_ = QuantLib::Null<Date>();
     seasonalityFrequency_ = QuantLib::NoFrequency;
     seasonalityFactors_.clear();
+    quotes_ = swapQuotes_;
     if (seasonalityNode != nullptr) {
         seasonalityBaseDate_ = parseDate(XMLUtils::getChildValue(seasonalityNode, "BaseDate", true));
         seasonalityFrequency_ = parseFrequency(XMLUtils::getChildValue(seasonalityNode, "Frequency", true));
-        seasonalityFactors_ = XMLUtils::getChildrenValues(seasonalityNode, "Factors", "Factor", true);
+        seasonalityFactors_ = XMLUtils::getChildrenValues(seasonalityNode, "Factors", "Factor", false);
+        quotes_.insert(quotes_.end(), seasonalityFactors_.begin(), seasonalityFactors_.end());
+        std::string overrideFctStr = XMLUtils::getChildValue(seasonalityNode, "OverrideFactors", false);
+        overrideSeasonalityFactors_ = parseListOfValues<Real>(overrideFctStr, &parseReal);
     }
+    populateRequiredCurveIds();
 }
 
 XMLNode* InflationCurveConfig::toXML(XMLDocument& doc) {
-    XMLNode* node = doc.allocNode("SwaptionVolatility");
+    XMLNode* node = doc.allocNode("InflationCurve");
 
     XMLUtils::addChild(doc, node, "CurveId", curveID_);
     XMLUtils::addChild(doc, node, "CurveDescription", curveDescription_);
+    XMLUtils::addChild(doc, node, "NominalTermStructure", nominalTermStructure_);
 
     if (type_ == Type::ZC) {
         XMLUtils::addChild(doc, node, "Type", "ZC");
@@ -105,37 +119,38 @@ XMLNode* InflationCurveConfig::toXML(XMLDocument& doc) {
     } else
         QL_FAIL("Unknown Type in InflationCurveConfig::toXML()");
 
-    XMLUtils::addChildren(doc, node, "Quotes", "Quote", quotes_);
+    XMLUtils::addChildren(doc, node, "Quotes", "Quote", swapQuotes_);
     XMLUtils::addChild(doc, node, "Conventions", conventions_);
     string extrap = (extrapolate_ ? "true" : "false");
     XMLUtils::addChild(doc, node, "Extrapolation", extrap);
 
-    std::ostringstream cal, dc, lag, freq, baseZr, tol;
-    cal << calendar_;
-    dc << dayCounter_;
-    lag << lag_;
-    freq << frequency_;
+    string baseRateStr;
     if (baseRate_ != QuantLib::Null<Real>())
-        baseZr << std::setprecision(16) << std::fixed << baseRate_;
-    tol << std::setprecision(16) << std::scientific << tolerance_;
+        baseRateStr = to_string(baseRate_);
+    else
+        baseRateStr = "";
 
-    XMLUtils::addChild(doc, node, "Calendar", cal.str());
-    XMLUtils::addChild(doc, node, "DayCounter", dc.str());
-    XMLUtils::addChild(doc, node, "Lag", lag.str());
-    XMLUtils::addChild(doc, node, "Frequency", freq.str());
-    XMLUtils::addChild(doc, node, "BaseRate", baseZr.str());
-    XMLUtils::addChild(doc, node, "Tolerance", tol.str());
+    XMLUtils::addChild(doc, node, "Calendar", to_string(calendar_));
+    XMLUtils::addChild(doc, node, "DayCounter", to_string(dayCounter_));
+    XMLUtils::addChild(doc, node, "Lag", to_string(lag_));
+    XMLUtils::addChild(doc, node, "Frequency", to_string(frequency_));
+    XMLUtils::addChild(doc, node, "BaseRate", baseRateStr);
+    XMLUtils::addChild(doc, node, "Tolerance", tolerance_);
 
-    XMLNode* seasonalityNode = XMLUtils::addChild(doc, node, "Seasonality");
     if (seasonalityBaseDate_ != QuantLib::Null<Date>()) {
-        std::ostringstream dateStr;
+        XMLNode* seasonalityNode = XMLUtils::addChild(doc, node, "Seasonality");
+        std::ostringstream dateStr, sFreq;
         dateStr << QuantLib::io::iso_date(seasonalityBaseDate_);
+        sFreq << seasonalityFrequency_;
         XMLUtils::addChild(doc, seasonalityNode, "BaseDate", dateStr.str());
-        XMLUtils::addChild(doc, seasonalityNode, "Frequency", seasonalityFrequency_);
-        XMLUtils::addChildren(doc, seasonalityNode, "Factors", "Factor", seasonalityFactors_);
+        XMLUtils::addChild(doc, seasonalityNode, "Frequency", sFreq.str());
+        if (!seasonalityFactors_.empty())
+            XMLUtils::addChildren(doc, seasonalityNode, "Factors", "Factor", seasonalityFactors_);
+        if (!overrideSeasonalityFactors_.empty())
+            XMLUtils::addChild(doc, seasonalityNode, "OverrideFactors", overrideSeasonalityFactors_);
     }
 
     return node;
 }
-}
-}
+} // namespace data
+} // namespace ore

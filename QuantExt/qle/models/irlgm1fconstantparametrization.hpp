@@ -30,22 +30,22 @@ namespace QuantExt {
 
 //! LGM 1F Constant Parametrization
 /*! \ingroup models
-*/
+ */
 template <class TS> class Lgm1fConstantParametrization : public Lgm1fParametrization<TS> {
 public:
     Lgm1fConstantParametrization(const Currency& currency, const Handle<TS>& termStructure, const Real alpha,
-                                 const Real kappa);
-    Real zeta(const Time t) const;
-    Real H(const Time t) const;
-    Real alpha(const Time t) const;
-    Real kappa(const Time t) const;
-    Real Hprime(const Time t) const;
-    Real Hprime2(const Time t) const;
-    const boost::shared_ptr<Parameter> parameter(const Size) const;
+                                 const Real kappa, const std::string& name = std::string());
+    Real zeta(const Time t) const override;
+    Real H(const Time t) const override;
+    Real alpha(const Time t) const override;
+    Real kappa(const Time t) const override;
+    Real Hprime(const Time t) const override;
+    Real Hprime2(const Time t) const override;
+    const boost::shared_ptr<Parameter> parameter(const Size) const override;
 
 protected:
-    Real direct(const Size i, const Real x) const;
-    Real inverse(const Size j, const Real y) const;
+    Real direct(const Size i, const Real x) const override;
+    Real inverse(const Size j, const Real y) const override;
 
 private:
     const boost::shared_ptr<PseudoParameter> alpha_, kappa_;
@@ -57,8 +57,8 @@ private:
 template <class TS>
 Lgm1fConstantParametrization<TS>::Lgm1fConstantParametrization(const Currency& currency,
                                                                const Handle<TS>& termStructure, const Real alpha,
-                                                               const Real kappa)
-    : Lgm1fParametrization<TS>(currency, termStructure), alpha_(boost::make_shared<PseudoParameter>(1)),
+                                                               const Real kappa, const std::string& name)
+    : Lgm1fParametrization<TS>(currency, termStructure, name), alpha_(boost::make_shared<PseudoParameter>(1)),
       kappa_(boost::make_shared<PseudoParameter>(1)), zeroKappaCutoff_(1.0E-6) {
     alpha_->setParam(0, inverse(0, alpha));
     kappa_->setParam(0, inverse(1, kappa));

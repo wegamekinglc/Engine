@@ -23,68 +23,91 @@
 
 #pragma once
 
+#include <ored/configuration/curveconfig.hpp>
+#include <ored/configuration/onedimsolverconfig.hpp>
+#include <ored/configuration/volatilityconfig.hpp>
+#include <ored/configuration/reportconfig.hpp>
+#include <ored/marketdata/marketdatum.hpp>
+#include <ored/utilities/parsers.hpp>
+#include <ql/time/daycounters/actual365fixed.hpp>
 #include <ql/types.hpp>
-#include <ored/utilities/xmlutils.hpp>
-
-using std::string;
-using std::vector;
-using ore::data::XMLSerializable;
-using ore::data::XMLNode;
-using ore::data::XMLDocument;
-using QuantLib::Period;
 
 namespace ore {
 namespace data {
+using ore::data::XMLNode;
+using QuantLib::DayCounter;
+using QuantLib::Period;
+using std::string;
+using std::vector;
 
 //! Equity volatility structure configuration
 /*!
   \ingroup configuration
 */
-class EquityVolatilityCurveConfig : public XMLSerializable {
+class EquityVolatilityCurveConfig : public CurveConfig {
 public:
-    //! supported volatility structure types
-    enum class Dimension { ATM, Smile };
-
     //! \name Constructors/Destructors
     //@{
     //! Default constructor
     EquityVolatilityCurveConfig() {}
     //! Detailed constructor
     EquityVolatilityCurveConfig(const string& curveID, const string& curveDescription, const string& currency,
-                                const Dimension& dimension, const vector<string>& expiries);
-    //! Default destructor
-    virtual ~EquityVolatilityCurveConfig() {}
+                                const std::vector<boost::shared_ptr<VolatilityConfig>>& volatilityConfig,
+                                const string& dayCounter = "A365", const string& calendar = "NullCalendar",
+                                const OneDimSolverConfig& solverConfig = OneDimSolverConfig(),
+                                const boost::optional<bool>& preferOutOfTheMoney = boost::none,
+				const std::string& smileDynamics = "");
+    EquityVolatilityCurveConfig(const string& curveID, const string& curveDescription, const string& currency,
+                                const boost::shared_ptr<VolatilityConfig>& volatilityConfig,
+                                const string& dayCounter = "A365", const string& calendar = "NullCalendar",
+                                const OneDimSolverConfig& solverConfig = OneDimSolverConfig(),
+                                const boost::optional<bool>& preferOutOfTheMoney = boost::none,
+				const std::string& smileDynamics = "");
     //@}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    void fromXML(XMLNode* node) override;
+    XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const string& curveID() const { return curveID_; }
-    const string& curveDescription() const { return curveDescription_; }
-    const string& ccy() const { return ccy_; }
-    const Dimension& dimension() const { return dimension_; }
-    const vector<string>& expiries() const { return expiries_; }
+    const string& ccy() const { return parseCurrencyWithMinors(ccy_).code(); }
+    const string& dayCounter() const { return dayCounter_; }
+    const string& calendar() const { return calendar_; }
+    const std::vector<boost::shared_ptr<VolatilityConfig>>& volatilityConfig() const { return volatilityConfig_; }
+    const string quoteStem(const std::string& volType) const;
+    void populateQuotes();
+    bool isProxySurface();
+    OneDimSolverConfig solverConfig() const;
+    const boost::optional<bool>& preferOutOfTheMoney() const {
+        return preferOutOfTheMoney_;
+    }
+    const std::string& smileDynamics() const { return smileDynamics_; }
+    const ReportConfig& reportConfig() const { return reportConfig_; }
     //@}
 
     //! \name Setters
     //@{
-    string& curveID() { return curveID_; }
-    string& curveDescription() { return curveDescription_; }
     string& ccy() { return ccy_; }
-    Dimension& dimension() { return dimension_; }
-    vector<string>& expiries() { return expiries_; }
+    string& dayCounter() { return dayCounter_; }
     //@}
+
 private:
-    string curveID_;
-    string curveDescription_;
+    void populateRequiredCurveIds();
+
     string ccy_;
-    Dimension dimension_;
-    vector<string> expiries_;
+    std::vector<boost::shared_ptr<VolatilityConfig>> volatilityConfig_;
+    string dayCounter_;
+    string calendar_;
+    OneDimSolverConfig solverConfig_;
+    boost::optional<bool> preferOutOfTheMoney_;
+    std::string smileDynamics_;
+    ReportConfig reportConfig_;
+
+    // Return a default solver configuration. Used by solverConfig() if solverConfig_ is empty.
+    static OneDimSolverConfig defaultSolverConfig();
 };
-}
-}
+} // namespace data
+} // namespace ore

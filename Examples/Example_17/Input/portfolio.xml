@@ -1,6 +1,78 @@
 <?xml version="1.0"?>
 <Portfolio>
-  <Trade id="CPI_Swap">
+  <Trade id="CPI_Swap_1">
+    <TradeType>Swap</TradeType>
+    <Envelope>
+      <CounterParty>CPTY_A</CounterParty>
+      <NettingSetId>CPTY_A</NettingSetId>
+      <AdditionalFields/>
+    </Envelope>
+    <SwapData>
+      <LegData>
+        <LegType>ZeroCouponFixed</LegType>
+        <Payer>true</Payer>
+        <Currency>GBP</Currency>
+        <DayCounter>Year</DayCounter>
+        <PaymentConvention>Unadjusted</PaymentConvention>
+        <Notionals>
+          <Notional>10000000</Notional>
+        </Notionals>
+        <ScheduleData>
+          <Rules>
+            <StartDate>2016-02-05</StartDate>
+            <EndDate>2036-02-05</EndDate>
+            <Tenor>20Y</Tenor>
+            <Calendar>TARGET</Calendar>
+            <Convention>MF</Convention>
+            <TermConvention>MF</TermConvention>
+            <Rule>Zero</Rule>
+            <EndOfMonth/>
+            <FirstDate/>
+            <LastDate/>
+          </Rules>
+        </ScheduleData>
+        <ZeroCouponFixedLegData>
+		  <Rates>
+            <Rate>0.056467309</Rate>
+          </Rates>
+          <Compounding>Compounded</Compounding>
+        </ZeroCouponFixedLegData>
+	  </LegData>
+      <LegData>
+        <LegType>CPI</LegType>
+        <Payer>false</Payer>
+        <Currency>GBP</Currency>
+        <Notionals>
+          <Notional>10000000</Notional>
+		  <Exchanges>
+		    <NotionalFinalExchange>true</NotionalFinalExchange>
+		  </Exchanges>
+        </Notionals>
+        <DayCounter>ACT/ACT</DayCounter>
+        <PaymentConvention>Following</PaymentConvention>
+        <ScheduleData>
+          <Dates>
+		    <Calendar>UK</Calendar>
+		    <Dates>
+			  <Date>2036-02-05</Date>
+			</Dates>
+          </Dates>
+        </ScheduleData>
+        <CPILegData>
+          <Index>UKRPI</Index>
+          <Rates>
+            <Rate>1</Rate>
+          </Rates>
+          <BaseCPI>210</BaseCPI>
+	  <StartDate>2016-02-05</StartDate>
+          <ObservationLag>2M</ObservationLag>
+          <Interpolation>AsIndex</Interpolation>
+	  <SubtractInflationNotional>false</SubtractInflationNotional>
+        </CPILegData>
+      </LegData>
+    </SwapData>
+  </Trade>
+  <Trade id="CPI_Swap_2">
     <TradeType>Swap</TradeType>
     <Envelope>
       <CounterParty>CPTY_A</CounterParty>
@@ -68,8 +140,9 @@
             <Rate>0.02</Rate>
           </Rates>
           <BaseCPI>210</BaseCPI>
+	  <StartDate>2016-07-18</StartDate>
           <ObservationLag>2M</ObservationLag>
-          <Interpolated>false</Interpolated>
+          <Interpolation>AsIndex</Interpolation>
         </CPILegData>
       </LegData>
     </SwapData>
@@ -83,29 +156,27 @@
     </Envelope>
     <SwapData>
       <LegData>
-        <LegType>Floating</LegType>
+        <LegType>Fixed</LegType>
         <Payer>true</Payer>
         <Currency>EUR</Currency>
         <Notionals>
-          <Notional>10000000</Notional>
+          <Notional>10000000.000000</Notional>
         </Notionals>
-        <DayCounter>ACT/360</DayCounter>
-        <PaymentConvention>ModifiedFollowing</PaymentConvention>
-        <FloatingLegData>
-          <Index>EUR-EURIBOR-6M</Index>
-          <Spreads>
-            <Spread>0.0</Spread>
-          </Spreads>
-          <IsInArrears>false</IsInArrears>
-        </FloatingLegData>
+        <DayCounter>30/360</DayCounter>
+        <PaymentConvention>F</PaymentConvention>
+        <FixedLegData>
+          <Rates>
+            <Rate>0.008375</Rate>
+          </Rates>
+        </FixedLegData>
         <ScheduleData>
           <Rules>
-            <StartDate>2016-07-18</StartDate>
-            <EndDate>2021-07-18</EndDate>
-            <Tenor>6M</Tenor>
+            <StartDate>2016-02-05</StartDate>
+            <EndDate>2021-02-05</EndDate>
+            <Tenor>1Y</Tenor>
             <Calendar>TARGET</Calendar>
-            <Convention>ModifiedFollowing</Convention>
-            <TermConvention>ModifiedFollowing</TermConvention>
+            <Convention>F</Convention>
+            <TermConvention>F</TermConvention>
             <Rule>Forward</Rule>
             <EndOfMonth/>
             <FirstDate/>
@@ -124,8 +195,8 @@
         <PaymentConvention>Following</PaymentConvention>
         <ScheduleData>
           <Rules>
-            <StartDate>2016-07-18</StartDate>
-            <EndDate>2021-07-18</EndDate>
+            <StartDate>2016-02-05</StartDate>
+            <EndDate>2021-02-05</EndDate>
             <Tenor>1Y</Tenor>
             <Calendar>UK</Calendar>
             <Convention>ModifiedFollowing</Convention>
@@ -140,7 +211,6 @@
           <Index>EUHICPXT</Index>
           <FixingDays>2</FixingDays>
           <ObservationLag>2M</ObservationLag>
-          <Interpolated>true</Interpolated>
         </YYLegData>
       </LegData>
     </SwapData>

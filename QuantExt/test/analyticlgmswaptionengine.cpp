@@ -16,14 +16,63 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "analyticlgmswaptionengine.hpp"
+#include "utilities.hpp"
 
-#include <qle/models/all.hpp>
-#include <qle/pricingengines/all.hpp>
+#include "toplevelfixture.hpp"
+#include <boost/test/unit_test.hpp>
+#include <qle/models/cdsoptionhelper.hpp>
+#include <qle/models/cpicapfloorhelper.hpp>
+#include <qle/models/crlgm1fparametrization.hpp>
+#include <qle/models/crossassetanalytics.hpp>
+#include <qle/models/crossassetanalyticsbase.hpp>
+#include <qle/models/crossassetmodel.hpp>
+#include <qle/models/crossassetmodelimpliedeqvoltermstructure.hpp>
+#include <qle/models/crossassetmodelimpliedfxvoltermstructure.hpp>
+#include <qle/models/dkimpliedyoyinflationtermstructure.hpp>
+#include <qle/models/dkimpliedzeroinflationtermstructure.hpp>
+#include <qle/models/eqbsconstantparametrization.hpp>
+#include <qle/models/eqbsparametrization.hpp>
+#include <qle/models/eqbspiecewiseconstantparametrization.hpp>
+#include <qle/models/fxbsconstantparametrization.hpp>
+#include <qle/models/fxbsparametrization.hpp>
+#include <qle/models/fxbspiecewiseconstantparametrization.hpp>
+#include <qle/models/fxeqoptionhelper.hpp>
+#include <qle/models/gaussian1dcrossassetadaptor.hpp>
+#include <qle/models/infdkparametrization.hpp>
+#include <qle/models/irlgm1fconstantparametrization.hpp>
+#include <qle/models/irlgm1fparametrization.hpp>
+#include <qle/models/irlgm1fpiecewiseconstanthullwhiteadaptor.hpp>
+#include <qle/models/irlgm1fpiecewiseconstantparametrization.hpp>
+#include <qle/models/irlgm1fpiecewiselinearparametrization.hpp>
+#include <qle/models/lgm.hpp>
+#include <qle/models/lgmimplieddefaulttermstructure.hpp>
+#include <qle/models/lgmimpliedyieldtermstructure.hpp>
+#include <qle/models/linkablecalibratedmodel.hpp>
+#include <qle/models/parametrization.hpp>
+#include <qle/models/piecewiseconstanthelper.hpp>
+#include <qle/models/pseudoparameter.hpp>
+#include <qle/pricingengines/analyticcclgmfxoptionengine.hpp>
+#include <qle/pricingengines/analyticdkcpicapfloorengine.hpp>
+#include <qle/pricingengines/analyticlgmcdsoptionengine.hpp>
+#include <qle/pricingengines/analyticlgmswaptionengine.hpp>
+#include <qle/pricingengines/analyticxassetlgmeqoptionengine.hpp>
+#include <qle/pricingengines/blackcdsoptionengine.hpp>
+#include <qle/pricingengines/crossccyswapengine.hpp>
+#include <qle/pricingengines/depositengine.hpp>
+#include <qle/pricingengines/discountingcommodityforwardengine.hpp>
+#include <qle/pricingengines/discountingcurrencyswapengine.hpp>
+#include <qle/pricingengines/discountingequityforwardengine.hpp>
+#include <qle/pricingengines/discountingfxforwardengine.hpp>
+#include <qle/pricingengines/discountingriskybondengine.hpp>
+#include <qle/pricingengines/discountingswapenginemulticurve.hpp>
+#include <qle/pricingengines/midpointcdsengine.hpp>
+#include <qle/pricingengines/numericlgmmultilegoptionengine.hpp>
+#include <qle/pricingengines/oiccbasisswapengine.hpp>
+#include <qle/pricingengines/paymentdiscountingengine.hpp>
 
 #include <ql/currencies/europe.hpp>
-#include <ql/instruments/makeswaption.hpp>
 #include <ql/indexes/swap/euriborswap.hpp>
+#include <ql/instruments/makeswaption.hpp>
 #include <ql/math/array.hpp>
 #include <ql/math/comparison.hpp>
 #include <ql/models/shortrate/onefactormodels/gsr.hpp>
@@ -35,18 +84,23 @@
 #include <ql/time/calendars/nullcalendar.hpp>
 #include <ql/time/calendars/target.hpp>
 
-#include <test-suite/utilities.hpp>
-
 #include <boost/make_shared.hpp>
 
 using namespace QuantLib;
 using namespace QuantExt;
 
-using boost::unit_test_framework::test_suite;
+namespace {
+struct F : public qle::test::TopLevelFixture {
+    F() { Settings::instance().evaluationDate() = Date(20, March, 2019); }
+    ~F() {}
+};
+} // namespace
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(QuantExtTestSuite, qle::test::TopLevelFixture)
 
-void AnalyticLgmSwaptionEngineTest::testMonoCurve() {
+BOOST_FIXTURE_TEST_SUITE(AnalyticLgmSwaptionEngineTest, F)
+
+BOOST_AUTO_TEST_CASE(testMonoCurve) {
 
     BOOST_TEST_MESSAGE("Testing analytic LGM swaption engine coupon "
                        "adjustments in mono curve setup...");
@@ -152,7 +206,7 @@ void AnalyticLgmSwaptionEngineTest::testMonoCurve() {
     }
 }
 
-void AnalyticLgmSwaptionEngineTest::testDualCurve() {
+BOOST_AUTO_TEST_CASE(testDualCurve) {
 
     BOOST_TEST_MESSAGE("Testing analytic LGM swaption engine coupon "
                        "adjustments in dual curve setup...");
@@ -257,7 +311,7 @@ void AnalyticLgmSwaptionEngineTest::testDualCurve() {
     }
 }
 
-void AnalyticLgmSwaptionEngineTest::testAgainstOtherEngines() {
+BOOST_AUTO_TEST_CASE(testAgainstOtherEngines) {
 
     BOOST_TEST_MESSAGE("Testing analytic LGM swaption engine against "
                        "G1d adaptor / Gsr integral and Hull White fd engines...");
@@ -280,10 +334,10 @@ void AnalyticLgmSwaptionEngineTest::testAgainstOtherEngines() {
 
     Size no = 0;
 
-    // tolerance for comparision fd engine vs integral engines
+    // tolerance for comparison FD engine vs integral engines
     Real tol1 = 3.0E-4;
 
-    // tolerance for comparision of integral engines based
+    // tolerance for comparison of integral engines based
     // on GSR and LGM model
     Real tol2 = 1.0E-4;
 
@@ -421,7 +475,7 @@ void AnalyticLgmSwaptionEngineTest::testAgainstOtherEngines() {
     }
 } // testAgainstOtherEngines
 
-void AnalyticLgmSwaptionEngineTest::testLgmInvariances() {
+BOOST_AUTO_TEST_CASE(testLgmInvariances) {
 
     BOOST_TEST_MESSAGE("Testing LGM model invariances in the analytic LGM "
                        "swaption engine...");
@@ -514,12 +568,6 @@ void AnalyticLgmSwaptionEngineTest::testLgmInvariances() {
     }
 } // testInvariances
 
-test_suite* AnalyticLgmSwaptionEngineTest::suite() {
-    test_suite* suite = BOOST_TEST_SUITE("Analytic LGM swaption engine tests");
-    suite->add(QUANTLIB_TEST_CASE(&AnalyticLgmSwaptionEngineTest::testMonoCurve));
-    suite->add(QUANTLIB_TEST_CASE(&AnalyticLgmSwaptionEngineTest::testDualCurve));
-    suite->add(QUANTLIB_TEST_CASE(&AnalyticLgmSwaptionEngineTest::testAgainstOtherEngines));
-    suite->add(QUANTLIB_TEST_CASE(&AnalyticLgmSwaptionEngineTest::testLgmInvariances));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

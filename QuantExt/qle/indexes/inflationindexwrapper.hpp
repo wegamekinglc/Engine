@@ -18,6 +18,7 @@
 
 /*! \file inflationindexwrapper.hpp
     \brief wrapper classes for inflation yoy and interpolation
+    \ingroup indexes
 */
 
 #ifndef quantext_inflation_index_wrapper_hpp
@@ -27,19 +28,20 @@
 #include <ql/cashflows/inflationcouponpricer.hpp>
 #include <ql/indexes/inflationindex.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Wrapper that changes the interpolation of an underlying ZC inflation index
 /*! The (possible) change in the interpolation is _not_ reflected in the index class itself,
-  only the fixing methods behave consistently */
+  only the fixing methods behave consistently
+ \ingroup indexes
+ */
 class ZeroInflationIndexWrapper : public ZeroInflationIndex {
 public:
     ZeroInflationIndexWrapper(const boost::shared_ptr<ZeroInflationIndex> source,
                               const CPI::InterpolationType interpolation);
     /*! \warning the forecastTodaysFixing parameter (required by the Index interface) is currently ignored. */
-    Rate fixing(const Date& fixingDate, bool forecastTodaysFixing = false) const;
+    Rate fixing(const Date& fixingDate, bool forecastTodaysFixing = false) const override;
 
 private:
     Rate forecastFixing(const Date& fixingDate) const;
@@ -57,36 +59,21 @@ private:
   - the interpolated flag for historical fixings
   - the interpolated flag for forecasted fixings if a yoy ts is given
   - the underlying zero index behaviour for forecasted fixings if no yoy ts is given
+\ingroup indexes
 */
 class YoYInflationIndexWrapper : public YoYInflationIndex {
 public:
     YoYInflationIndexWrapper(const boost::shared_ptr<ZeroInflationIndex> zeroIndex, const bool interpolated,
                              const Handle<YoYInflationTermStructure>& ts = Handle<YoYInflationTermStructure>());
     /*! \warning the forecastTodaysFixing parameter (required by the Index interface) is currently ignored. */
-    Rate fixing(const Date& fixingDate, bool forecastTodaysFixing = false) const;
+    Rate fixing(const Date& fixingDate, bool forecastTodaysFixing = false) const override;
+    const boost::shared_ptr<ZeroInflationIndex> zeroIndex() const { return zeroIndex_; }
 
 private:
     Rate forecastFixing(const Date& fixingDate) const;
     const boost::shared_ptr<ZeroInflationIndex> zeroIndex_;
 };
 
-//! YY coupon pricer that takes the nominal ts directly instead of reading it from the yoy ts
-/*! This is useful if no yoy ts is given, as it might be the case of the yoy inflation index wrapper */
-class YoYInflationCouponPricer2 : public YoYInflationCouponPricer {
-public:
-    YoYInflationCouponPricer2(
-        const Handle<YieldTermStructure>& nominalTs,
-        const Handle<YoYOptionletVolatilitySurface>& capletVol = Handle<YoYOptionletVolatilitySurface>())
-        : YoYInflationCouponPricer(capletVol), nominalTs_(nominalTs) {}
-    //! \name InflationCouponPricer interface
-    //@{
-    virtual void initialize(const InflationCoupon&);
-    //@}
-
-protected:
-    const Handle<YieldTermStructure> nominalTs_;
-};
-
-} // namesapce QuantExt
+} // namespace QuantExt
 
 #endif

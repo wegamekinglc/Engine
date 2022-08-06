@@ -42,7 +42,7 @@ namespace QuantExt {
     its Handle is empty) or both.
 
     The currencies are deduced from the ibor indexes. The spotFx
-    be be quoted with either of these currencies, this is determined
+    to be quoted with either of these currencies, this is determined
     by the flatIsDomestic flag. The settlement date of the spot is
     assumed to be equal to the settlement date of the swap itself.
 
@@ -50,18 +50,28 @@ namespace QuantExt {
 */
 class CrossCcyBasisSwapHelper : public RelativeDateRateHelper {
 public:
-    CrossCcyBasisSwapHelper(const Handle<Quote>& spreadQuote, const Handle<Quote>& spotFX, Natural settlementDays,
-                            const Calendar& settlementCalendar, const Period& swapTenor,
-                            BusinessDayConvention rollConvention,
-                            const boost::shared_ptr<QuantLib::IborIndex>& flatIndex,
-                            const boost::shared_ptr<QuantLib::IborIndex>& spreadIndex,
-                            const Handle<YieldTermStructure>& flatDiscountCurve,
-                            const Handle<YieldTermStructure>& spreadDiscountCurve, bool eom = false,
-                            bool flatIsDomestic = true);
+    CrossCcyBasisSwapHelper(
+        const Handle<Quote>& spreadQuote, const Handle<Quote>& spotFX, Natural settlementDays,
+        const Calendar& settlementCalendar, const Period& swapTenor, BusinessDayConvention rollConvention,
+        const boost::shared_ptr<QuantLib::IborIndex>& flatIndex,
+        const boost::shared_ptr<QuantLib::IborIndex>& spreadIndex, const Handle<YieldTermStructure>& flatDiscountCurve,
+        const Handle<YieldTermStructure>& spreadDiscountCurve, bool eom = false, bool flatIsDomestic = true,
+        boost::optional<QuantLib::Period> flatTenor = boost::none,
+        boost::optional<QuantLib::Period> spreadTenor = boost::none, Real spreadOnFlatLeg = 0.0, Real flatGearing = 1.0,
+        Real spreadGearing = 1.0, const Calendar& flatCalendar = Calendar(),
+        const Calendar& spreadCalendar = Calendar(),
+        const std::vector<Natural>& spotFXSettleDaysVec = std::vector<Natural>(),
+        const std::vector<Calendar>& spotFXSettleCalendar = std::vector<Calendar>(), Size paymentLag = 0,
+        Size flatPaymentLag = 0, boost::optional<bool> includeSpread = boost::none,
+        boost::optional<Period> lookback = boost::none, boost::optional<Size> fixingDays = boost::none,
+        boost::optional<Size> rateCutoff = boost::none, boost::optional<bool> isAveraged = boost::none,
+        boost::optional<bool> flatIncludeSpread = boost::none, boost::optional<Period> flatLookback = boost::none,
+        boost::optional<Size> flatFixingDays = boost::none, boost::optional<Size> flatRateCutoff = boost::none,
+        boost::optional<bool> flatIsAveraged = boost::none, const bool telescopicValueDates = false);
     //! \name RateHelper interface
     //@{
-    Real impliedQuote() const;
-    void setTermStructure(YieldTermStructure*);
+    Real impliedQuote() const override;
+    void setTermStructure(YieldTermStructure*) override;
     //@}
     //! \name inspectors
     //@{
@@ -69,11 +79,11 @@ public:
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 
 protected:
-    void initializeDates();
+    void initializeDates() override;
 
     Handle<Quote> spotFX_;
     Natural settlementDays_;
@@ -84,7 +94,31 @@ protected:
     boost::shared_ptr<QuantLib::IborIndex> spreadIndex_;
     Handle<YieldTermStructure> flatDiscountCurve_;
     Handle<YieldTermStructure> spreadDiscountCurve_;
-    bool eom_, flatIsDomestic_;
+    bool eom_;
+    bool flatIsDomestic_;
+    QuantLib::Period flatTenor_;
+    QuantLib::Period spreadTenor_;
+    Real spreadOnFlatLeg_;
+    Real flatGearing_;
+    Real spreadGearing_;
+    Calendar flatCalendar_;
+    Calendar spreadCalendar_;
+    std::vector<Natural> spotFXSettleDaysVec_;
+    std::vector<Calendar> spotFXSettleCalendarVec_;
+
+    Size paymentLag_;
+    Size flatPaymentLag_;
+    // OIS only
+    boost::optional<bool> includeSpread_;
+    boost::optional<QuantLib::Period> lookback_;
+    boost::optional<QuantLib::Size> fixingDays_;
+    boost::optional<Size> rateCutoff_;
+    boost::optional<bool> isAveraged_;
+    boost::optional<bool> flatIncludeSpread_;
+    boost::optional<QuantLib::Period> flatLookback_;
+    boost::optional<QuantLib::Size> flatFixingDays_;
+    boost::optional<Size> flatRateCutoff_;
+    boost::optional<bool> flatIsAveraged_;
 
     Currency flatLegCurrency_;
     Currency spreadLegCurrency_;
@@ -93,7 +127,9 @@ protected:
     RelinkableHandle<YieldTermStructure> termStructureHandle_;
     RelinkableHandle<YieldTermStructure> flatDiscountRLH_;
     RelinkableHandle<YieldTermStructure> spreadDiscountRLH_;
+
+    bool telescopicValueDates_;
 };
-}
+} // namespace QuantExt
 
 #endif

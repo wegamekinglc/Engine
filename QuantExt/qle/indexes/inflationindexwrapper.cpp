@@ -42,10 +42,9 @@ Rate ZeroInflationIndexWrapper::fixing(const Date& fixingDate, bool /*forecastTo
         if (interpolation_ == CPI::Linear) {
             Real indexEnd = source_->fixing(dd.second + Period(1, Days));
             // linear interpolation
-            return indexStart +
-                   (indexEnd - indexStart) * (fixingDate - dd.first) /
-                       ((dd.second + Period(1, Days)) -
-                        dd.first); // can't get to next period's value within current period
+            return indexStart + (indexEnd - indexStart) * (fixingDate - dd.first) /
+                                    ((dd.second + Period(1, Days)) -
+                                     dd.first); // can't get to next period's value within current period
         } else {
             // no interpolation, i.e. flat = constant, so use start-of-period value
             return indexStart;
@@ -57,28 +56,17 @@ YoYInflationIndexWrapper::YoYInflationIndexWrapper(const boost::shared_ptr<ZeroI
                                                    const bool interpolated, const Handle<YoYInflationTermStructure>& ts)
     : YoYInflationIndex(zeroIndex->familyName(), zeroIndex->region(), zeroIndex->revised(), interpolated, true,
                         zeroIndex->frequency(), zeroIndex->availabilityLag(), zeroIndex->currency(), ts),
-      zeroIndex_(zeroIndex) {}
+      zeroIndex_(zeroIndex) {
+    registerWith(zeroIndex_);
+}
 
 Rate YoYInflationIndexWrapper::fixing(const Date& fixingDate, bool /*forecastTodaysFixing*/) const {
 
     // duplicated logic from YoYInflationIndex, this would not be necessary, if forecastFixing
     // was defined virtual in InflationIndex
-    Date today = Settings::instance().evaluationDate();
-    Date todayMinusLag = today - availabilityLag_;
-    std::pair<Date, Date> lim = inflationPeriod(todayMinusLag, frequency_);
-    Date lastFix = lim.first - 1;
-
-    Date flatMustForecastOn = lastFix + 1;
-    Date interpMustForecastOn = lastFix + 1 - Period(frequency_);
-
-    if (interpolated() && fixingDate >= interpMustForecastOn) {
+    if (needsForecast(fixingDate)) {
         return forecastFixing(fixingDate);
     }
-
-    if (!interpolated() && fixingDate >= flatMustForecastOn) {
-        return forecastFixing(fixingDate);
-    }
-
     // historical fixing
     return YoYInflationIndex::fixing(fixingDate);
 }
@@ -91,25 +79,4 @@ Real YoYInflationIndexWrapper::forecastFixing(const Date& fixingDate) const {
     return (f1 - f0) / f0;
 }
 
-void YoYInflationCouponPricer2::initialize(const InflationCoupon& coupon) {
-    // duplicated logic from YoYInflationCouponPricer
-    coupon_ = dynamic_cast<const YoYInflationCoupon*>(&coupon);
-    QL_REQUIRE(coupon_, "year-on-year inflation coupon needed");
-    gearing_ = coupon_->gearing();
-    spread_ = coupon_->spread();
-    paymentDate_ = coupon_->date();
-
-    // this is different from QuantLib::YoYInflationCouponPricer
-    rateCurve_ = nominalTs_;
-
-    // past or future fixing is managed in YoYInflationIndex::fixing()
-    // use yield curve from index (which sets discount)
-
-    discount_ = 1.0;
-    if (paymentDate_ > rateCurve_->referenceDate())
-        discount_ = rateCurve_->discount(paymentDate_);
-
-    spreadLegValue_ = spread_ * coupon_->accrualPeriod() * discount_;
-}
-
-} // namesapce QuantExt
+} // namespace QuantExt

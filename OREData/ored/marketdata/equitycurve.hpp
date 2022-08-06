@@ -23,18 +23,19 @@
 
 #pragma once
 
-#include <ored/marketdata/loader.hpp>
-#include <ored/marketdata/curvespec.hpp>
-#include <ored/marketdata/yieldcurve.hpp>
 #include <ored/configuration/conventions.hpp>
 #include <ored/configuration/curveconfigurations.hpp>
-
-using QuantLib::Date;
-using ore::data::CurveConfigurations;
-using ore::data::Conventions;
+#include <ored/marketdata/curvespec.hpp>
+#include <ored/marketdata/loader.hpp>
+#include <ored/marketdata/todaysmarketcalibrationinfo.hpp>
+#include <ored/marketdata/yieldcurve.hpp>
+#include <qle/indexes/equityindex.hpp>
 
 namespace ore {
 namespace data {
+using ore::data::Conventions;
+using ore::data::CurveConfigurations;
+using QuantLib::Date;
 
 //! Wrapper class for building Equity curves (spot quote, yield term structure, risk free IR term structure)
 /*!
@@ -48,22 +49,24 @@ public:
     EquityCurve() {}
     //! Detailed constructor
     EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, const CurveConfigurations& curveConfigs,
-                const Conventions& conventions);
+                const map<string, boost::shared_ptr<YieldCurve>>& requiredYieldCurves, const bool buildCalibrationInfo);
     //@}
     //! \name Inspectors
     //@{
-    const EquityCurveSpec& spec() const { return spec_; }
-    boost::shared_ptr<YieldTermStructure> divYieldTermStructure(const Date& asof,
-                                                                const Handle<YieldTermStructure>& equityIrCurve) const;
-    const Real equitySpot() const { return equitySpot_; }
+    const EquityCurveSpec& spec() const { return spec_; };
+    boost::shared_ptr<QuantExt::EquityIndex> equityIndex() const { return equityIndex_; };
+    boost::shared_ptr<YieldCurveCalibrationInfo> calibrationInfo() const { return calibrationInfo_; }
     //@}
 private:
     EquityCurveSpec spec_;
-    Real equitySpot_;
     EquityCurveConfig::Type curveType_;
     vector<Real> quotes_;
     vector<Date> terms_;
     DayCounter dc_;
+    YieldCurve::InterpolationVariable dividendInterpVariable_;
+    YieldCurve::InterpolationMethod dividendInterpMethod_;
+    boost::shared_ptr<QuantExt::EquityIndex> equityIndex_;
+    boost::shared_ptr<YieldCurveCalibrationInfo> calibrationInfo_;
 };
-}
-}
+} // namespace data
+} // namespace ore

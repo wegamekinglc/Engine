@@ -17,10 +17,9 @@
 */
 
 #include <boost/lexical_cast.hpp>
-#include <boost/timer.hpp>
 #include <orea/cube/inmemorycube.hpp>
-#include <orea/engine/valuationengine.hpp>
 #include <orea/engine/stresstest.hpp>
+#include <orea/engine/valuationengine.hpp>
 #include <orea/scenario/clonescenariofactory.hpp>
 #include <ored/utilities/log.hpp>
 #include <ql/errors.hpp>
@@ -32,11 +31,11 @@
 #include <ql/pricingengines/capfloor/blackcapfloorengine.hpp>
 #include <ql/pricingengines/swap/discountingswapengine.hpp>
 #include <ql/termstructures/yield/oisratehelper.hpp>
-#include <qle/instruments/deposit.hpp>
-#include <qle/pricingengines/depositengine.hpp>
 #include <qle/instruments/crossccybasisswap.hpp>
-#include <qle/pricingengines/crossccyswapengine.hpp>
+#include <qle/instruments/deposit.hpp>
 #include <qle/instruments/fxforward.hpp>
+#include <qle/pricingengines/crossccyswapengine.hpp>
+#include <qle/pricingengines/depositengine.hpp>
 #include <qle/pricingengines/discountingfxforwardengine.hpp>
 
 #include <iomanip>
@@ -51,35 +50,41 @@ namespace ore {
 namespace analytics {
 
 StressTest::StressTest(const boost::shared_ptr<ore::data::Portfolio>& portfolio,
-                       boost::shared_ptr<ore::data::Market>& market, const string& marketConfiguration,
+                       const boost::shared_ptr<ore::data::Market>& market, const string& marketConfiguration,
                        const boost::shared_ptr<ore::data::EngineData>& engineData,
                        boost::shared_ptr<ScenarioSimMarketParameters>& simMarketData,
-                       const boost::shared_ptr<StressTestScenarioData>& stressData, const Conventions& conventions,
-                       boost::shared_ptr<ScenarioFactory> scenarioFactory) {
+                       const boost::shared_ptr<StressTestScenarioData>& stressData, 
+                       const CurveConfigurations& curveConfigs, const TodaysMarketParameters& todaysMarketParams,
+                       boost::shared_ptr<ScenarioFactory> scenarioFactory,
+                       std::vector<boost::shared_ptr<ore::data::EngineBuilder>> extraEngineBuilders,
+                       std::vector<boost::shared_ptr<ore::data::LegBuilder>> extraLegBuilders,
+                       const boost::shared_ptr<ReferenceDataManager>& referenceData,
+                       const IborFallbackConfig& iborFallbackConfig, bool continueOnError) {
+
+    LOG("Build Simulation Market");
+    boost::shared_ptr<ScenarioSimMarket> simMarket = boost::make_shared<ScenarioSimMarket>(
+        market, simMarketData, Market::defaultConfiguration, curveConfigs, todaysMarketParams,
+        continueOnError, false, false, false, iborFallbackConfig);
 
     LOG("Build Stress Scenario Generator");
     Date asof = market->asofDate();
+    boost::shared_ptr<Scenario> baseScenario = simMarket->baseScenario();
+    scenarioFactory = scenarioFactory ? scenarioFactory : boost::make_shared<CloneScenarioFactory>(baseScenario);
     boost::shared_ptr<StressScenarioGenerator> scenarioGenerator =
-        boost::make_shared<StressScenarioGenerator>(stressData, simMarketData, asof, market);
-    boost::shared_ptr<Scenario> baseScenario = scenarioGenerator->baseScenario();
-    if (scenarioFactory == NULL) {
-        scenarioFactory = boost::make_shared<CloneScenarioFactory>(baseScenario);
-    }
-    scenarioGenerator->generateScenarios(scenarioFactory);
-
-    LOG("Build Simulation Market");
-    boost::shared_ptr<ScenarioGenerator> sgen(scenarioGenerator);
-    boost::shared_ptr<ScenarioSimMarket> simMarket =
-        boost::make_shared<ScenarioSimMarket>(sgen, market, simMarketData, conventions);
+        boost::make_shared<StressScenarioGenerator>(stressData, baseScenario, simMarketData, simMarket, scenarioFactory);
+    simMarket->scenarioGenerator() = scenarioGenerator;
 
     LOG("Build Engine Factory");
     map<MarketContext, string> configurations;
     configurations[MarketContext::pricing] = marketConfiguration;
-    boost::shared_ptr<EngineFactory> factory = boost::make_shared<EngineFactory>(engineData, simMarket, configurations);
+    auto ed = boost::make_shared<EngineData>(*engineData);
+    ed->globalParameters()["RunType"] = "Stress";
+    boost::shared_ptr<EngineFactory> factory = boost::make_shared<EngineFactory>(
+        ed, simMarket, configurations, extraEngineBuilders, extraLegBuilders, referenceData, iborFallbackConfig);
 
     LOG("Reset and Build Portfolio");
     portfolio->reset();
-    portfolio->build(factory);
+    portfolio->build(factory, "stress analysis");
 
     LOG("Build the cube object to store sensitivities");
     boost::shared_ptr<NPVCube> cube = boost::make_shared<DoublePrecisionInMemoryCube>(
@@ -89,7 +94,7 @@ StressTest::StressTest(const boost::shared_ptr<ore::data::Portfolio>& portfolio,
         "1,0W"); // TODO - extend the DateGrid interface so that it can actually take a vector of dates as input
     vector<boost::shared_ptr<ValuationCalculator>> calculators;
     calculators.push_back(boost::make_shared<NPVCalculator>(simMarketData->baseCcy()));
-    ValuationEngine engine(asof, dg, simMarket);
+    ValuationEngine engine(asof, dg, simMarket, factory->modelBuilders());
     LOG("Run Stress Scenarios");
     /*ostringstream o;
     o.str("");
@@ -151,5 +156,5 @@ void StressTest::writeReport(const boost::shared_ptr<ore::data::Report>& report,
 
     report->end();
 }
-}
-}
+} // namespace analytics
+} // namespace ore

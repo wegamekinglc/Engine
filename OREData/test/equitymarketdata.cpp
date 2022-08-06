@@ -16,14 +16,18 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "equitymarketdata.hpp"
-#include <ored/marketdata/marketdatumparser.hpp>
+#include <boost/test/unit_test.hpp>
 #include <ored/configuration/curveconfigurations.hpp>
+#include <ored/marketdata/marketdatumparser.hpp>
 #include <ored/utilities/parsers.hpp>
 #include <ored/utilities/xmlutils.hpp>
+#include <oret/toplevelfixture.hpp>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/assign/list_of.hpp>
+
+using namespace std;
+using namespace QuantLib;
 
 namespace {
 
@@ -67,10 +71,7 @@ std::vector<std::string> getBadMarketDataStrings() {
         ("20160226 EQUITY_DIVIDEND/RATE/SP5/USD/zzz 1678.54") // incorrect expiry
         ("20160226 EQUITY_OPTION_VOL/RATE_LNVOL/SP5/USD/12M/ATMF 0.25") // incorrect instrument type
         ("20160226 EQUITY_OPTION/RATE_NVOL/SP5/USD/2017-02-26/ATMF 0.25") // normal vols not supported for equity
-        ("20160226 EQUITY_OPTION/RATE_LNVOL/SP5/USD/zzz/ATMF 0.25") // invalid tenor/date input
-        ("20160226 EQUITY_OPTION/RATE_LNVOL/SP5/USD/365D/ATM 0.25") // strike should be ATM-forward as opposed to "ATM"
-        ("20160226 EQUITY_OPTION/RATE_LNVOL/SP5/USD/1678W5D/37.75 0.25") // explicit strike axis not supported yet
-        ("20160226 EQUITY_OPTION/RATE_LNVOL/Lufthansa/EUR/1Y1M/-0.05 0.13"); // sticky-delta strike axis not supported yet
+        ("20160226 EQUITY_OPTION/RATE_LNVOL/SP5/USD/zzz/ATMF 0.25"); // invalid tenor/date input
 }
 
 std::string divYieldCurveConfigString =
@@ -78,6 +79,7 @@ std::string divYieldCurveConfigString =
 "<EquityCurves>"
 "<EquityCurve>"
 "<CurveId>SP5</CurveId>"
+"<ForecastingCurve>USD1D</ForecastingCurve>"
 "<CurveDescription>SP 500 equity price projection curve</CurveDescription>"
 "<Currency>USD</Currency> <!--is this really needed ? -->"
 "<Type>DividendYield</Type> <!-- {DividendYield, ForwardPrice} -->"
@@ -99,6 +101,7 @@ std::string eqBadConfigString =
 "<EquityCurves>"
 "<EquityCurve>"
 "<CurveId>SP5Mini</CurveId>"
+"<ForecastCurve>USD1D</ForecastCurve>"
 "<CurveDescription>SP Mini equity price projection curve</CurveDescription>"
 "<Currency>USD</Currency> <!--is this really needed ? -->"
 "<Type>ForwardPrice</Type> <!-- {DividendYield, ForwardPrice} -->"
@@ -115,9 +118,11 @@ std::string eqBadConfigString =
 
 }
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(OREDataTestSuite, ore::test::TopLevelFixture)
 
-void EquityMarketDataTest::testMarketDatumParser() {
+BOOST_AUTO_TEST_SUITE(EquityMarketDataTests)
+
+BOOST_AUTO_TEST_CASE(testMarketDatumParser) {
 
     BOOST_TEST_MESSAGE("Testing equity market data parsing...");
     std::vector<std::string> marketDataStrings = getMarketDataStrings();
@@ -138,7 +143,7 @@ void EquityMarketDataTest::testMarketDatumParser() {
     }
 }
 
-void EquityMarketDataTest::testBadMarketDatumStrings() {
+BOOST_AUTO_TEST_CASE(testBadMarketDatumStrings) {
 
     BOOST_TEST_MESSAGE("Testing equity market data parsing (bad strings)...");
     std::vector<std::string> marketDataStrings = getBadMarketDataStrings();
@@ -153,7 +158,7 @@ void EquityMarketDataTest::testBadMarketDatumStrings() {
     }
 }
 
-void EquityMarketDataTest::testEqCurveConfigLoad() {
+BOOST_AUTO_TEST_CASE(testEqCurveConfigLoad) {
 
     BOOST_TEST_MESSAGE("Testing equity curve config load...");
     ore::data::XMLDocument testDoc;
@@ -176,6 +181,7 @@ void EquityMarketDataTest::testEqCurveConfigLoad() {
     //BOOST_CHECK_EQUAL(ore::data::EquityCurveConfig::Type::DividendYield, ec->type());
     BOOST_CHECK_EQUAL("A365", ec->dayCountID());
     vector<string> anticipatedQuotes = boost::assign::list_of
+        ("EQUITY/PRICE/SP5/USD")
         ("EQUITY_DIVIDEND/RATE/SP5/USD/1M")
         ("EQUITY_DIVIDEND/RATE/SP5/USD/2016-09-15")
         ("EQUITY_DIVIDEND/RATE/SP5/USD/1Y")
@@ -189,10 +195,10 @@ void EquityMarketDataTest::testEqCurveConfigLoad() {
     // now test the toXML member function
     ore::data::XMLDocument testDumpDoc;
     BOOST_CHECK_NO_THROW(cc.toXML(testDumpDoc));
-    //! TODO - query the XML to ensure that the curve configuration objects have been dumped correctly
+    // TODO - query the XML to ensure that the curve configuration objects have been dumped correctly
 }
 
-void EquityMarketDataTest::testEqCurveConfigBadLoad() {
+BOOST_AUTO_TEST_CASE(testEqCurveConfigBadLoad) {
 
     BOOST_TEST_MESSAGE("Testing equity curve config load (bad input)...");
     ore::data::XMLDocument testBadDoc;
@@ -206,13 +212,6 @@ void EquityMarketDataTest::testEqCurveConfigBadLoad() {
     BOOST_CHECK(!ec); // this checks that the XML did not actually get loaded
 }
 
-boost::unit_test_framework::test_suite* EquityMarketDataTest::suite() {
-    boost::unit_test_framework::test_suite* suite = BOOST_TEST_SUITE("EquityMarketDataTest");
+BOOST_AUTO_TEST_SUITE_END()
 
-    suite->add(BOOST_TEST_CASE(&EquityMarketDataTest::testMarketDatumParser));
-    suite->add(BOOST_TEST_CASE(&EquityMarketDataTest::testBadMarketDatumStrings));
-    suite->add(BOOST_TEST_CASE(&EquityMarketDataTest::testEqCurveConfigLoad));
-    suite->add(BOOST_TEST_CASE(&EquityMarketDataTest::testEqCurveConfigBadLoad));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()

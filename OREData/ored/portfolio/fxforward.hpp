@@ -18,7 +18,7 @@
 
 /*! \file portfolio/fxforward.hpp
     \brief FX Forward data model and serialization
-    \ingroup portfolio
+    \ingroup tradedata
 */
 
 #pragma once
@@ -37,13 +37,17 @@ public:
     //! Default constructor
     FxForward() : Trade("FxForward"), boughtAmount_(0.0), soldAmount_(0.0) {}
     //! Constructor
-    FxForward(Envelope& env, string maturityDate, string boughtCurrency, double boughtAmount, string soldCurrency,
-              double soldAmount)
+    FxForward(Envelope& env, const string& maturityDate, const string& boughtCurrency, double boughtAmount,
+              const string& soldCurrency, double soldAmount, const string& settlement = "Physical",
+              const string& fxIndex = "", const string& payDate = "")
         : Trade("FxForward", env), maturityDate_(maturityDate), boughtCurrency_(boughtCurrency),
-          boughtAmount_(boughtAmount), soldCurrency_(soldCurrency), soldAmount_(soldAmount) {}
+          boughtAmount_(boughtAmount), soldCurrency_(soldCurrency), soldAmount_(soldAmount), settlement_(settlement),
+          fxIndex_(fxIndex), payDate_(payDate) {}
 
     //! Build QuantLib/QuantExt instrument, link pricing engine
-    void build(const boost::shared_ptr<EngineFactory>&);
+    void build(const boost::shared_ptr<EngineFactory>&) override;
+    QuantLib::Real notional() const override;
+    std::string notionalCurrency() const override;
 
     //! \name Inspectors
     //@{
@@ -52,19 +56,29 @@ public:
     double boughtAmount() const { return boughtAmount_; }
     const string& soldCurrency() const { return soldCurrency_; }
     double soldAmount() const { return soldAmount_; }
+    //! Settlement Type can be set to "Cash" for NDF. Default value is "Physical"
+    const string& settlement() const { return settlement_; }
+    const string& paymentDate() const { return payDate_; }
     //@}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
+
 private:
     string maturityDate_;
     string boughtCurrency_;
     double boughtAmount_;
     string soldCurrency_;
     double soldAmount_;
-};
-}
-}
+    string settlement_;
+    string payCurrency_;
+    string fxIndex_;
+    string payDate_;
+    string payLag_;
+    string payCalendar_;
+    string payConvention_;};
+} // namespace data
+} // namespace ore

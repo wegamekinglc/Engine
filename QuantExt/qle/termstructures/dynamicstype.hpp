@@ -28,11 +28,11 @@
 
 namespace QuantExt {
 
-/*! \addtogroup termstructues
+/*! \addtogroup termstructures
     @{
 */
 
-//! Stickyness
+//! Stickiness
 enum Stickyness { StickyStrike, StickyLogMoneyness, StickyAbsoluteMoneyness };
 
 //! Reaction to Time Decay
@@ -52,7 +52,7 @@ inline std::ostream& operator<<(std::ostream& out, const Stickyness& t) {
     case StickyAbsoluteMoneyness:
         return out << "StickyAbsoluteMoneyness";
     default:
-        return out << "Unknown stickyness type (" << t << ")";
+        return out << "Unknown stickiness type (" << t << ")";
     }
 }
 
@@ -71,13 +71,13 @@ inline std::ostream& operator<<(std::ostream& out, const YieldCurveRollDown& t) 
     switch (t) {
     case ConstantDiscounts:
         return out << "ConstantDiscounts";
-    case ForwardForwardVariance:
+    case ForwardForward:
         return out << "ForwardForward";
     default:
         return out << "Unknown yield curve roll down type (" << t << ")";
     }
 }
 
-} // namesapce QuantExt
+} // namespace QuantExt
 
 #endif

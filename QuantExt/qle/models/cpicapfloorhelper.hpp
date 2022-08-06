@@ -18,6 +18,7 @@
 
 /*! \file cpicapfloorhelper.hpp
     \brief CPI Cap Floor calibration helper
+    \ingroup models
 */
 
 #ifndef quantext_cpicapfloor_calibration_helper_hpp
@@ -26,25 +27,27 @@
 #include <ql/instruments/cpicapfloor.hpp>
 #include <ql/models/calibrationhelper.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 /* Note that calibration helpers that are not based on a implied volatility but directly on
    a premium are part of QL PR 18 */
-
-class CpiCapFloorHelper : public CalibrationHelper {
+//! CPI cap floor helper
+/*!
+ \ingroup models
+*/
+class CpiCapFloorHelper : public BlackCalibrationHelper {
 public:
-    CpiCapFloorHelper(Option::Type type, Real baseCPI, const Date& maturity, const Calendar& fixCalendar,
-                      BusinessDayConvention fixConvention, const Calendar& payCalendar,
-                      BusinessDayConvention payConvention, Real strike, const Handle<ZeroInflationIndex>& infIndex,
-                      const Period& observationLag, Real marketPremium,
-                      CPI::InterpolationType observationInterpolation = CPI::AsIndex,
-                      CalibrationHelper::CalibrationErrorType errorType = CalibrationHelper::RelativePriceError);
+    CpiCapFloorHelper(
+        Option::Type type, Real baseCPI, const Date& maturity, const Calendar& fixCalendar,
+        BusinessDayConvention fixConvention, const Calendar& payCalendar, BusinessDayConvention payConvention,
+        Real strike, const Handle<ZeroInflationIndex>& infIndex, const Period& observationLag, Real marketPremium,
+        CPI::InterpolationType observationInterpolation = CPI::AsIndex,
+        BlackCalibrationHelper::CalibrationErrorType errorType = BlackCalibrationHelper::RelativePriceError);
 
-    Real modelValue() const;
-    Real blackPrice(Volatility volatility) const;
-    void addTimesTo(std::list<Time>&) const {}
+    Real modelValue() const override;
+    Real blackPrice(Volatility volatility) const override;
+    void addTimesTo(std::list<Time>&) const override {}
 
     boost::shared_ptr<CPICapFloor> instrument() const { return instrument_; }
 

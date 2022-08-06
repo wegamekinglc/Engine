@@ -16,8 +16,8 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <ql/time/calendars/weekendsonly.hpp>
 #include <ql/pricingengines/swap/discountingswapengine.hpp>
+#include <ql/time/calendars/weekendsonly.hpp>
 
 #include <qle/instruments/makeaverageois.hpp>
 
@@ -40,7 +40,7 @@ MakeAverageOIS::MakeAverageOIS(const Period& swapTenor, const boost::shared_ptr<
       onEndOfMonth_(false), onFirstDate_(Date()), onNextToLastDate_(Date()), rateCutoff_(0), onSpread_(0.0),
       onGearing_(1.0), onDayCounter_(overnightIndex->dayCounter()),
       onPaymentAdjustment_(overnightIndex->businessDayConvention()),
-      onPaymentCalendar_(overnightIndex->fixingCalendar()),
+      onPaymentCalendar_(overnightIndex->fixingCalendar()), telescopicValueDates_(false),
       onCouponPricer_(boost::make_shared<AverageONIndexedCouponPricer>()) {}
 
 MakeAverageOIS::operator AverageOIS() const {
@@ -56,6 +56,9 @@ MakeAverageOIS::operator boost::shared_ptr<AverageOIS>() const {
         effectiveDate = effectiveDate_;
     } else {
         Date valuationDate = Settings::instance().evaluationDate();
+        // if the evaluation date is not a business day
+        // then move to the next business day
+        valuationDate = spotLagCalendar_.adjust(valuationDate);
         Date spotDate = spotLagCalendar_.advance(valuationDate, spotLagTenor_);
         effectiveDate = spotDate + forwardStart_;
     }
@@ -78,7 +81,7 @@ MakeAverageOIS::operator boost::shared_ptr<AverageOIS>() const {
     boost::shared_ptr<AverageOIS> swap(
         new AverageOIS(type_, nominal_, fixedSchedule, fixedRate_, fixedDayCounter_, fixedPaymentAdjustment_,
                        fixedPaymentCalendar_, onSchedule, overnightIndex_, onPaymentAdjustment_, onPaymentCalendar_,
-                       rateCutoff_, onSpread_, onGearing_, onDayCounter_, onCouponPricer_));
+                       rateCutoff_, onSpread_, onGearing_, onDayCounter_, onCouponPricer_, telescopicValueDates_));
 
     swap->setPricingEngine(engine_);
     return swap;
@@ -232,6 +235,11 @@ MakeAverageOIS& MakeAverageOIS::withONPaymentCalendar(const Calendar& onPaymentC
     return *this;
 }
 
+MakeAverageOIS& MakeAverageOIS::withTelescopicValueDates(bool telescopicValueDates) {
+    telescopicValueDates_ = telescopicValueDates;
+    return *this;
+}
+
 MakeAverageOIS&
 MakeAverageOIS::withONCouponPricer(const boost::shared_ptr<AverageONIndexedCouponPricer>& onCouponPricer) {
     onCouponPricer_ = onCouponPricer;
@@ -248,4 +256,4 @@ MakeAverageOIS& MakeAverageOIS::withPricingEngine(const boost::shared_ptr<Pricin
     engine_ = engine;
     return *this;
 }
-}
+} // namespace QuantExt

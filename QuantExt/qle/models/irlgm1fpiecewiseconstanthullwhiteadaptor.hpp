@@ -24,40 +24,45 @@
 #ifndef quantext_piecewiseconstant_irlgm1f_hwadaptor_hpp
 #define quantext_piecewiseconstant_irlgm1f_hwadaptor_hpp
 
+#include <ql/math/comparison.hpp>
 #include <qle/models/irlgm1fparametrization.hpp>
 #include <qle/models/piecewiseconstanthelper.hpp>
-#include <ql/math/comparison.hpp>
 
 namespace QuantExt {
 
 //! LGM 1f Piecewise Constant Hull White Adaptor
 /*! \ingroup models
-*/
+ */
 template <class TS>
 class Lgm1fPiecewiseConstantHullWhiteAdaptor : public Lgm1fParametrization<TS>,
                                                private PiecewiseConstantHelper3,
                                                private PiecewiseConstantHelper2 {
 public:
-    Lgm1fPiecewiseConstantHullWhiteAdaptor(const Currency& currency, const Handle<TS>& termStructure,
-                                           const Array& sigmaTimes, const Array& sigma, const Array& kappaTimes,
-                                           const Array& kappa);
-    Lgm1fPiecewiseConstantHullWhiteAdaptor(const Currency& currency, const Handle<TS>& termStructure,
-                                           const std::vector<Date>& sigmaDates, const Array& sigma,
-                                           const std::vector<Date>& kappaDates, const Array& kappa);
-    Real zeta(const Time t) const;
-    Real H(const Time t) const;
-    Real alpha(const Time t) const;
-    Real kappa(const Time t) const;
-    Real Hprime(const Time t) const;
-    Real Hprime2(const Time t) const;
-    Real hullWhiteSigma(const Time t) const;
-    const Array& parameterTimes(const Size) const;
-    const boost::shared_ptr<Parameter> parameter(const Size) const;
-    void update() const;
+    Lgm1fPiecewiseConstantHullWhiteAdaptor(
+        const Currency& currency, const Handle<TS>& termStructure, const Array& sigmaTimes, const Array& sigma,
+        const Array& kappaTimes, const Array& kappa, const std::string& name = std::string(),
+        const boost::shared_ptr<QuantLib::Constraint>& sigmaConstraint = boost::make_shared<QuantLib::NoConstraint>(),
+        const boost::shared_ptr<QuantLib::Constraint>& kappaConstraint = boost::make_shared<QuantLib::NoConstraint>());
+    Lgm1fPiecewiseConstantHullWhiteAdaptor(
+        const Currency& currency, const Handle<TS>& termStructure, const std::vector<Date>& sigmaDates,
+        const Array& sigma, const std::vector<Date>& kappaDates, const Array& kappa,
+        const std::string& name = std::string(),
+        const boost::shared_ptr<QuantLib::Constraint>& sigmaConstraint = boost::make_shared<QuantLib::NoConstraint>(),
+        const boost::shared_ptr<QuantLib::Constraint>& kappaConstraint = boost::make_shared<QuantLib::NoConstraint>());
+    Real zeta(const Time t) const override;
+    Real H(const Time t) const override;
+    Real alpha(const Time t) const override;
+    Real kappa(const Time t) const override;
+    Real Hprime(const Time t) const override;
+    Real Hprime2(const Time t) const override;
+    Real hullWhiteSigma(const Time t) const override;
+    const Array& parameterTimes(const Size) const override;
+    const boost::shared_ptr<Parameter> parameter(const Size) const override;
+    void update() const override;
 
 protected:
-    Real direct(const Size i, const Real x) const;
-    Real inverse(const Size j, const Real y) const;
+    Real direct(const Size i, const Real x) const override;
+    Real inverse(const Size j, const Real y) const override;
 
 private:
     void initialize(const Array& sigma, const Array& kappa);
@@ -68,19 +73,24 @@ private:
 template <class TS>
 Lgm1fPiecewiseConstantHullWhiteAdaptor<TS>::Lgm1fPiecewiseConstantHullWhiteAdaptor(
     const Currency& currency, const Handle<TS>& termStructure, const Array& sigmaTimes, const Array& sigma,
-    const Array& kappaTimes, const Array& kappa)
-    : Lgm1fParametrization<TS>(currency, termStructure), PiecewiseConstantHelper3(sigmaTimes, kappaTimes),
-      PiecewiseConstantHelper2(kappaTimes) {
+    const Array& kappaTimes, const Array& kappa, const std::string& name,
+    const boost::shared_ptr<QuantLib::Constraint>& sigmaConstraint,
+    const boost::shared_ptr<QuantLib::Constraint>& kappaConstraint)
+    : Lgm1fParametrization<TS>(currency, termStructure, name),
+      PiecewiseConstantHelper3(sigmaTimes, kappaTimes, sigmaConstraint, kappaConstraint),
+      PiecewiseConstantHelper2(PiecewiseConstantHelper3::t2_, PiecewiseConstantHelper3::y2_) {
     initialize(sigma, kappa);
 }
 
 template <class TS>
 Lgm1fPiecewiseConstantHullWhiteAdaptor<TS>::Lgm1fPiecewiseConstantHullWhiteAdaptor(
     const Currency& currency, const Handle<TS>& termStructure, const std::vector<Date>& sigmaDates, const Array& sigma,
-    const std::vector<Date>& kappaDates, const Array& kappa)
-    : Lgm1fParametrization<TS>(currency, termStructure),
-      PiecewiseConstantHelper3(sigmaDates, kappaDates, termStructure),
-      PiecewiseConstantHelper2(kappaDates, termStructure) {
+    const std::vector<Date>& kappaDates, const Array& kappa, const std::string& name,
+    const boost::shared_ptr<QuantLib::Constraint>& sigmaConstraint,
+    const boost::shared_ptr<QuantLib::Constraint>& kappaConstraint)
+    : Lgm1fParametrization<TS>(currency, termStructure, name),
+      PiecewiseConstantHelper3(sigmaDates, kappaDates, termStructure, sigmaConstraint, kappaConstraint),
+      PiecewiseConstantHelper2(PiecewiseConstantHelper3::t2_,PiecewiseConstantHelper3::y2_) {
     initialize(sigma, kappa);
 }
 
@@ -99,9 +109,6 @@ void Lgm1fPiecewiseConstantHullWhiteAdaptor<TS>::initialize(const Array& sigma, 
     }
     for (Size i = 0; i < PiecewiseConstantHelper3::y2_->size(); ++i) {
         PiecewiseConstantHelper3::y2_->setParam(i, inverse(1, kappa[i]));
-    }
-    for (Size i = 0; i < PiecewiseConstantHelper2::y_->size(); ++i) {
-        PiecewiseConstantHelper2::y_->setParam(i, inverse(1, kappa[i]));
     }
     update();
 }
@@ -145,6 +152,7 @@ template <class TS> inline Real Lgm1fPiecewiseConstantHullWhiteAdaptor<TS>::hull
 }
 
 template <class TS> inline void Lgm1fPiecewiseConstantHullWhiteAdaptor<TS>::update() const {
+    Lgm1fParametrization<TS>::update();
     PiecewiseConstantHelper3::update();
     PiecewiseConstantHelper2::update();
 }

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="configuration">
@@ -22,11 +22,14 @@
     <Filter Include="report">
       <UniqueIdentifier>{f56268ea-d150-4fb7-b75b-9618e16d7c3d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="model\calibrationinstruments">
+      <UniqueIdentifier>{1fec87df-dbce-4a0c-a47b-9bcc5cec4efe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="model\inflation">
+      <UniqueIdentifier>{4b38d6b7-ea6f-4969-adba-91114fef3272}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ored\configuration\all.hpp">
-      <Filter>configuration</Filter>
-    </ClInclude>
     <ClInclude Include="ored\configuration\capfloorvolcurveconfig.hpp">
       <Filter>configuration</Filter>
     </ClInclude>
@@ -48,16 +51,10 @@
     <ClInclude Include="ored\configuration\yieldcurveconfig.hpp">
       <Filter>configuration</Filter>
     </ClInclude>
-    <ClInclude Include="ored\marketdata\all.hpp">
-      <Filter>marketdata</Filter>
-    </ClInclude>
     <ClInclude Include="ored\marketdata\capfloorvolcurve.hpp">
       <Filter>marketdata</Filter>
     </ClInclude>
     <ClInclude Include="ored\marketdata\csvloader.hpp">
-      <Filter>marketdata</Filter>
-    </ClInclude>
-    <ClInclude Include="ored\marketdata\curveloader.hpp">
       <Filter>marketdata</Filter>
     </ClInclude>
     <ClInclude Include="ored\marketdata\curvespec.hpp">
@@ -102,14 +99,14 @@
     <ClInclude Include="ored\marketdata\todaysmarket.hpp">
       <Filter>marketdata</Filter>
     </ClInclude>
+    <ClInclude Include="ored\marketdata\todaysmarketcalibrationinfo.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
     <ClInclude Include="ored\marketdata\todaysmarketparameters.hpp">
       <Filter>marketdata</Filter>
     </ClInclude>
     <ClInclude Include="ored\marketdata\yieldcurve.hpp">
       <Filter>marketdata</Filter>
-    </ClInclude>
-    <ClInclude Include="ored\model\all.hpp">
-      <Filter>model</Filter>
     </ClInclude>
     <ClInclude Include="ored\model\crossassetmodelbuilder.hpp">
       <Filter>model</Filter>
@@ -132,13 +129,10 @@
     <ClInclude Include="ored\model\utilities.hpp">
       <Filter>model</Filter>
     </ClInclude>
-    <ClInclude Include="ored\utilities\all.hpp">
-      <Filter>utilities</Filter>
-    </ClInclude>
     <ClInclude Include="ored\utilities\correlationmatrix.hpp">
       <Filter>utilities</Filter>
     </ClInclude>
-    <ClInclude Include="ored\utilities\currencycheck.hpp">
+    <ClInclude Include="ored\utilities\currencyconfig.hpp">
       <Filter>utilities</Filter>
     </ClInclude>
     <ClInclude Include="ored\utilities\flowanalysis.hpp">
@@ -162,13 +156,16 @@
     <ClInclude Include="ored\utilities\strike.hpp">
       <Filter>utilities</Filter>
     </ClInclude>
+    <ClInclude Include="ored\utilities\wildcard.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
     <ClInclude Include="ored\utilities\xmlutils.hpp">
       <Filter>utilities</Filter>
     </ClInclude>
-    <ClInclude Include="ored\portfolio\all.hpp">
+    <ClInclude Include="ored\portfolio\capfloor.hpp">
       <Filter>portfolio</Filter>
     </ClInclude>
-    <ClInclude Include="ored\portfolio\capfloor.hpp">
+    <ClInclude Include="ored\portfolio\failedtrade.hpp">
       <Filter>portfolio</Filter>
     </ClInclude>
     <ClInclude Include="ored\portfolio\enginedata.hpp">
@@ -178,6 +175,9 @@
       <Filter>portfolio</Filter>
     </ClInclude>
     <ClInclude Include="ored\portfolio\envelope.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\fxaverageforward.hpp">
       <Filter>portfolio</Filter>
     </ClInclude>
     <ClInclude Include="ored\portfolio\fxforward.hpp">
@@ -210,6 +210,9 @@
     <ClInclude Include="ored\portfolio\portfolio.hpp">
       <Filter>portfolio</Filter>
     </ClInclude>
+    <ClInclude Include="ored\portfolio\premiumdata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
     <ClInclude Include="ored\portfolio\schedule.hpp">
       <Filter>portfolio</Filter>
     </ClInclude>
@@ -227,9 +230,6 @@
     </ClInclude>
     <ClInclude Include="ored\portfolio\tradefactory.hpp">
       <Filter>portfolio</Filter>
-    </ClInclude>
-    <ClInclude Include="ored\portfolio\builders\all.hpp">
-      <Filter>portfolio\builders</Filter>
     </ClInclude>
     <ClInclude Include="ored\portfolio\builders\cachingenginebuilder.hpp">
       <Filter>portfolio\builders</Filter>
@@ -254,6 +254,9 @@
     <ClInclude Include="ored\portfolio\builders\capfloorediborleg.hpp">
       <Filter>portfolio\builders</Filter>
     </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\capflooredovernightindexedcouponleg.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
     <ClInclude Include="ored\version.hpp" />
     <ClInclude Include="ored\utilities\to_string.hpp">
       <Filter>utilities</Filter>
@@ -263,9 +266,6 @@
     </ClInclude>
     <ClInclude Include="ored\utilities\serializationdate.hpp">
       <Filter>utilities</Filter>
-    </ClInclude>
-    <ClInclude Include="ored\marketdata\securityspread.hpp">
-      <Filter>marketdata</Filter>
     </ClInclude>
     <ClInclude Include="ored\marketdata\equitycurve.hpp">
       <Filter>marketdata</Filter>
@@ -288,9 +288,6 @@
     <ClInclude Include="ored\portfolio\builders\equityforward.hpp">
       <Filter>portfolio\builders</Filter>
     </ClInclude>
-    <ClInclude Include="ored\portfolio\builders\equityoption.hpp">
-      <Filter>portfolio\builders</Filter>
-    </ClInclude>
     <ClInclude Include="ored\report\report.hpp">
       <Filter>report</Filter>
     </ClInclude>
@@ -300,23 +297,14 @@
     <ClInclude Include="ored\report\csvreport.hpp">
       <Filter>report</Filter>
     </ClInclude>
-    <ClInclude Include="ored\report\all.hpp">
-      <Filter>report</Filter>
-    </ClInclude>
     <ClInclude Include="ored\portfolio\bond.hpp">
       <Filter>portfolio</Filter>
     </ClInclude>
     <ClInclude Include="ored\portfolio\builders\bond.hpp">
       <Filter>portfolio\builders</Filter>
     </ClInclude>
-    <ClInclude Include="ored\configuration\inflationcapfloorpricesurfaceconfig.hpp">
-      <Filter>configuration</Filter>
-    </ClInclude>
     <ClInclude Include="ored\configuration\inflationcurveconfig.hpp">
       <Filter>configuration</Filter>
-    </ClInclude>
-    <ClInclude Include="ored\marketdata\inflationcapfloorpricesurface.hpp">
-      <Filter>marketdata</Filter>
     </ClInclude>
     <ClInclude Include="ored\marketdata\inflationcurve.hpp">
       <Filter>marketdata</Filter>
@@ -327,8 +315,384 @@
     <ClInclude Include="ored\model\eqbsdata.hpp">
       <Filter>model</Filter>
     </ClInclude>
-    <ClInclude Include="ored\marketdata\securityrecoveryrate.hpp">
+    <ClInclude Include="ored\portfolio\builders\cms.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\basecorrelationcurve.hpp">
       <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\basecorrelationcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\cdsvolcurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\cdsvolcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\creditdefaultswap.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\creditdefaultswap.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\creditdefaultswapdata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\asianoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\optionasiandata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\equityasianoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\asianoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\equityasianoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\commodityasianoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\fxasianoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\fxasianoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\commodityasianoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\modelbuilder.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\curveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\csvfilereader.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\timeperiod.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\forwardrateagreement.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\securityconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\fxspotconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\security.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\irlgmdata.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\commoditycurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\commoditycurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\commodityforward.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\commodityforward.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\commodityvolcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\commodityvolcurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\commodityoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\commoditydigitaloption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\legbuilders.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\yoycapfloor.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\inflationcapfloorvolcurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\inflationcapfloorvolcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\equityoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\cmsspread.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\equityswap.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\inmemoryloader.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\correlationcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\correlationcurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\yieldvolcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\yieldvolcurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\fixingdates.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\genericyieldvolcurveconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\genericyieldvolcurve.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\calendaradjustmentconfig.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\capflooredyoyleg.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\forwardbond.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\forwardbond.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\vanillaoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\vanillaoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\structuredcurveerror.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\structuredtradeerror.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\legdatafactory.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\conventionsbasedfutureexpiry.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\bootstrapconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\strike.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\expiry.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\volatilityconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\structuredmodelerror.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\cpicapfloor.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\capflooredcpileg.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\dategrid.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\referencedata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\serializationdaycounter.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\serializationperiod.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\referencedatafactory.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\underlying.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\fittedbondcurvehelpermarket.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\bondutils.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\indexing.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\commodityoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\marketdata.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\optionpaymentdata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\optionexercisedata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\modelparameter.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\calibrationbasket.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\calibrationinstruments\cpicapfloor.hpp">
+      <Filter>model\calibrationinstruments</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\calibrationinstrumentfactory.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\modeldata.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\inflation\infdkbuilder.hpp">
+      <Filter>model\inflation</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\inflation\infdkdata.hpp">
+      <Filter>model\inflation</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\inflation\infjydata.hpp">
+      <Filter>model\inflation</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\inflation\inflationmodeldata.hpp">
+      <Filter>model\inflation</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\inflation\infjybuilder.hpp">
+      <Filter>model\inflation</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\calibrationinstruments\yoycapfloor.hpp">
+      <Filter>model\calibrationinstruments</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\calibrationinstruments\yoyswap.hpp">
+      <Filter>model\calibrationinstruments</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\calibrationconfiguration.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\creditdefaultswapoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\crcirbuilder.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\crcirdata.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\crlgmbuilder.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\crlgmdata.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\equityfuturesoption.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\equityfuturesoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\wrappedmarket.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\compositeloader.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\durationadjustedcmslegbuilder.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\durationadjustedcmslegdata.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\durationadjustedcms.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\onedimsolverconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\marketdata\dependencygraph.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\reportconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\smiledynamicsconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\model\marketobserver.hpp">
+      <Filter>model</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\creditdefaultswapoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\quantovanillaoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\quantoequityoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\configuration\iborfallbackconfig.hpp">
+      <Filter>configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\capflooredaverageonindexedcouponleg.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\builders\equitycompositeoption.hpp">
+      <Filter>portfolio\builders</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\structuredtradewarning.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\structuredconfigurationwarning.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\nettingsetdetails.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\structuredconfigurationerror.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\tradestrike.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\tradebarrier.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\trademonetary.hpp">
+      <Filter>portfolio</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\indexnametranslator.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\portfolio\types.hpp" />
+    <ClInclude Include="ored\marketdata\clonedloader.hpp">
+      <Filter>marketdata</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\calendarparser.hpp">
+      <Filter>utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="ored\utilities\currencyparser.hpp">
+      <Filter>utilities</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -347,9 +711,6 @@
     <ClCompile Include="ored\configuration\fxvolcurveconfig.cpp">
       <Filter>configuration</Filter>
     </ClCompile>
-    <ClCompile Include="ored\configuration\swaptionvolcurveconfig.cpp">
-      <Filter>configuration</Filter>
-    </ClCompile>
     <ClCompile Include="ored\configuration\yieldcurveconfig.cpp">
       <Filter>configuration</Filter>
     </ClCompile>
@@ -357,9 +718,6 @@
       <Filter>marketdata</Filter>
     </ClCompile>
     <ClCompile Include="ored\marketdata\csvloader.cpp">
-      <Filter>marketdata</Filter>
-    </ClCompile>
-    <ClCompile Include="ored\marketdata\curveloader.cpp">
       <Filter>marketdata</Filter>
     </ClCompile>
     <ClCompile Include="ored\marketdata\curvespec.cpp">
@@ -401,6 +759,9 @@
     <ClCompile Include="ored\marketdata\todaysmarket.cpp">
       <Filter>marketdata</Filter>
     </ClCompile>
+    <ClCompile Include="ored\marketdata\todaysmarketcalibrationinfo.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
     <ClCompile Include="ored\marketdata\todaysmarketparameters.cpp">
       <Filter>marketdata</Filter>
     </ClCompile>
@@ -431,7 +792,7 @@
     <ClCompile Include="ored\utilities\correlationmatrix.cpp">
       <Filter>utilities</Filter>
     </ClCompile>
-    <ClCompile Include="ored\utilities\currencycheck.cpp">
+    <ClCompile Include="ored\utilities\currencyconfig.cpp">
       <Filter>utilities</Filter>
     </ClCompile>
     <ClCompile Include="ored\utilities\flowanalysis.cpp">
@@ -455,10 +816,16 @@
     <ClCompile Include="ored\utilities\strike.cpp">
       <Filter>utilities</Filter>
     </ClCompile>
+    <ClCompile Include="ored\utilities\wildcard.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
     <ClCompile Include="ored\utilities\xmlutils.cpp">
       <Filter>utilities</Filter>
     </ClCompile>
     <ClCompile Include="ored\portfolio\capfloor.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\failedtrade.cpp">
       <Filter>portfolio</Filter>
     </ClCompile>
     <ClCompile Include="ored\portfolio\enginedata.cpp">
@@ -468,6 +835,9 @@
       <Filter>portfolio</Filter>
     </ClCompile>
     <ClCompile Include="ored\portfolio\envelope.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\fxaverageforward.cpp">
       <Filter>portfolio</Filter>
     </ClCompile>
     <ClCompile Include="ored\portfolio\fxforward.cpp">
@@ -497,6 +867,9 @@
     <ClCompile Include="ored\portfolio\portfolio.cpp">
       <Filter>portfolio</Filter>
     </ClCompile>
+    <ClCompile Include="ored\portfolio\premiumdata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
     <ClCompile Include="ored\portfolio\schedule.cpp">
       <Filter>portfolio</Filter>
     </ClCompile>
@@ -524,11 +897,11 @@
     <ClCompile Include="ored\portfolio\builders\capfloorediborleg.cpp">
       <Filter>portfolio\builders</Filter>
     </ClCompile>
+    <ClCompile Include="ored\portfolio\builders\capflooredovernightindexedcouponleg.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
     <ClCompile Include="ored\utilities\to_string.cpp">
       <Filter>utilities</Filter>
-    </ClCompile>
-    <ClCompile Include="ored\marketdata\securityspread.cpp">
-      <Filter>marketdata</Filter>
     </ClCompile>
     <ClCompile Include="ored\marketdata\equitycurve.cpp">
       <Filter>marketdata</Filter>
@@ -554,14 +927,8 @@
     <ClCompile Include="ored\portfolio\bond.cpp">
       <Filter>portfolio</Filter>
     </ClCompile>
-    <ClCompile Include="ored\configuration\inflationcapfloorpricesurfaceconfig.cpp">
-      <Filter>configuration</Filter>
-    </ClCompile>
     <ClCompile Include="ored\configuration\inflationcurveconfig.cpp">
       <Filter>configuration</Filter>
-    </ClCompile>
-    <ClCompile Include="ored\marketdata\inflationcapfloorpricesurface.cpp">
-      <Filter>marketdata</Filter>
     </ClCompile>
     <ClCompile Include="ored\marketdata\inflationcurve.cpp">
       <Filter>marketdata</Filter>
@@ -572,8 +939,287 @@
     <ClCompile Include="ored\model\eqbsdata.cpp">
       <Filter>model</Filter>
     </ClCompile>
-    <ClCompile Include="ored\marketdata\securityrecoveryrate.cpp">
+    <ClCompile Include="ored\portfolio\builders\cms.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\basecorrelationcurve.cpp">
       <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\basecorrelationcurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\cdsvolcurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\cdsvolcurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\creditdefaultswap.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\creditdefaultswapdata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\csvfilereader.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\forwardrateagreement.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\security.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\irlgmdata.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\commoditycurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\commoditycurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\commodityforward.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\commodityvolcurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\commodityvolcurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\commodityoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\commoditydigitaloption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\legbuilders.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\builders\yoycapfloor.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\inflationcapfloorvolcurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\inflationcapfloorvolcurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\builders\cmsspread.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\equityswap.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\inmemoryloader.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\correlationcurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\correlationcurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\yieldvolcurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\fixingdates.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\genericyieldvolcurveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\genericyieldvolcurve.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\calendaradjustmentconfig.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\forwardbond.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\vanillaoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\legdatafactory.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\conventionsbasedfutureexpiry.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\bootstrapconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\strike.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\expiry.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\volatilityconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\builders\cpicapfloor.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\dategrid.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\referencedata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\referencedatafactory.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\underlying.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\fittedbondcurvehelpermarket.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\bondutils.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\indexing.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\marketdata.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\optionpaymentdata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\optionexercisedata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\curveconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\modelparameter.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\calibrationbasket.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\calibrationinstruments\cpicapfloor.cpp">
+      <Filter>model\calibrationinstruments</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\calibrationinstrumentfactory.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\modeldata.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\inflation\infdkbuilder.cpp">
+      <Filter>model\inflation</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\inflation\infdkdata.cpp">
+      <Filter>model\inflation</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\inflation\infjydata.cpp">
+      <Filter>model\inflation</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\inflation\inflationmodeldata.cpp">
+      <Filter>model\inflation</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\inflation\infjybuilder.cpp">
+      <Filter>model\inflation</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\calibrationinstruments\yoycapfloor.cpp">
+      <Filter>model\calibrationinstruments</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\calibrationinstruments\yoyswap.cpp">
+      <Filter>model\calibrationinstruments</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\calibrationconfiguration.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\creditdefaultswapoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\crcirbuilder.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\crcirdata.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\crlgmbuilder.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\model\crlgmdata.cpp">
+      <Filter>model</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\equityfuturesoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\wrappedmarket.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\durationadjustedcmslegbuilder.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\durationadjustedcmslegdata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\builders\durationadjustedcms.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\onedimsolverconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\dependencygraph.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\reportconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\smiledynamicsconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\configuration\iborfallbackconfig.cpp">
+      <Filter>configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\builders\capflooredaverageonindexedcouponleg.cpp">
+      <Filter>portfolio\builders</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\commodityasianoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\equityasianoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\fxasianoption.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\optionasiandata.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\nettingsetdetails.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\tradebarrier.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\trademonetary.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\tradestrike.cpp">
+      <Filter>portfolio</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\indexnametranslator.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\marketdata\clonedloader.cpp">
+      <Filter>marketdata</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\calendarparser.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\utilities\currencyparser.cpp">
+      <Filter>utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="ored\portfolio\asianoption.cpp">
+      <Filter>portfolio</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

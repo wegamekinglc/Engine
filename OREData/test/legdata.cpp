@@ -16,16 +16,22 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "legdata.hpp"
+#include <boost/test/unit_test.hpp>
 #include <ored/portfolio/legdata.hpp>
+#include <oret/toplevelfixture.hpp>
+
+#include <boost/make_shared.hpp>
 
 using namespace QuantLib;
 using namespace ore::data;
 using namespace boost::unit_test_framework;
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(OREDataTestSuite, ore::test::TopLevelFixture)
 
-void LegDataTest::testLegDataNotionals() {
+BOOST_AUTO_TEST_SUITE(LegDataTests)
+
+BOOST_AUTO_TEST_CASE(testLegDataNotionals) {
+
     BOOST_TEST_MESSAGE("Testing LegData Notionals...");
 
     vector<double> notionals = {100, 200, 300};
@@ -51,7 +57,7 @@ void LegDataTest::testLegDataNotionals() {
     BOOST_CHECK_EQUAL(notionalsOut.size(), 1UL);
     BOOST_CHECK_EQUAL(notionalsOut[0], 123);
 
-    // Now check long value with no "dates" is uneffected
+    // Now check long value with no "dates" is unaffected
     notionals = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     notionalsOut = buildScheduledVector(notionals, {}, s);
     BOOST_CHECK_EQUAL(notionalsOut.size(), 10UL);
@@ -60,15 +66,14 @@ void LegDataTest::testLegDataNotionals() {
     }
 }
 
-void LegDataTest::testLegDataCashflows() {
+BOOST_AUTO_TEST_CASE(testLegDataCashflows) {
+
     BOOST_TEST_MESSAGE("Testing LegData Cashflows...");
 
     vector<double> amounts = {1000000, 2000000, 3000000};
     vector<string> dates = {"2015-01-01", "2016-01-01", "2017-01-01"};
 
-    CashflowData data(amounts, dates);
-
-    LegData legData(true, "EUR", data);
+    LegData legData(boost::make_shared<CashflowData>(amounts, dates), true, "EUR");
     Leg leg = makeSimpleLeg(legData);
 
     // Expect 100000, 200000, 300000
@@ -83,10 +88,6 @@ void LegDataTest::testLegDataCashflows() {
     BOOST_CHECK_EQUAL(leg[2]->date(), parseDate("2017-01-01"));
 }
 
-test_suite* LegDataTest::suite() {
-    test_suite* suite = BOOST_TEST_SUITE("LegDataTests");
-    suite->add(BOOST_TEST_CASE(&LegDataTest::testLegDataNotionals));
-    suite->add(BOOST_TEST_CASE(&LegDataTest::testLegDataCashflows));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

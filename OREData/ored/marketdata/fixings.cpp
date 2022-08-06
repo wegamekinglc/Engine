@@ -21,22 +21,30 @@
     \ingroup
 */
 
+#include <boost/timer/timer.hpp>
 #include <ored/marketdata/fixings.hpp>
 #include <ored/utilities/indexparser.hpp>
 #include <ored/utilities/log.hpp>
 #include <ql/index.hpp>
-#include <boost/timer.hpp>
+#include <qle/indexes/equityindex.hpp>
+#include <qle/utilities/savedobservablesettings.hpp>
 
+using boost::timer::cpu_timer;
+using boost::timer::default_places;
 using namespace std;
 using namespace QuantLib;
+using namespace QuantExt;
 
 namespace ore {
 namespace data {
 
 void applyFixings(const vector<Fixing>& fixings) {
+    
+    QuantExt::SavedObservableSettings savedObservableSettings;
+    ObservableSettings::instance().disableUpdates(true);
     Size count = 0;
     map<string, boost::shared_ptr<Index>> cache;
-    boost::timer timer;
+    cpu_timer timer;
     boost::shared_ptr<Index> index;
     for (auto& f : fixings) {
         try {
@@ -54,7 +62,36 @@ void applyFixings(const vector<Fixing>& fixings) {
             WLOG("Error during adding fixing for " << f.name << ": " << e.what());
         }
     }
-    DLOG("Added " << count << " of " << fixings.size() << " fixings in " << timer.elapsed() << " seconds");
+    timer.stop();
+    LOG("Added " << count << " of " << fixings.size() << " fixings in " << timer.format(default_places, "%w")
+                 << " seconds");
 }
+
+void applyDividends(const vector<Fixing>& dividends) {
+    Size count = 0;
+    map<string, boost::shared_ptr<EquityIndex>> cache;
+    cpu_timer timer;
+    boost::shared_ptr<EquityIndex> index;
+    for (auto& f : dividends) {
+        try {
+            auto it = cache.find(f.name);
+            if (it == cache.end()) {
+                index = boost::make_shared<EquityIndex>(f.name, NullCalendar(), Currency());
+                cache[f.name] = index;
+            } else {
+                index = it->second;
+            }
+            index->addDividend(f.date, f.fixing, true);
+            TLOG("Added dividend for " << f.name << " (" << io::iso_date(f.date) << ") value:" << f.fixing);
+            count++;
+        } catch (const std::exception& e) {
+            WLOG("Error during adding dividend for " << f.name << ": " << e.what());
+        }
+    }
+    timer.stop();
+    DLOG("Added " << count << " of " << dividends.size() << " dividends in " << timer.format(default_places, "%w")
+                  << " seconds");
 }
-}
+
+} // namespace data
+} // namespace ore

@@ -35,7 +35,8 @@ AnalyticLgmCdsOptionEngine::AnalyticLgmCdsOptionEngine(const boost::shared_ptr<C
 
 void AnalyticLgmCdsOptionEngine::calculate() const {
 
-    QL_REQUIRE(arguments_.swap->paysAtDefaultTime(), "AnalyticLgmCdsOptionEngine: pays at default time must be true");
+    QL_REQUIRE(arguments_.swap->protectionPaymentTime() == CreditDefaultSwap::ProtectionPaymentTime::atDefault,
+               "AnalyticLgmCdsOptionEngine: protection payment time must be atDefault");
 
     Real w = (arguments_.side == Protection::Buyer) ? -1.0 : 1.0;
     Rate swapSpread = arguments_.swap->runningSpread();
@@ -72,10 +73,9 @@ void AnalyticLgmCdsOptionEngine::calculate() const {
         if (arguments_.swap->settlesAccrual()) {
             Real accStartTime = i == 0 ? yts->timeFromReference(cpn->accrualStartDate()) : t_[i];
             // mid > accStartTime practically always the case?
-            accrualSettlementAmount =
-                mid > accStartTime
-                    ? swapSpread * cpn->accrualPeriod() * (mid - accStartTime) / (t_[i + 1] - accStartTime)
-                    : 0.0;
+            accrualSettlementAmount = mid > accStartTime ? swapSpread * cpn->accrualPeriod() * (mid - accStartTime) /
+                                                               (t_[i + 1] - accStartTime)
+                                                         : 0.0;
         }
         C[i] = ((1.0 - recoveryRate_) - accrualSettlementAmount) * yts->discount(mid) / yts->discount(tex_);
         D[i] = swapSpread * cpn->accrualPeriod() * yts->discount(t_[i + 1]) / yts->discount(tex_);

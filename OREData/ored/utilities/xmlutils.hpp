@@ -23,42 +23,45 @@
 
 #pragma once
 
-#include <vector>
-#include <map>
-#include <string>
-#include <sstream> // std::ostringstream
-#include <ql/types.hpp>
+#include <ql/errors.hpp>
 #include <ql/time/period.hpp>
+#include <ql/time/calendar.hpp>
+#include <ql/time/businessdayconvention.hpp>
+#include <ql/types.hpp>
 
-using std::string;
-using std::vector;
-using std::map;
-using std::pair;
-using QuantLib::Real;
-using QuantLib::Size;
-using QuantLib::Period;
+#include <map>
+#include <sstream> // std::ostringstream
+#include <string>
+#include <vector>
 
 // Forward declarations and typedefs
 // so we don't need to #include rapidxml everywhere.
 namespace rapidxml {
 //! XML Node
 /*! \ingroup utilities
-*/
+ */
 template <class Ch> class xml_node;
 //! XML Document
 /*! \ingroup utilities
-*/
+ */
 template <class Ch> class xml_document;
-}
+} // namespace rapidxml
 
 namespace ore {
 namespace data {
+using QuantLib::Period;
+using QuantLib::Real;
+using QuantLib::Size;
+using std::map;
+using std::pair;
+using std::string;
+using std::vector;
 
 typedef rapidxml::xml_node<char> XMLNode;
 
 //! Small XML Document wrapper class.
 /*! \ingroup utilities
-*/
+ */
 class XMLDocument {
 public:
     //! create an empty doc.
@@ -73,6 +76,9 @@ public:
 
     //! save the XML Document to the given file.
     void toFile(const string& filename);
+
+    //! return the XML Document as a string.
+    std::string toString();
 
     XMLNode* getFirstNode(const string& name);
     void appendNode(XMLNode*);
@@ -91,7 +97,7 @@ private:
 
 //! Base class for all serializable classes
 /*! \ingroup utilities
-*/
+ */
 class XMLSerializable {
 public:
     virtual ~XMLSerializable() {}
@@ -100,20 +106,30 @@ public:
 
     void fromFile(const std::string& filename);
     void toFile(const std::string& filename);
+
+    //! Parse from XML string
+    void fromXMLString(const std::string& xml);
+    //! Parse from XML string
+    std::string toXMLString();
 };
 
 //! XML Utilities Class
 /*! \ingroup utilities
-*/
+ */
 class XMLUtils {
 public:
     static void checkNode(XMLNode* n, const string& expectedName);
 
     static XMLNode* addChild(XMLDocument& doc, XMLNode* n, const string& name);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const string& value);
+    static void addChildAsCdata(XMLDocument& doc, XMLNode* n, const string& name, const string& value);
+    static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const string& value, const string& attrName,
+                         const string& attr);
+    static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const char* value);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, Real value);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, int value);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, bool value);
+    static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const Period& value);
 
     //! Adds <code>\<Name>p1,p2,p3\</Name></code>
     template <class T> static void addGenericChild(XMLDocument& doc, XMLNode* n, const char* name, const T& value) {
@@ -123,46 +139,80 @@ public:
     }
 
     template <class T>
-    static void addGenericChildAsList(XMLDocument& doc, XMLNode* n, const string& name, const vector<T>& values) {
+    static void addGenericChildAsList(XMLDocument& doc, XMLNode* n, const string& name, const vector<T>& values,
+                                      const string& attrName = "", const string& attr = "") {
+        std::ostringstream oss;
         if (values.size() == 0) {
-            addChild(doc, n, name);
+            oss << "";
         } else {
-            std::ostringstream oss;
             oss << values[0];
             for (Size i = 1; i < values.size(); i++) {
                 oss << ", " << values[i];
             }
-            addChild(doc, n, name, oss.str());
         }
+        addChild(doc, n, name, oss.str(), attrName, attr);
     }
 
+    template <class T = string>
     static void addChildren(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
-                            const vector<string>& values);
-    static void addChildren(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
-                            const vector<Real>& values);
+                            const vector<T>& values);
     //! Adds <code>\<Name>v1,v2,v3\</Name></code> - the inverse of getChildrenValuesAsDoublesCompact
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const vector<Real>& values);
+    template <class T = string>
+
     static void addChildrenWithAttributes(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
-                                          const vector<Real>& values, const string& attrName,
-                                          const vector<string>& attrs);
+                                          const vector<T>& values, const string& attrName,
+                                          const vector<string>& attrs); // one attribute (convenience function)
+    template <class T = string>
+    static void addChildrenWithAttributes(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
+                                          const vector<T>& values, const vector<string>& attrNames,
+                                          const vector<vector<string>>& attrs); // n attributes
+    template <class T = string>
+    static void addChildrenWithOptionalAttributes(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
+                                                  const vector<T>& values, const string& attrName,
+                                                  const vector<string>& attrs); // one attribute (convenience function)
+    template <class T = string>
+    static void addChildrenWithOptionalAttributes(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
+                                                  const vector<T>& values, const vector<string>& attrNames,
+                                                  const vector<vector<string>>& attrs); // n attributes
 
     static void addChildren(XMLDocument& doc, XMLNode* n, const string& names, const string& name,
                             const string& firstName, const string& secondName, const map<string, string>& values);
 
     // If mandatory == true, we throw if the node is not present, otherwise we return a default vale.
-    static string getChildValue(XMLNode* node, const string& name, bool mandatory = false);
-    static Real getChildValueAsDouble(XMLNode* node, const string& name, bool mandatory = false);
-    static int getChildValueAsInt(XMLNode* node, const string& name, bool mandatory = false);
-    static bool getChildValueAsBool(XMLNode* node, const string& name, bool mandatory = false); // default is true
+    static string getChildValue(XMLNode* node, const string& name, bool mandatory = false, const string& defaultValue = string());
+    static Real getChildValueAsDouble(XMLNode* node, const string& name, bool mandatory = false, double defaultValue = 0.0);
+    static int getChildValueAsInt(XMLNode* node, const string& name, bool mandatory = false, int defaultValue = 0);
+    static bool getChildValueAsBool(XMLNode* node, const string& name, bool mandatory = false, bool defaultValue = true);
+    static Period getChildValueAsPeriod(XMLNode* node, const string& name, bool mandatory = false,
+                                        const QuantLib::Period& defaultValue = 0 * QuantLib::Days);
     static vector<string> getChildrenValues(XMLNode* node, const string& names, const string& name,
                                             bool mandatory = false);
+    static vector<string>
+    getChildrenValuesWithAttributes(XMLNode* node, const string& names, const string& name, const string& attrName,
+                                    vector<string>& attrs,
+                                    bool mandatory = false); // one attribute (convenience function)
+
+    static vector<string> getChildrenValuesWithAttributes(XMLNode* node, const string& names, const string& name,
+                                                          const vector<string>& attrNames,
+                                                          const vector<std::reference_wrapper<vector<string>>>& attrs,
+                                                          bool mandatory = false); // n attributes
+    template <class T>
+    static vector<T> getChildrenValuesWithAttributes(XMLNode* node, const string& names, const string& name,
+                                                     const string& attrName, vector<string>& attrs,
+                                                     const std::function<T(string)> parser,
+                                                     bool mandatory = false); // one attribute (convenience function)
+
+    template <class T>
+    static vector<T> getChildrenValuesWithAttributes(XMLNode* node, const string& names, const string& name,
+                                                     const vector<string>& attrNames,
+                                                     const vector<std::reference_wrapper<vector<string>>>& attrs,
+                                                     const std::function<T(string)> parser,
+                                                     bool mandatory = false); // n attributes
 
     static vector<Real> getChildrenValuesAsDoubles(XMLNode* node, const string& names, const string& name,
                                                    bool mandatory = false);
     static vector<Real> getChildrenValuesAsDoublesCompact(XMLNode* node, const string& name, bool mandatory = false);
-    static vector<Real> getChildrenValuesAsDoublesWithAttributes(XMLNode* node, const string& names, const string& name,
-                                                                 const string& attrName, vector<string>& attrs,
-                                                                 bool mandatory = false);
 
     static vector<Period> getChildrenValuesAsPeriods(XMLNode* node, const string& name, bool mandatory = false);
     static vector<string> getChildrenValuesAsStrings(XMLNode* node, const string& name, bool mandatory = false);
@@ -197,6 +247,9 @@ public:
 
     //! Get a node's value
     static string getNodeValue(XMLNode* node);
+
+    //! Get a node's compact values as vector of doubles
+    static vector<Real> getNodeValueAsDoublesCompact(XMLNode* node);
 };
-}
-}
+} // namespace data
+} // namespace ore

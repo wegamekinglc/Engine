@@ -25,12 +25,11 @@
 #ifndef quantext_cross_ccy_swap_hpp
 #define quantext_cross_ccy_swap_hpp
 
-#include <ql/instruments/swap.hpp>
 #include <ql/currency.hpp>
-
-using namespace QuantLib;
+#include <ql/instruments/swap.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Cross currency swap
 /*! The first leg holds the pay currency cashflows and second leg holds
@@ -52,8 +51,8 @@ public:
     //@}
     //! \name Instrument interface
     //@{
-    void setupArguments(PricingEngine::arguments* args) const;
-    void fetchResults(const PricingEngine::results*) const;
+    void setupArguments(PricingEngine::arguments* args) const override;
+    void fetchResults(const PricingEngine::results*) const override;
     //@}
     //! \name Additional interface
     //@{
@@ -87,7 +86,7 @@ protected:
     //@}
     //! \name Instrument interface
     //@{
-    void setupExpired() const;
+    void setupExpired() const override;
     //@}
 
     std::vector<Currency> currencies_;
@@ -98,21 +97,24 @@ private:
     mutable std::vector<DiscountFactor> npvDateDiscounts_;
 };
 
+//! \ingroup instruments
 class CrossCcySwap::arguments : public Swap::arguments {
 public:
     std::vector<Currency> currencies;
-    void validate() const;
+    void validate() const override;
 };
 
+//! \ingroup instruments
 class CrossCcySwap::results : public Swap::results {
 public:
     std::vector<Real> inCcyLegNPV;
     std::vector<Real> inCcyLegBPS;
     std::vector<DiscountFactor> npvDateDiscounts;
-    void reset();
+    void reset() override;
 };
 
+//! \ingroup instruments
 class CrossCcySwap::engine : public GenericEngine<CrossCcySwap::arguments, CrossCcySwap::results> {};
-}
+} // namespace QuantExt
 
 #endif

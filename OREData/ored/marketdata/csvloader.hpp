@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <ored/marketdata/loader.hpp>
 #include <map>
+#include <ored/marketdata/loader.hpp>
 
 namespace ore {
 namespace data {
@@ -32,13 +32,15 @@ namespace data {
 //! Utility class for loading market quotes and fixings from a file
 /*!
   Data is loaded with the call to the constructor.
-  Inspectors can be called to then retrive quotes and fixings.
+  Inspectors can be called to then retrieve quotes and fixings.
 
   \ingroup marketdata
  */
 class CSVLoader : public Loader {
 public:
     //! Constructor
+    CSVLoader() {}
+
     CSVLoader( //! Quote file name
         const string& marketFilename,
         //! Fixing file name
@@ -46,24 +48,53 @@ public:
         //! Enable/disable implying today's fixings
         bool implyTodaysFixings = false);
 
+    CSVLoader( //! Quote file name
+        const vector<string>& marketFiles,
+        //! Fixing file name
+        const vector<string>& fixingFiles,
+        //! Enable/disable implying today's fixings
+        bool implyTodaysFixings = false);
+
+    CSVLoader( //! Quote file name
+        const string& marketFilename,
+        //! Fixing file name
+        const string& fixingFilename,
+        //! Dividend file name
+        const string& dividendFilename,
+        //! Enable/disable implying today's fixings
+        bool implyTodaysFixings = false);
+
+    CSVLoader( //! Quote file name
+        const vector<string>& marketFiles,
+        //! Fixing file name
+        const vector<string>& fixingFiles,
+        //! Dividend file name
+        const vector<string>& dividendFiles,
+        //! Enable/disable implying today's fixings
+        bool implyTodaysFixings = false);
+
     //! \name Inspectors
     //@{
     //! Load market quotes
-    const std::vector<boost::shared_ptr<MarketDatum>>& loadQuotes(const QuantLib::Date&) const;
+    const std::vector<boost::shared_ptr<MarketDatum>>& loadQuotes(const QuantLib::Date&) const override;
 
     //! Get a particular quote by its unique name
-    const boost::shared_ptr<MarketDatum>& get(const std::string& name, const QuantLib::Date&) const;
+    const boost::shared_ptr<MarketDatum>& get(const std::string& name, const QuantLib::Date&) const override;
 
     //! Load fixings
-    const std::vector<Fixing>& loadFixings() const { return fixings_; }
+    const std::vector<Fixing>& loadFixings() const override { return fixings_; }
+    //! Load dividends
+    const std::vector<Fixing>& loadDividends() const override { return dividends_; }
     //@}
 
 private:
-    void loadFile(const string&, bool);
+    enum class DataType { Market, Fixing, Dividend };
+    void loadFile(const string&, DataType);
 
     bool implyTodaysFixings_;
     std::map<QuantLib::Date, std::vector<boost::shared_ptr<MarketDatum>>> data_;
     std::vector<Fixing> fixings_;
+    std::vector<Fixing> dividends_;
 };
-}
-}
+} // namespace data
+} // namespace ore

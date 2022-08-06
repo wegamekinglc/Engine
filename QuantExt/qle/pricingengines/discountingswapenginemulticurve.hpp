@@ -28,9 +28,8 @@
 #include <ql/instruments/swap.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Discounting Swap Engine - Multi Curve
 /*! This class prices a swap with numerous simplifications in the case of
@@ -51,7 +50,7 @@ public:
                                     bool minimalResults = true,
                                     boost::optional<bool> includeSettlementDateFlows = boost::none,
                                     Date settlementDate = Date(), Date npvDate = Date());
-    void calculate() const;
+    void calculate() const override;
     Handle<YieldTermStructure> discountCurve() const { return discountCurve_; }
 
 private:
@@ -64,6 +63,6 @@ private:
     class AmountImpl;
     boost::shared_ptr<AmountImpl> impl_;
 };
-}
+} // namespace QuantExt
 
 #endif

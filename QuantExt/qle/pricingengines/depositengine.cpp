@@ -40,8 +40,9 @@ void DepositEngine::calculate() const {
     if (settlementDate_ == Date()) {
         settlementDate = refDate;
     } else {
-        QL_REQUIRE(settlementDate >= refDate, "settlement date (" << settlementDate << ") before "
-                                                                                       "discount curve reference date ("
+        QL_REQUIRE(settlementDate >= refDate, "settlement date (" << settlementDate
+                                                                  << ") before "
+                                                                     "discount curve reference date ("
                                                                   << refDate << ")");
     }
 
@@ -49,9 +50,10 @@ void DepositEngine::calculate() const {
     if (npvDate_ == Date()) {
         valuationDate = refDate;
     } else {
-        QL_REQUIRE(npvDate_ >= refDate, "npv date (" << npvDate_ << ") before "
-                                                                    "discount curve reference date (" << refDate
-                                                     << ")");
+        QL_REQUIRE(npvDate_ >= refDate, "npv date (" << npvDate_
+                                                     << ") before "
+                                                        "discount curve reference date ("
+                                                     << refDate << ")");
     }
 
     bool includeRefDateFlows =
@@ -60,7 +62,13 @@ void DepositEngine::calculate() const {
     results_.value =
         CashFlows::npv(arguments_.leg, **discountCurve_, includeRefDateFlows, settlementDate, valuationDate);
 
-    results_.fairRate = arguments_.index->clone(discountCurve_)->fixing(refDate);
+    // calculate the fair rate of a hypothetical deposit instrument traded on the refDate with maturity as the original
+    // instrument; this is only possible if the maturity date is later than the start date of that new deposit
+    Date startDate = arguments_.index->valueDate(arguments_.index->fixingCalendar().adjust(refDate));
+    if (arguments_.maturityDate > startDate)
+        results_.fairRate =
+            (discountCurve_->discount(startDate) / discountCurve_->discount(arguments_.maturityDate) - 1.0) /
+            arguments_.index->dayCounter().yearFraction(startDate, arguments_.maturityDate);
 
 } // calculate
 } // namespace QuantExt

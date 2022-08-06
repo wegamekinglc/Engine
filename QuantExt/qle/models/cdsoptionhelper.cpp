@@ -18,10 +18,11 @@
 
 #include <qle/models/cdsoptionhelper.hpp>
 #include <qle/pricingengines/blackcdsoptionengine.hpp>
+#include <qle/pricingengines/midpointcdsengine.hpp>
 
 #include <ql/exercise.hpp>
-#include <ql/pricingengines/credit/midpointcdsengine.hpp>
 #include <ql/quotes/simplequote.hpp>
+#include <ql/termstructures/volatility/equityfx/blackconstantvol.hpp>
 #include <ql/time/schedule.hpp>
 
 #include <boost/make_shared.hpp>
@@ -33,43 +34,48 @@ CdsOptionHelper::CdsOptionHelper(const Date& exerciseDate, const Handle<Quote>& 
                                  const DayCounter& dayCounter,
                                  const Handle<DefaultProbabilityTermStructure>& probability, const Real recoveryRate,
                                  const Handle<YieldTermStructure>& termStructure, const Rate spread, const Rate upfront,
-                                 const bool settlesAccrual, const bool paysAtDefaultTime, const Date protectionStart,
-                                 const Date upfrontDate, const boost::shared_ptr<Claim>& claim,
-                                 const CalibrationHelper::CalibrationErrorType errorType)
-    : CalibrationHelper(volatility, termStructure, errorType), blackVol_(boost::make_shared<SimpleQuote>(0.0)) {
+                                 const bool settlesAccrual,
+                                 const CreditDefaultSwap::ProtectionPaymentTime protectionPaymentTime,
+                                 const Date protectionStart, const Date upfrontDate,
+                                 const boost::shared_ptr<Claim>& claim,
+                                 const BlackCalibrationHelper::CalibrationErrorType errorType)
+    : BlackCalibrationHelper(volatility, errorType), termStructure_(termStructure),
+      blackVol_(boost::make_shared<SimpleQuote>(0.0)) {
 
     boost::shared_ptr<PricingEngine> cdsEngine =
-        boost::make_shared<MidPointCdsEngine>(probability, recoveryRate, termStructure);
+        boost::make_shared<QuantExt::MidPointCdsEngine>(probability, recoveryRate, termStructure);
 
     boost::shared_ptr<CreditDefaultSwap> tmp;
     if (upfront == Null<Real>())
-        tmp = boost::shared_ptr<CreditDefaultSwap>(new CreditDefaultSwap(side, 1.0, 0.02, schedule, paymentConvention,
-                                                                         dayCounter, settlesAccrual, paysAtDefaultTime,
-                                                                         protectionStart, claim));
+        tmp = boost::shared_ptr<CreditDefaultSwap>(
+            new CreditDefaultSwap(side, 1.0, 0.02, schedule, paymentConvention, dayCounter, settlesAccrual,
+                                  protectionPaymentTime, protectionStart, claim));
     else
         tmp = boost::shared_ptr<CreditDefaultSwap>(
             new CreditDefaultSwap(side, 1.0, upfront, 0.02, schedule, paymentConvention, dayCounter, settlesAccrual,
-                                  paysAtDefaultTime, protectionStart, upfrontDate, claim));
+                                  protectionPaymentTime, protectionStart, upfrontDate, claim));
     tmp->setPricingEngine(cdsEngine);
 
-    Real strike = spread == Null<Real>() ? tmp->fairSpread() : spread;
+    Real strike = spread == Null<Real>() ? tmp->fairSpreadClean() : spread;
     if (upfront == Null<Real>())
-        cds_ = boost::shared_ptr<CreditDefaultSwap>(new CreditDefaultSwap(side, 1.0, strike, schedule,
-                                                                          paymentConvention, dayCounter, settlesAccrual,
-                                                                          paysAtDefaultTime, protectionStart, claim));
+        cds_ = boost::shared_ptr<CreditDefaultSwap>(
+            new CreditDefaultSwap(side, 1.0, strike, schedule, paymentConvention, dayCounter, settlesAccrual,
+                                  protectionPaymentTime, protectionStart, claim));
     else
         cds_ = boost::shared_ptr<CreditDefaultSwap>(
             new CreditDefaultSwap(side, 1.0, upfront, strike, schedule, paymentConvention, dayCounter, settlesAccrual,
-                                  paysAtDefaultTime, protectionStart, upfrontDate, claim));
+                                  protectionPaymentTime, protectionStart, upfrontDate, claim));
 
     cds_->setPricingEngine(cdsEngine);
 
     boost::shared_ptr<Exercise> exercise = boost::make_shared<EuropeanExercise>(exerciseDate);
 
-    option_ = boost::make_shared<QuantExt::CdsOption>(cds_, exercise, true);
+    option_ = boost::make_shared<CdsOption>(cds_, exercise, true);
+    Handle<BlackVolTermStructure> h(
+        boost::make_shared<BlackConstantVol>(0, NullCalendar(), Handle<Quote>(blackVol_), Actual365Fixed()));
 
-    blackEngine_ = boost::make_shared<QuantExt::BlackCdsOptionEngine>(probability, recoveryRate, termStructure,
-                                                                      Handle<Quote>(blackVol_));
+    blackEngine_ = boost::make_shared<BlackCdsOptionEngine>(
+        probability, recoveryRate, termStructure, Handle<CreditVolCurve>(boost::make_shared<CreditVolCurveWrapper>(h)));
 }
 
 Real CdsOptionHelper::modelValue() const {

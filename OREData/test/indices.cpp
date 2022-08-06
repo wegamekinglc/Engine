@@ -16,13 +16,17 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "indices.hpp"
-#include <ored/utilities/indexparser.hpp>
+#include <boost/test/unit_test.hpp>
 #include <ored/configuration/conventions.hpp>
+#include <ored/utilities/indexparser.hpp>
+#include <oret/toplevelfixture.hpp>
 
 using namespace QuantLib;
 using namespace boost::unit_test_framework;
 using namespace ore;
+using namespace std;
+
+namespace {
 
 boost::shared_ptr<data::Conventions> convs() {
     boost::shared_ptr<data::Conventions> conventions(new data::Conventions());
@@ -59,17 +63,17 @@ boost::shared_ptr<data::Conventions> convs() {
     conventions->add(swapIndexJPYLongConv);
 
     boost::shared_ptr<ore::data::Convention> swapEURConv(new ore::data::IRSwapConvention(
-        "EUR-6M-SWAP-CONVENTIONS", "TARGET", "Annual", "MF", "30/360", "EUR-EURIBOR-6M"));
+        "EUR-6M-SWAP-CONVENTIONS", "TARGET", "Annual", "MF", "30/360 (Bond Basis)", "EUR-EURIBOR-6M"));
     boost::shared_ptr<ore::data::Convention> swapUSDConv(
-        new ore::data::IRSwapConvention("USD-3M-SWAP-CONVENTIONS", "US", "Semiannual", "MF", "30/360", "USD-LIBOR-3M"));
+        new ore::data::IRSwapConvention("USD-3M-SWAP-CONVENTIONS", "US", "Semiannual", "MF", "30/360 (Bond Basis)", "USD-LIBOR-3M"));
     boost::shared_ptr<ore::data::Convention> swapGBPConv(
         new ore::data::IRSwapConvention("GBP-3M-SWAP-CONVENTIONS", "UK", "Semiannual", "MF", "A365", "GBP-LIBOR-3M"));
     boost::shared_ptr<ore::data::Convention> swapGBPLongConv(
         new ore::data::IRSwapConvention("GBP-6M-SWAP-CONVENTIONS", "UK", "Semiannual", "MF", "A365", "GBP-LIBOR-6M"));
     boost::shared_ptr<ore::data::Convention> swapCHFConv(
-        new ore::data::IRSwapConvention("CHF-3M-SWAP-CONVENTIONS", "ZUB", "Annual", "MF", "30/360", "CHF-LIBOR-3M"));
+        new ore::data::IRSwapConvention("CHF-3M-SWAP-CONVENTIONS", "ZUB", "Annual", "MF", "30/360 (Bond Basis)", "CHF-LIBOR-3M"));
     boost::shared_ptr<ore::data::Convention> swapCHFLongConv(
-        new ore::data::IRSwapConvention("CHF-6M-SWAP-CONVENTIONS", "ZUB", "Annual", "MF", "30/360", "CHF-LIBOR-6M"));
+        new ore::data::IRSwapConvention("CHF-6M-SWAP-CONVENTIONS", "ZUB", "Annual", "MF", "30/360 (Bond Basis)", "CHF-LIBOR-6M"));
     boost::shared_ptr<ore::data::Convention> swapJPYConv(new ore::data::IRSwapConvention(
         "JPY-LIBOR-6M-SWAP-CONVENTIONS", "JP", "Semiannual", "MF", "A365", "JPY-LIBOR-6M"));
 
@@ -84,21 +88,34 @@ boost::shared_ptr<data::Conventions> convs() {
     return conventions;
 }
 
-namespace testsuite {
-
 struct test_data {
     const char* str;
     const char* index_name;
     Period tenor;
 };
 
+struct test_data_inf {
+    const char* str;
+    const char* index_name;
+    Frequency frequency;
+};
+
 static struct test_data index_data[] = {
     // parsing string,     index name,                     tenor
     {"EUR-EONIA-1D", "EoniaON Actual/360", 1 * Days},
+    {"EUR-ESTER", "EsterON Actual/360", 1 * Days},
     {"GBP-SONIA-1D", "SoniaON Actual/365 (Fixed)", 1 * Days},
     {"JPY-TONAR-1D", "TONARON Actual/365 (Fixed)", 1 * Days},
     {"CHF-TOIS", "CHF-TOISTN Actual/360", 1 * Days},
     {"USD-FedFunds", "FedFundsON Actual/360", 1 * Days},
+    {"USD-SOFR", "SOFRON Actual/360", 1 * Days},
+    {"CHF-SARON", "CHF-SARONON Actual/360", 1 * Days},
+    {"DKK-DKKOIS", "DKK-DKKOISTN Actual/360", 1 * Days},
+    {"SEK-SIOR", "SEK-SIORTN Actual/360", 1 * Days},
+    {"NOK-NOWA", "NowaON Actual/Actual (ISMA)", 1 * Days},
+    {"NZD-OCR", "NzocrON Actual/365 (Fixed)", 1 * Days},
+    {"BRL-CDI", "BRL-CDION Business/252(Brazil)", 1 * Days},
+    {"INR-MIBOROIS", "INR-MIBOROISON Actual/365 (Fixed)", 1 * Days},
 
     {"AUD-LIBOR-1W", "AUDLibor1W Actual/360", 1 * Weeks},
     {"AUD-LIBOR-1M", "AUDLibor1M Actual/360", 1 * Months},
@@ -141,21 +158,28 @@ static struct test_data index_data[] = {
     {"EUR-LIBOR-12M", "EURLibor1Y Actual/360", 1 * Years},
     {"EUR-LIBOR-1Y", "EURLibor1Y Actual/360", 1 * Years},
 
-    {"CAD-CDOR-1W", "CDOR1W Actual/360", 1 * Weeks},
-    {"CAD-CDOR-1M", "CDOR1M Actual/360", 1 * Months},
-    {"CAD-CDOR-2M", "CDOR2M Actual/360", 2 * Months},
-    {"CAD-CDOR-3M", "CDOR3M Actual/360", 3 * Months},
-    {"CAD-CDOR-6M", "CDOR6M Actual/360", 6 * Months},
-    {"CAD-CDOR-12M", "CDOR1Y Actual/360", 1 * Years},
-    {"CAD-CDOR-1Y", "CDOR1Y Actual/360", 1 * Years},
+    {"CAD-CDOR-1W", "CDOR1W Actual/365 (Fixed)", 1 * Weeks},
+    {"CAD-CDOR-1M", "CDOR1M Actual/365 (Fixed)", 1 * Months},
+    {"CAD-CDOR-2M", "CDOR2M Actual/365 (Fixed)", 2 * Months},
+    {"CAD-CDOR-3M", "CDOR3M Actual/365 (Fixed)", 3 * Months},
+    {"CAD-CDOR-6M", "CDOR6M Actual/365 (Fixed)", 6 * Months},
+    {"CAD-CDOR-12M", "CDOR1Y Actual/365 (Fixed)", 1 * Years},
+    {"CAD-CDOR-1Y", "CDOR1Y Actual/365 (Fixed)", 1 * Years},
 
-    {"CAD-BA-1W", "CDOR1W Actual/360", 1 * Weeks},
-    {"CAD-BA-1M", "CDOR1M Actual/360", 1 * Months},
-    {"CAD-BA-2M", "CDOR2M Actual/360", 2 * Months},
-    {"CAD-BA-3M", "CDOR3M Actual/360", 3 * Months},
-    {"CAD-BA-6M", "CDOR6M Actual/360", 6 * Months},
-    {"CAD-BA-12M", "CDOR1Y Actual/360", 1 * Years},
-    {"CAD-BA-1Y", "CDOR1Y Actual/360", 1 * Years},
+    {"CAD-BA-1W", "CDOR1W Actual/365 (Fixed)", 1 * Weeks},
+    {"CAD-BA-1M", "CDOR1M Actual/365 (Fixed)", 1 * Months},
+    {"CAD-BA-2M", "CDOR2M Actual/365 (Fixed)", 2 * Months},
+    {"CAD-BA-3M", "CDOR3M Actual/365 (Fixed)", 3 * Months},
+    {"CAD-BA-6M", "CDOR6M Actual/365 (Fixed)", 6 * Months},
+    {"CAD-BA-12M", "CDOR1Y Actual/365 (Fixed)", 1 * Years},
+    {"CAD-BA-1Y", "CDOR1Y Actual/365 (Fixed)", 1 * Years},
+
+    {"CNY-SHIBOR-3M", "Shibor3M Actual/360", 3 * Months},
+    {"CNY-REPOFIX-1D", "CNY-REPOFIXTN Actual/365 (Fixed)", 1 * Days},
+    {"CNY-REPOFIX-7D", "CNY-REPOFIX1W Actual/365 (Fixed)", 1 * Weeks},
+    {"CNY-REPOFIX-1W", "CNY-REPOFIX1W Actual/365 (Fixed)", 1 * Weeks},
+    {"CNY-REPOFIX-14D", "CNY-REPOFIX2W Actual/365 (Fixed)", 2 * Weeks},
+    {"CNY-REPOFIX-2W", "CNY-REPOFIX2W Actual/365 (Fixed)", 2 * Weeks},
 
     {"CZK-PRIBOR-6M", "CZK-PRIBOR6M Actual/360", 6 * Months},
 
@@ -191,13 +215,13 @@ static struct test_data index_data[] = {
     {"JPY-TIBOR-12M", "Tibor1Y Actual/365 (Fixed)", 1 * Years},
     {"JPY-TIBOR-1Y", "Tibor1Y Actual/365 (Fixed)", 1 * Years},
 
-    {"CAD-LIBOR-1W", "CADLibor1W Actual/360", 1 * Weeks},
-    {"CAD-LIBOR-1M", "CADLibor1M Actual/360", 1 * Months},
-    {"CAD-LIBOR-2M", "CADLibor2M Actual/360", 2 * Months},
-    {"CAD-LIBOR-3M", "CADLibor3M Actual/360", 3 * Months},
-    {"CAD-LIBOR-6M", "CADLibor6M Actual/360", 6 * Months},
-    {"CAD-LIBOR-12M", "CADLibor1Y Actual/360", 1 * Years},
-    {"CAD-LIBOR-1Y", "CADLibor1Y Actual/360", 1 * Years},
+    {"CAD-LIBOR-1W", "CADLibor1W Actual/365 (Fixed)", 1 * Weeks},
+    {"CAD-LIBOR-1M", "CADLibor1M Actual/365 (Fixed)", 1 * Months},
+    {"CAD-LIBOR-2M", "CADLibor2M Actual/365 (Fixed)", 2 * Months},
+    {"CAD-LIBOR-3M", "CADLibor3M Actual/365 (Fixed)", 3 * Months},
+    {"CAD-LIBOR-6M", "CADLibor6M Actual/365 (Fixed)", 6 * Months},
+    {"CAD-LIBOR-12M", "CADLibor1Y Actual/365 (Fixed)", 1 * Years},
+    {"CAD-LIBOR-1Y", "CADLibor1Y Actual/365 (Fixed)", 1 * Years},
 
     {"CHF-LIBOR-1W", "CHFLibor1W Actual/360", 1 * Weeks},
     {"CHF-LIBOR-1M", "CHFLibor1M Actual/360", 1 * Months},
@@ -206,6 +230,12 @@ static struct test_data index_data[] = {
     {"CHF-LIBOR-6M", "CHFLibor6M Actual/360", 6 * Months},
     {"CHF-LIBOR-12M", "CHFLibor1Y Actual/360", 1 * Years},
     {"CHF-LIBOR-1Y", "CHFLibor1Y Actual/360", 1 * Years},
+
+    {"SAR-SAIBOR-1W", "SAR-SAIBOR1W Actual/360", 1 * Weeks},
+    {"SAR-SAIBOR-1M", "SAR-SAIBOR1M Actual/360", 1 * Months},
+    {"SAR-SAIBOR-2M", "SAR-SAIBOR2M Actual/360", 2 * Months},
+    {"SAR-SAIBOR-3M", "SAR-SAIBOR3M Actual/360", 3 * Months},
+    {"SAR-SAIBOR-6M", "SAR-SAIBOR6M Actual/360", 6 * Months},
 
     {"SEK-STIBOR-1W", "SEK-STIBOR1W Actual/360", 1 * Weeks},
     {"SEK-STIBOR-1M", "SEK-STIBOR1M Actual/360", 1 * Months},
@@ -271,8 +301,13 @@ static struct test_data index_data[] = {
     {"IDR-IDRFIX-6M", "IDR-IDRFIX6M Actual/360", 6 * Months},
     {"INR-MIFOR-6M", "INR-MIFOR6M Actual/365 (Fixed)", 6 * Months},
     {"MXN-TIIE-6M", "MXN-TIIE6M Actual/360", 6 * Months},
+    {"MXN-TIIE-28D", "MXN-TIIE4W Actual/360", 4 * Weeks},
+    {"MXN-TIIE-4W", "MXN-TIIE4W Actual/360", 4 * Weeks},
+    {"MXN-TIIE-91D", "MXN-TIIE3M Actual/360", 3 * Months},
+    {"MXN-TIIE-3M", "MXN-TIIE3M Actual/360", 3 * Months},
     {"PLN-WIBOR-6M", "PLN-WIBOR6M Actual/365 (Fixed)", 6 * Months},
     {"SKK-BRIBOR-6M", "SKK-BRIBOR6M Actual/360", 6 * Months},
+    {"THB-THBFIX-6M", "THBFIX6M Actual/365 (Fixed)", 6 * Months},
 
     {"NZD-BKBM-1M", "NZD-BKBM1M Actual/Actual (ISDA)", 1 * Months},
     {"NZD-BKBM-2M", "NZD-BKBM2M Actual/Actual (ISDA)", 2 * Months},
@@ -287,6 +322,8 @@ static struct test_data index_data[] = {
     {"KRW-KORIBOR-4M", "KRW-KORIBOR4M Actual/365 (Fixed)", 4 * Months},
     {"KRW-KORIBOR-5M", "KRW-KORIBOR5M Actual/365 (Fixed)", 5 * Months},
     {"KRW-KORIBOR-6M", "KRW-KORIBOR6M Actual/365 (Fixed)", 6 * Months},
+    {"KRW-CD-91D", "KRW-CD3M Actual/365 (Fixed)", 3 * Months},
+    {"KRW-CD-3M", "KRW-CD3M Actual/365 (Fixed)", 3 * Months},
 
     {"TWD-TAIBOR-1M", "TWD-TAIBOR1M Actual/365 (Fixed)", 1 * Months},
     {"TWD-TAIBOR-2M", "TWD-TAIBOR2M Actual/365 (Fixed)", 2 * Months},
@@ -295,6 +332,13 @@ static struct test_data index_data[] = {
     {"TWD-TAIBOR-5M", "TWD-TAIBOR5M Actual/365 (Fixed)", 5 * Months},
     {"TWD-TAIBOR-6M", "TWD-TAIBOR6M Actual/365 (Fixed)", 6 * Months},
 
+    {"TRY-TRLIBOR-1M", "TRLibor1M Actual/360", 1 * Months},
+    {"TRY-TRLIBOR-2M", "TRLibor2M Actual/360", 2 * Months},
+    {"TRY-TRLIBOR-3M", "TRLibor3M Actual/360", 3 * Months},
+    {"TRY-TRLIBOR-4M", "TRLibor4M Actual/360", 4 * Months},
+    {"TRY-TRLIBOR-5M", "TRLibor5M Actual/360", 5 * Months},
+    {"TRY-TRLIBOR-6M", "TRLibor6M Actual/360", 6 * Months},
+
     {"MYR-KLIBOR-1M", "MYR-KLIBOR1M Actual/365 (Fixed)", 1 * Months},
     {"MYR-KLIBOR-2M", "MYR-KLIBOR2M Actual/365 (Fixed)", 2 * Months},
     {"MYR-KLIBOR-3M", "MYR-KLIBOR3M Actual/365 (Fixed)", 3 * Months},
@@ -302,6 +346,7 @@ static struct test_data index_data[] = {
     {"MYR-KLIBOR-5M", "MYR-KLIBOR5M Actual/365 (Fixed)", 5 * Months},
     {"MYR-KLIBOR-6M", "MYR-KLIBOR6M Actual/365 (Fixed)", 6 * Months}};
 
+    
 static struct test_data swap_index_data[] = {
     {"EUR-CMS-2Y", "EURLiborSwapIsdaFix2Y 30/360 (Bond Basis)", 2 * Years},
     {"EUR-CMS-30Y", "EURLiborSwapIsdaFix30Y 30/360 (Bond Basis)", 30 * Years},
@@ -315,12 +360,36 @@ static struct test_data swap_index_data[] = {
     {"JPY-CMS-30Y", "JPYLiborSwapIsdaFix30Y Actual/365 (Fixed)", 30 * Years},
 };
 
-void IndexTest::testIborIndexParsing() {
+//name_ = region_.name() + " " + familyName_;
+static struct test_data_inf inflation_index_data[] = {
+    {"AUCPI", "Australia CPI", Quarterly},
+    {"BEHICP", "Belgium HICP", Monthly},
+    {"EUHICP", "EU HICP", Monthly},
+    {"EUHICPXT", "EU HICPXT", Monthly},
+    {"FRHICP", "France HICP", Monthly},
+    {"FRCPI", "France CPI", Monthly},
+    {"UKRPI", "UK RPI", Monthly},
+    {"USCPI", "USA CPI", Monthly},
+    {"ZACPI", "South Africa CPI", Monthly},
+    {"SECPI", "Sweden CPI", Monthly},
+    {"DKCPI", "Denmark CPI", Monthly},
+    {"CACPI", "Canada CPI", Monthly},
+    {"ESCPI", "Spain CPI", Monthly},
+};
+
+} // namespace
+
+BOOST_FIXTURE_TEST_SUITE(OREDataTestSuite, ore::test::TopLevelFixture)
+
+BOOST_AUTO_TEST_SUITE(IndexTests)
+
+BOOST_AUTO_TEST_CASE(testIborIndexParsing) {
+
     BOOST_TEST_MESSAGE("Testing Ibor Index name parsing...");
 
     Size len = sizeof(index_data) / sizeof(index_data[0]);
     for (Size i = 0; i < len; ++i) {
-        string str(index_data[i].str);
+        string str(ore::data::internalIndexName(index_data[i].str));
         string index_name(index_data[i].index_name);
         Period tenor(index_data[i].tenor);
 
@@ -342,38 +411,32 @@ void IndexTest::testIborIndexParsing() {
     }
 }
 
-void IndexTest::testIborIndexParsingFails() {
+BOOST_AUTO_TEST_CASE(testIborIndexParsingFails) {
+
     BOOST_TEST_MESSAGE("Testing Ibor Index parsing fails...");
 
     // Test invalid strings
-    BOOST_CHECK_THROW(ore::data::parseIborIndex("EUR-EONIA-1M"), std::exception);
-    BOOST_CHECK_THROW(ore::data::parseIborIndex("EUR-EURIBOR-1D"), std::exception);
-    BOOST_CHECK_THROW(ore::data::parseIborIndex("EUR-FALSE-6M"), std::exception);
-    BOOST_CHECK_THROW(ore::data::parseIborIndex("It's a trap!"), std::exception);
+    BOOST_CHECK_THROW(ore::data::parseIborIndex("EUR-EONIA-1M"), QuantLib::Error);
+    BOOST_CHECK_THROW(ore::data::parseIborIndex("EUR-FALSE-6M"), QuantLib::Error);
+    BOOST_CHECK_THROW(ore::data::parseIborIndex("It's a trap!"), QuantLib::Error);
 }
 
-void IndexTest::testSwapIndexParsing() {
+BOOST_AUTO_TEST_CASE(testSwapIndexParsing) {
+
     BOOST_TEST_MESSAGE("Testing Swap Index name parsing...");
 
     Handle<YieldTermStructure> h; // dummy
 
     Size len = sizeof(swap_index_data) / sizeof(swap_index_data[0]);
-    data::Conventions conventions = *convs();
 
     for (Size i = 0; i < len; ++i) {
         string str(swap_index_data[i].str);
         string index_name(swap_index_data[i].index_name);
         Period tenor(swap_index_data[i].tenor);
-
-        boost::shared_ptr<data::Convention> tmp = conventions.get(str);
-        boost::shared_ptr<data::SwapIndexConvention> swapCon =
-            boost::dynamic_pointer_cast<data::SwapIndexConvention>(tmp);
-        tmp = conventions.get(swapCon->conventions());
-        boost::shared_ptr<data::IRSwapConvention> con = boost::dynamic_pointer_cast<data::IRSwapConvention>(tmp);
-        QL_REQUIRE(con, "no swap convention");
+        ore::data::InstrumentConventions::instance().setConventions(convs());
         boost::shared_ptr<SwapIndex> swap;
         try {
-            swap = ore::data::parseSwapIndex(str, h, h, con);
+            swap = ore::data::parseSwapIndex(str, h, h);
         } catch (std::exception& e) {
             BOOST_FAIL("Swap Parser failed to parse \"" << str << "\" [exception:" << e.what() << "]");
         } catch (...) {
@@ -389,11 +452,36 @@ void IndexTest::testSwapIndexParsing() {
     }
 }
 
-test_suite* IndexTest::suite() {
-    test_suite* suite = BOOST_TEST_SUITE("IndexTests");
-    suite->add(BOOST_TEST_CASE(&IndexTest::testIborIndexParsing));
-    suite->add(BOOST_TEST_CASE(&IndexTest::testIborIndexParsingFails));
-    suite->add(BOOST_TEST_CASE(&IndexTest::testSwapIndexParsing));
-    return suite;
+BOOST_AUTO_TEST_CASE(testInflationIndexParsing) {
+
+    BOOST_TEST_MESSAGE("Testing Inflation Index name parsing...");
+
+    Size len = sizeof(inflation_index_data) / sizeof(inflation_index_data[0]);
+    for (Size i = 0; i < len; ++i) {
+        string str(inflation_index_data[i].str);
+        string index_name(inflation_index_data[i].index_name);
+        Frequency frequency(inflation_index_data[i].frequency);
+
+        boost::shared_ptr<ZeroInflationIndex> cpi;
+        try {
+            cpi = ore::data::parseZeroInflationIndex(str);
+        } catch (std::exception& e) {
+            BOOST_FAIL("Inflation Index Parser failed to parse \"" << str << "\" [exception:" << e.what() << "]");
+        } catch (...) {
+            BOOST_FAIL("Inflation Index Parser failed to parse \"" << str << "\" [unhandled]");
+        }
+        if (cpi) {
+            BOOST_CHECK_EQUAL(cpi->name(), index_name);
+            BOOST_CHECK_EQUAL(cpi->frequency(), frequency);
+            // Frequency
+            //Availability lag?
+
+            BOOST_TEST_MESSAGE("Parsed \"" << str << "\" and got " << cpi->name());
+        } else
+            BOOST_FAIL("Inflation Index Parser(" << str << ") returned null pointer");
+    }
 }
-}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

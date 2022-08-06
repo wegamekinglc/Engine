@@ -16,26 +16,25 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <test/ccyswapwithresets.hpp>
+#include <boost/make_shared.hpp>
+#include <boost/test/unit_test.hpp>
 #include <ored/marketdata/marketimpl.hpp>
-#include <ored/portfolio/swap.hpp>
-#include <ored/utilities/indexparser.hpp>
 #include <ored/portfolio/builders/swap.hpp>
 #include <ored/portfolio/enginedata.hpp>
 #include <ored/portfolio/portfolio.hpp>
+#include <ored/portfolio/swap.hpp>
+#include <ored/utilities/indexparser.hpp>
+#include <ored/utilities/log.hpp>
+#include <oret/toplevelfixture.hpp>
 #include <ql/termstructures/yield/discountcurve.hpp>
 #include <ql/time/calendars/target.hpp>
 #include <ql/time/calendars/unitedstates.hpp>
 #include <ql/time/daycounters/actual360.hpp>
-#include <boost/make_shared.hpp>
-#include <ored/utilities/log.hpp>
 
 using namespace QuantLib;
 using namespace boost::unit_test_framework;
 using namespace ore::data;
 using std::vector;
-
-// Ccy Swap with notional resets test, example from Bloomberg
 
 namespace {
 
@@ -45,15 +44,44 @@ public:
         // valuation date
         asof_ = Date(22, Aug, 2016);
 
+        boost::shared_ptr<ore::data::Conventions> conventions = boost::make_shared<Conventions>();
+        conventions->add(boost::make_shared<ore::data::FXConvention>("EUR-USD-FX", "0", "EUR", "USD", "10000",
+                                                                     "USD,EUR", "true"));
+        InstrumentConventions::instance().setConventions(conventions);
+
         // build vectors with dates and discount factors
-        vector<Date> datesEUR = {asof_, asof_ + 6 * Months, asof_ + 7 * Months, asof_ + 8 * Months, asof_ + 9 * Months,
-                                 asof_ + 10 * Months, asof_ + 11 * Months, asof_ + 12 * Months, asof_ + 13 * Months,
-                                 asof_ + 14 * Months, asof_ + 15 * Months, asof_ + 16 * Months, asof_ + 17 * Months,
-                                 asof_ + 18 * Months, asof_ + 2 * Years, asof_ + 3 * Years, asof_ + 4 * Years,
-                                 asof_ + 5 * Years, asof_ + 6 * Years};
-        vector<Date> datesUSD = {asof_, asof_ + 3 * Months, asof_ + 4 * Months, asof_ + 7 * Months, asof_ + 10 * Months,
-                                 asof_ + 13 * Months, asof_ + 16 * Months, asof_ + 19 * Months, asof_ + 2 * Years,
-                                 asof_ + 3 * Years, asof_ + 4 * Years, asof_ + 5 * Years, asof_ + 6 * Years};
+        vector<Date> datesEUR = {asof_,
+                                 asof_ + 6 * Months,
+                                 asof_ + 7 * Months,
+                                 asof_ + 8 * Months,
+                                 asof_ + 9 * Months,
+                                 asof_ + 10 * Months,
+                                 asof_ + 11 * Months,
+                                 asof_ + 12 * Months,
+                                 asof_ + 13 * Months,
+                                 asof_ + 14 * Months,
+                                 asof_ + 15 * Months,
+                                 asof_ + 16 * Months,
+                                 asof_ + 17 * Months,
+                                 asof_ + 18 * Months,
+                                 asof_ + 2 * Years,
+                                 asof_ + 3 * Years,
+                                 asof_ + 4 * Years,
+                                 asof_ + 5 * Years,
+                                 asof_ + 6 * Years};
+        vector<Date> datesUSD = {asof_,
+                                 asof_ + 3 * Months,
+                                 asof_ + 4 * Months,
+                                 asof_ + 7 * Months,
+                                 asof_ + 10 * Months,
+                                 asof_ + 13 * Months,
+                                 asof_ + 16 * Months,
+                                 asof_ + 19 * Months,
+                                 asof_ + 2 * Years,
+                                 asof_ + 3 * Years,
+                                 asof_ + 4 * Years,
+                                 asof_ + 5 * Years,
+                                 asof_ + 6 * Years};
         vector<DiscountFactor> dfsEUR = {1.0,      1.000972, 1.001138, 1.001309, 1.001452, 1.001663, 1.001826,
                                          1.002005, 1.002196, 1.002369, 1.002554, 1.00275,  1.002918, 1.003114,
                                          1.004134, 1.006005, 1.007114, 1.006773, 1.004282};
@@ -61,10 +89,10 @@ public:
                                          0.984774, 0.980358, 0.96908,  0.95704, 0.944041, 0.93004};
 
         // build discount
-        discountCurves_[make_pair(Market::defaultConfiguration, "EUR")] =
+        yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "EUR")] =
             intDiscCurve(datesEUR, dfsEUR, Actual360(), TARGET());
-        discountCurves_[make_pair(Market::defaultConfiguration, "USD")] =
-            intDiscCurve(datesUSD, dfsUSD, Actual360(), UnitedStates());
+        yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "USD")] =
+            intDiscCurve(datesUSD, dfsUSD, Actual360(), UnitedStates(UnitedStates::Settlement));
 
         // build ibor index
         Handle<IborIndex> hEUR(parseIborIndex("EUR-EURIBOR-6M", intDiscCurve(datesEUR, dfsEUR, Actual360(), TARGET())));
@@ -73,15 +101,17 @@ public:
         // add Eurib 6M fixing
         hEUR->addFixing(Date(18, Aug, 2016), -0.00191);
         Handle<IborIndex> hUSD(
-            parseIborIndex("USD-LIBOR-3M", intDiscCurve(datesUSD, dfsUSD, Actual360(), UnitedStates())));
+            parseIborIndex("USD-LIBOR-3M", intDiscCurve(datesUSD, dfsUSD, Actual360(), UnitedStates(UnitedStates::Settlement))));
         iborIndices_[make_pair(Market::defaultConfiguration, "USD-LIBOR-3M")] = hUSD;
 
         // add Libor 3M fixing
         hUSD->addFixing(Date(18, Aug, 2016), 0.00811);
 
         // add fx rates
-        fxSpots_[Market::defaultConfiguration].addQuote("EURUSD",
-                                                        Handle<Quote>(boost::make_shared<SimpleQuote>(1.1306)));
+        fxIndices_[Market::defaultConfiguration].addIndex("EURUSD", 
+            Handle<QuantExt::FxIndex>(boost::make_shared<QuantExt::FxIndex>(
+                asof_, "EURUSD", 0, parseCurrency("EUR"), parseCurrency("USD"), parseCalendar("EUR,USD"),
+                Handle<Quote>(boost::make_shared<SimpleQuote>(1.1306)), discountCurve("EUR"), discountCurve("USD"), false)));
     }
 
 private:
@@ -92,17 +122,16 @@ private:
         return Handle<YieldTermStructure>(idc);
     }
 };
-}
+} // namespace
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(OREDataTestSuite, ore::test::TopLevelFixture)
 
-void CcySwapWithResetsTest::testCcySwapWithResetsPrice() {
+BOOST_AUTO_TEST_SUITE(CcySwapWithResetsTest)
+
+// Ccy Swap with notional resets test, example from Bloomberg
+BOOST_AUTO_TEST_CASE(testCcySwapWithResetsPrice) {
+
     BOOST_TEST_MESSAGE("Testing CcySwapWithResets Price...");
-
-    /*
-    Log::instance().registerLogger(boost::make_shared<StderrLogger>());
-    Log::instance().switchOn();
-    */
 
     // Bloomberg CCYswap and CCYswapReset prices (in USD)
     Real npvCCYswap = -349.69;
@@ -166,21 +195,21 @@ void CcySwapWithResetsTest::testCcySwapWithResetsPrice() {
     string foreignCCY = "USD";
     Real foreignAmount = 10000000;
     string fxIndex = "FX-ECB-EUR-USD";
-    FloatingLegData legdataEUR(indexEUR, days, isInArrears, spreadEUR);
-    LegData legEUR1(isPayerEUR, "EUR", legdataEUR, scheduleEUR, dc, notionalEUR, vector<string>(), paymentConvention,
+    auto legdataEUR = boost::make_shared<FloatingLegData>(indexEUR, days, isInArrears, spreadEUR);
+    LegData legEUR1(legdataEUR, isPayerEUR, "EUR", scheduleEUR, dc, notionalEUR, vector<string>(), paymentConvention,
                     notionalInitialXNL, notionalFinalXNL, notionalAmortizingXNL, notionalFinalXNL, foreignCCY,
-                    foreignAmount, fxIndex, days);
-    LegData legEUR2(isPayerEUR, "EUR", legdataEUR, scheduleEUR, dc, notionalEUR, vector<string>(), paymentConvention,
+                    foreignAmount, fxIndex);
+    LegData legEUR2(legdataEUR, isPayerEUR, "EUR", scheduleEUR, dc, notionalEUR, vector<string>(), paymentConvention,
                     notionalInitialXNL, notionalFinalXNL, notionalAmortizingXNL, false, foreignCCY, foreignAmount,
-                    fxIndex, days);
+                    fxIndex);
 
     // USD Leg without notional resets
     bool isPayerUSD = false;
     string indexUSD = "USD-LIBOR-3M";
     vector<Real> spreadUSD(1, 0);
     vector<Real> notionalUSD(1, 10000000);
-    FloatingLegData legdataUSD(indexUSD, days, isInArrears, spreadUSD);
-    LegData legUSD(isPayerUSD, "USD", legdataUSD, scheduleUSD, dc, notionalUSD, vector<string>(), paymentConvention,
+    auto legdataUSD = boost::make_shared<FloatingLegData>(indexUSD, days, isInArrears, spreadUSD);
+    LegData legUSD(legdataUSD, isPayerUSD, "USD", scheduleUSD, dc, notionalUSD, vector<string>(), paymentConvention,
                    notionalInitialXNL, notionalFinalXNL, notionalAmortizingXNL);
 
     // Build swap trades
@@ -226,86 +255,8 @@ void CcySwapWithResetsTest::testCcySwapWithResetsPrice() {
         }
     }
     BOOST_CHECK_EQUAL(sumXNL, 0);
-
-    // print Cash Flows (taken from ore.cpp and slightly modified). Uncomment the below to get them printed.
-    /*
-    BOOST_TEST_MESSAGE("CcySwapWithResets " << "#ID" << "," << "Type" << "," << "LegNo" << "," << "PayDate" << "," <<
-    "Amount" << "," << "Currency" << "," << "Coupon" << "," << "Accrual" << "," << "fixingDate" << "," << "fixingValue"
-    << ",");
-    const vector<boost::shared_ptr<Trade>>& trades = portfolio->trades();
-    for (Size k = 0; k < trades.size(); k++) {
-      const vector<Leg>& legs = trades[k]->legs();
-      for (Size i = 0; i < legs.size(); i++) {
-        const QuantLib::Leg& leg = legs[i];
-        bool payer = trades[k]->legPayers()[i];
-        string ccy = trades[k]->legCurrencies()[i];
-        for (Size j = 0; j < leg.size(); j++) {
-          boost::shared_ptr<QuantLib::CashFlow> ptrFlow = leg[j];
-          Date payDate = ptrFlow->date();
-          if (payDate >= today) {
-            Real amount = ptrFlow->amount();
-            if (payer)
-              amount *= -1.0;
-
-            std::string ccy = trades[k]->legCurrencies()[i];
-
-            boost::shared_ptr<QuantLib::Coupon> ptrCoupon =
-            boost::dynamic_pointer_cast<QuantLib::Coupon>(ptrFlow);
-            if (ptrCoupon) {
-              Real coupon = ptrCoupon->rate();
-              Real accrual = ptrCoupon->accrualPeriod();
-              boost::shared_ptr<QuantLib::FloatingRateCoupon> ptrFloat =
-              boost::dynamic_pointer_cast<QuantLib::FloatingRateCoupon>(ptrFlow);
-              if (ptrFloat) {
-                Date fixingDate = ptrFloat->fixingDate();
-                Real fixingValue = ptrFloat->index()->fixing(fixingDate);
-                BOOST_TEST_MESSAGE("CcySwapWithResets " << std::setprecision(0) << trades[k]->id() << "," <<
-    trades[k]->tradeType() << "," << i << ","
-                                   << QuantLib::io::iso_date(payDate) << "," << std::setprecision(4) << amount << "," <<
-    ccy << "," << std::setprecision(10) << coupon << "," << std::setprecision(10) << accrual << "," <<
-    QuantLib::io::iso_date(fixingDate) << "," << fixingValue);
-              } else {
-                BOOST_TEST_MESSAGE("CcySwapWithResets " << std::setprecision(0) << trades[k]->id() << "," <<
-    trades[k]->tradeType() << "," << i << ","
-                                   << QuantLib::io::iso_date(payDate) << "," << std::setprecision(4) << amount << "," <<
-    ccy << "," << std::setprecision(10) << coupon << "," << std::setprecision(10) << accrual << "," << "," << ",");
-              }
-            } else {
-              boost::shared_ptr<QuantLib::FloatingRateCoupon> ptrFloat =
-              boost::dynamic_pointer_cast<QuantLib::FloatingRateCoupon>(ptrFlow);
-              if (ptrFloat) {
-                Date fixingDate = ptrFloat->fixingDate();
-                Real fixingValue = ptrFloat->index()->fixing(fixingDate);
-                BOOST_TEST_MESSAGE("CcySwapWithResets " << std::setprecision(0) << trades[k]->id() << "," <<
-    trades[k]->tradeType() << "," << i << ","
-                                   << QuantLib::io::iso_date(payDate) << "," << std::setprecision(4) << amount << "," <<
-    ccy << "," << "," << "," << QuantLib::io::iso_date(fixingDate) << "," << fixingValue);
-              } else {
-                BOOST_TEST_MESSAGE("CcySwapWithResets " << std::setprecision(0) << trades[k]->id() << "," <<
-    trades[k]->tradeType() << "," << i << ","
-                                   << QuantLib::io::iso_date(payDate) << "," << std::setprecision(4) << amount << "," <<
-    ccy << "," << "," << "," << ",");
-              }
-            }
-          }
-        }
-      }
-    }
-    */
 }
 
-test_suite* CcySwapWithResetsTest::suite() {
-    // Uncomment the below to get detailed output TODO: custom logger that uses BOOST_MESSAGE
-    /*
-      boost::shared_ptr<ore::data::FileLogger> logger =
-      boost::make_shared<ore::data::FileLogger>("CcySwapWithResets_test.log");
-      ore::data::Log::instance().removeAllLoggers();
-      ore::data::Log::instance().registerLogger(logger);
-      ore::data::Log::instance().switchOn();
-      ore::data::Log::instance().setMask(255);
-    */
-    test_suite* suite = BOOST_TEST_SUITE("CcySwapWithResetsTest");
-    suite->add(BOOST_TEST_CASE(&CcySwapWithResetsTest::testCcySwapWithResetsPrice));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

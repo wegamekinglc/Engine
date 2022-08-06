@@ -18,25 +18,22 @@
 
 /*! \file ored/portfolio/envelope.hpp
     \brief trade envelope data model and serialization
-    \ingroup portfolio
+    \ingroup tradedata
 */
 
 #pragma once
 
-#include <ored/utilities/xmlutils.hpp>
 #include <ored/portfolio/schedule.hpp>
+#include <ored/utilities/xmlutils.hpp>
 
 #include <vector>
 
-using std::string;
-using std::vector;
-using ore::data::XMLSerializable;
-;
-using ore::data::XMLDocument;
-using ore::data::XMLNode;
-
 namespace ore {
 namespace data {
+using ore::data::XMLNode;
+using ore::data::XMLSerializable;
+using std::string;
+using std::vector;
 
 //! Serializable object holding a trade action
 /*!
@@ -60,8 +57,8 @@ public:
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
 private:
@@ -85,11 +82,11 @@ public:
     //! Clear the trade actions
     void clear() { actions_.clear(); }
 
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
 
 private:
     vector<TradeAction> actions_;
 };
-}
-}
+} // namespace data
+} // namespace ore

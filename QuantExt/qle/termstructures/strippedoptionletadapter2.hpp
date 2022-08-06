@@ -17,57 +17,60 @@
 */
 
 /*! \file qle/termstructures/strippedoptionletadapter2.hpp
-    \brief StrippedOptionlet Adapter (with a deeper update method)
+    \brief StrippedOptionlet Adapter (with a deeper update method, linear interpolation and optional flat extrapolation)
     \ingroup termstructures
 */
 
 #ifndef quantext_stripped_optionlet_adapter2_h
 #define quantext_stripped_optionlet_adapter2_h
 
-#include <ql/termstructures/volatility/optionlet/strippedoptionletbase.hpp>
-#include <ql/termstructures/volatility/optionlet/optionletstripper.hpp>
-#include <ql/termstructures/volatility/optionlet/optionletvolatilitystructure.hpp>
 #include <ql/math/interpolation.hpp>
 #include <ql/math/interpolations/sabrinterpolation.hpp>
+#include <ql/termstructures/volatility/optionlet/optionletstripper.hpp>
+#include <ql/termstructures/volatility/optionlet/optionletvolatilitystructure.hpp>
+#include <ql/termstructures/volatility/optionlet/strippedoptionletbase.hpp>
 
 namespace QuantExt {
 
 /*! Adapter class for turning a StrippedOptionletBase object into an
     OptionletVolatilityStructure.
+    \ingroup termstructures
 */
 class StrippedOptionletAdapter2 : public QuantLib::OptionletVolatilityStructure, public QuantLib::LazyObject {
 public:
-    StrippedOptionletAdapter2(const boost::shared_ptr<QuantLib::StrippedOptionletBase>&);
+    StrippedOptionletAdapter2(const boost::shared_ptr<QuantLib::StrippedOptionletBase>&,
+                              const bool flatExtrapolation = false);
 
     //! \name TermStructure interface
     //@{
-    QuantLib::Date maxDate() const;
+    QuantLib::Date maxDate() const override;
     //@}
     //! \name VolatilityTermStructure interface
     //@{
-    QuantLib::Rate minStrike() const;
-    QuantLib::Rate maxStrike() const;
+    QuantLib::Rate minStrike() const override;
+    QuantLib::Rate maxStrike() const override;
     //@}
     //! \name LazyObject interface
     //@{
-    void update();
-    void performCalculations() const;
+    void update() override;
+    void performCalculations() const override;
     boost::shared_ptr<QuantLib::OptionletStripper> optionletStripper() const;
     //@}
-    QuantLib::VolatilityType volatilityType() const;
-    QuantLib::Real displacement() const;
+    QuantLib::VolatilityType volatilityType() const override;
+    QuantLib::Real displacement() const override;
 
 protected:
     //! \name OptionletVolatilityStructure interface
     //@{
-    boost::shared_ptr<QuantLib::SmileSection> smileSectionImpl(QuantLib::Time optionTime) const;
+    boost::shared_ptr<QuantLib::SmileSection> smileSectionImpl(QuantLib::Time optionTime) const override;
 
-    QuantLib::Volatility volatilityImpl(QuantLib::Time length, QuantLib::Rate strike) const;
+    QuantLib::Volatility volatilityImpl(QuantLib::Time length, QuantLib::Rate strike) const override;
     //@}
 private:
     const boost::shared_ptr<QuantLib::StrippedOptionletBase> optionletStripper_;
     QuantLib::Size nInterpolations_;
     mutable std::vector<boost::shared_ptr<QuantLib::Interpolation> > strikeInterpolations_;
+    const bool flatExtrapolation_;
 };
 
 inline void StrippedOptionletAdapter2::update() {
@@ -79,6 +82,6 @@ inline void StrippedOptionletAdapter2::update() {
 inline boost::shared_ptr<QuantLib::OptionletStripper> StrippedOptionletAdapter2::optionletStripper() const {
     return boost::dynamic_pointer_cast<QuantLib::OptionletStripper>(optionletStripper_);
 }
-}
+} // namespace QuantExt
 
 #endif

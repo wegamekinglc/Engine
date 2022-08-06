@@ -24,75 +24,124 @@ using namespace QuantLib;
 namespace ore {
 namespace data {
 
-bool operator==(const MarketConfiguration& lhs, const MarketConfiguration& rhs) {
-    if (lhs.discountingCurvesId != rhs.discountingCurvesId || lhs.yieldCurvesId != rhs.yieldCurvesId ||
-        lhs.indexForwardingCurvesId != rhs.indexForwardingCurvesId || lhs.fxSpotsId != rhs.fxSpotsId ||
-        lhs.fxVolatilitiesId != rhs.fxVolatilitiesId || lhs.swaptionVolatilitiesId != rhs.swaptionVolatilitiesId ||
-        lhs.defaultCurvesId != rhs.defaultCurvesId || lhs.swapIndexCurvesId != rhs.swapIndexCurvesId ||
-        lhs.zeroInflationIndexCurvesId != rhs.zeroInflationIndexCurvesId ||
-        lhs.yoyInflationIndexCurvesId != rhs.yoyInflationIndexCurvesId ||
-        lhs.inflationCapFloorPriceSurfacesId != rhs.inflationCapFloorPriceSurfacesId ||
-        lhs.capFloorVolatilitiesId != rhs.capFloorVolatilitiesId || lhs.equityCurvesId != rhs.equityCurvesId ||
-        lhs.equityVolatilitiesId != rhs.equityVolatilitiesId || lhs.securitySpreadsId != rhs.securitySpreadsId ||
-        lhs.securityRecoveryRatesId != rhs.securityRecoveryRatesId) {
-        return false;
-    } else {
-        return true;
-    }
-}
+namespace {
 
-bool TodaysMarketParameters::operator==(TodaysMarketParameters& rhs) {
-
-    if (swapIndices_.size() == rhs.swapIndices_.size()) {
-        // need to check also for existence of keys
-        for (auto item = swapIndices_.begin(); item != swapIndices_.end(); ++item) {
-            map<string, string> left = rhs.swapIndices_[item->first];
-            map<string, string> right = swapIndices_[item->first];
-            if (left != right) {
-                return false;
-            }
-        }
-    }
-
-    if (discountingCurves_ != rhs.discountingCurves_ || yieldCurves_ != rhs.yieldCurves_ ||
-        indexForwardingCurves_ != rhs.indexForwardingCurves_ || fxSpots_ != rhs.fxSpots_ ||
-        fxVolatilities_ != rhs.fxVolatilities_ || swaptionVolatilities_ != rhs.swaptionVolatilities_ ||
-        defaultCurves_ != rhs.defaultCurves_ || capFloorVolatilities_ != rhs.capFloorVolatilities_ ||
-        zeroInflationIndexCurves_ != rhs.zeroInflationIndexCurves_ ||
-        yoyInflationIndexCurves_ != rhs.yoyInflationIndexCurves_ ||
-        inflationCapFloorPriceSurfaces_ != rhs.inflationCapFloorPriceSurfaces_ || equityCurves_ != rhs.equityCurves_ ||
-        equityVolatilities_ != rhs.equityVolatilities_ || configurations_ != rhs.configurations_) {
-        return false;
-    }
-    return true;
+// container class to link the enum in the header with the various XML strings
+struct MarketObjectMetaInfo {
+    MarketObject obj;
+    string name;                        // AKA marketObjectStrings
+    string xmlName;                     // AKA marketObjectXMLNames
+    pair<string, string> xmlSingleName; // AKA marketObjectXMLNamesSingle
 };
 
-bool TodaysMarketParameters::operator!=(TodaysMarketParameters& rhs) { return !(*this == rhs); }
+// Note the order of elements in this array MUST respect the XML Schema
+static const vector<MarketObjectMetaInfo> marketObjectData = {
+    {MarketObject::YieldCurve, "YieldCurve", "YieldCurves", {"YieldCurve", "name"}},
+    {MarketObject::DiscountCurve, "DiscountCurve", "DiscountingCurves", {"DiscountingCurve", "currency"}},
+    {MarketObject::IndexCurve, "IndexCurve", "IndexForwardingCurves", {"Index", "name"}},
+    {MarketObject::SwapIndexCurve, "SwapIndexCurve", "SwapIndexCurves", {"SwapIndex", "name"}},
+    {MarketObject::ZeroInflationCurve,
+     "ZeroInflationCurve",
+     "ZeroInflationIndexCurves",
+     {"ZeroInflationIndexCurve", "name"}},
+    {MarketObject::ZeroInflationCapFloorVol,
+     "ZeroInflationCapFloorVol",
+     "ZeroInflationCapFloorVolatilities",
+     {"ZeroInflationCapFloorVolatility", "name"}},
+    {MarketObject::YoYInflationCurve, "YoYInflationCurve", "YYInflationIndexCurves", {"YYInflationIndexCurve", "name"}},
+    {MarketObject::FXSpot, "FXSpot", "FxSpots", {"FxSpot", "pair"}},
+    {MarketObject::BaseCorrelation, "BaseCorrelation", "BaseCorrelations", {"BaseCorrelation", "name"}},
+    {MarketObject::FXVol, "FXVol", "FxVolatilities", {"FxVolatility", "pair"}},
+    {MarketObject::SwaptionVol, "SwaptionVol", "SwaptionVolatilities", {"SwaptionVolatility", "key"}},
+    {MarketObject::YieldVol, "YieldVol", "YieldVolatilities", {"YieldVolatility", "name"}},
+    {MarketObject::CapFloorVol, "CapFloorVol", "CapFloorVolatilities", {"CapFloorVolatility", "key"}},
+    {MarketObject::CDSVol, "CDSVol", "CDSVolatilities", {"CDSVolatility", "name"}},
+    {MarketObject::DefaultCurve, "DefaultCurve", "DefaultCurves", {"DefaultCurve", "name"}},
+    {MarketObject::YoYInflationCapFloorVol,
+     "YoYInflationCapFloorVol",
+     "YYInflationCapFloorVolatilities",
+     {"YYInflationCapFloorVolatility", "name"}},
+    {MarketObject::EquityCurve, "EquityCurves", "EquityCurves", {"EquityCurve", "name"}},
+    {MarketObject::EquityVol, "EquityVols", "EquityVolatilities", {"EquityVolatility", "name"}},
+    {MarketObject::Security, "Securities", "Securities", {"Security", "name"}},
+    {MarketObject::CommodityCurve, "CommodityCurves", "CommodityCurves", {"CommodityCurve", "name"}},
+    {MarketObject::CommodityVolatility,
+     "CommodityVolatilities",
+     "CommodityVolatilities",
+     {"CommodityVolatility", "name"}},
+    {MarketObject::Correlation, "Correlation", "Correlations", {"Correlation", "name"}}};
+
+} // anonymous namespace
+
+std::ostream& operator<<(std::ostream& out, const MarketObject& o) {
+    for (Size i = 0; i < marketObjectData.size(); i++) {
+        if (marketObjectData[i].obj == o)
+            return out << marketObjectData[i].name;
+    }
+    return out << "Unknown";
+}
+
+std::set<MarketObject> getMarketObjectTypes() {
+    thread_local static std::set<MarketObject> result;
+    if (result.empty()) {
+        for (auto const& o : marketObjectData) {
+            result.insert(o.obj);
+        }
+    }
+    return result;
+}
+
+MarketConfiguration::MarketConfiguration(map<MarketObject, string> marketObjectIds) {
+    for (Size i = 0; i < marketObjectData.size(); ++i) {
+        marketObjectIds_[marketObjectData[i].obj] = Market::defaultConfiguration;
+    }
+    
+    for (const auto& moi : marketObjectIds)
+        setId(moi.first, moi.second);
+}
+
+string MarketConfiguration::operator()(const MarketObject o) const {
+    QL_REQUIRE(marketObjectIds_.find(o) != marketObjectIds_.end(),
+               "MarketConfiguration: did not find MarketObject " << o << " (this is unexpected)");
+    return marketObjectIds_.at(o);
+}
+
+void MarketConfiguration::setId(const MarketObject o, const string& id) {
+    if (id != "")
+        marketObjectIds_[o] = id;
+}
+
+void MarketConfiguration::add(const MarketConfiguration& o) {
+    // overwrite if already existent
+    for (auto const& x : o.marketObjectIds_)
+        marketObjectIds_[x.first] = x.second;
+}
+
+void TodaysMarketParameters::addConfiguration(const string& id, const MarketConfiguration& configuration) {
+    if (hasConfiguration(id)) {
+        auto it =
+            find_if(configurations_.begin(), configurations_.end(),
+                    [&id](const pair<string, MarketConfiguration>& s) { return s.first == id; });
+        it->second.add(configuration);
+    } else 
+        configurations_.push_back(make_pair(id, configuration));
+}
+
+void TodaysMarketParameters::clear() {
+    // clear data members
+    configurations_.clear();
+    marketObjects_.clear();
+}
+
+bool TodaysMarketParameters::empty() { 
+    return marketObjects_.size() == 0;
+}
 
 void TodaysMarketParameters::fromXML(XMLNode* node) {
 
-    // clear data members
-    configurations_.clear();
-    discountingCurves_.clear();
-    yieldCurves_.clear();
-    indexForwardingCurves_.clear();
-    fxSpots_.clear();
-    fxVolatilities_.clear();
-    swaptionVolatilities_.clear();
-    defaultCurves_.clear();
-    swapIndices_.clear();
-    capFloorVolatilities_.clear();
-    zeroInflationIndexCurves_.clear();
-    yoyInflationIndexCurves_.clear();
-    inflationCapFloorPriceSurfaces_.clear();
-    equityCurves_.clear();
-    equityVolatilities_.clear();
-    securitySpreads_.clear();
-    securityRecoveryRates_.clear();
-
-    // add default configuration (may be overwritten below)
-    MarketConfiguration defaultConfig;
-    addConfiguration(Market::defaultConfiguration, defaultConfig);
+    // add default configuration if we do not have one (may be overwritten below)
+    if (!hasConfiguration(Market::defaultConfiguration))
+        addConfiguration(Market::defaultConfiguration, MarketConfiguration());
 
     // fill data from XML
     XMLUtils::checkNode(node, "TodaysMarket");
@@ -100,154 +149,60 @@ void TodaysMarketParameters::fromXML(XMLNode* node) {
     while (n) {
         if (XMLUtils::getNodeName(n) == "Configuration") {
             MarketConfiguration tmp;
-            tmp.discountingCurvesId = XMLUtils::getChildValue(n, "DiscountingCurvesId", false);
-            tmp.yieldCurvesId = XMLUtils::getChildValue(n, "YieldCurvesId", false);
-            tmp.indexForwardingCurvesId = XMLUtils::getChildValue(n, "IndexForwardingCurvesId", false),
-            tmp.swapIndexCurvesId = XMLUtils::getChildValue(n, "SwapIndexCurvesId", false),
-            tmp.fxSpotsId = XMLUtils::getChildValue(n, "FxSpotsId", false);
-            tmp.fxVolatilitiesId = XMLUtils::getChildValue(n, "FxVolatilitiesId", false);
-            tmp.swaptionVolatilitiesId = XMLUtils::getChildValue(n, "SwaptionVolatilitiesId", false);
-            tmp.defaultCurvesId = XMLUtils::getChildValue(n, "DefaultCurvesId", false);
-            tmp.capFloorVolatilitiesId = XMLUtils::getChildValue(n, "CapFloorVolatilitiesId", false);
-            tmp.zeroInflationIndexCurvesId = XMLUtils::getChildValue(n, "ZeroInflationIndexCurvesId", false);
-            tmp.yoyInflationIndexCurvesId = XMLUtils::getChildValue(n, "YYInflationIndexCurvesId", false);
-            tmp.inflationCapFloorPriceSurfacesId = XMLUtils::getChildValue(n, "InflationCapFloorPriceSurfaceId", false);
-            tmp.equityCurvesId = XMLUtils::getChildValue(n, "EquityCurvesId", false);
-            tmp.equityVolatilitiesId = XMLUtils::getChildValue(n, "EquityVolatilitiesId", false);
-            tmp.securitySpreadsId = XMLUtils::getChildValue(n, "SecuritySpreadsId", false);
-            tmp.securityRecoveryRatesId = XMLUtils::getChildValue(n, "SecurityRecoveryRatesId", false);
-            if (tmp.discountingCurvesId == "")
-                tmp.discountingCurvesId = Market::defaultConfiguration;
-            if (tmp.yieldCurvesId == "")
-                tmp.yieldCurvesId = Market::defaultConfiguration;
-            if (tmp.indexForwardingCurvesId == "")
-                tmp.indexForwardingCurvesId = Market::defaultConfiguration;
-            if (tmp.swapIndexCurvesId == "")
-                tmp.swapIndexCurvesId = Market::defaultConfiguration;
-            if (tmp.fxSpotsId == "")
-                tmp.fxSpotsId = Market::defaultConfiguration;
-            if (tmp.fxVolatilitiesId == "")
-                tmp.fxVolatilitiesId = Market::defaultConfiguration;
-            if (tmp.swaptionVolatilitiesId == "")
-                tmp.swaptionVolatilitiesId = Market::defaultConfiguration;
-            if (tmp.capFloorVolatilitiesId == "")
-                tmp.capFloorVolatilitiesId = Market::defaultConfiguration;
-            if (tmp.defaultCurvesId == "")
-                tmp.defaultCurvesId = Market::defaultConfiguration;
-            if (tmp.zeroInflationIndexCurvesId == "")
-                tmp.zeroInflationIndexCurvesId = Market::defaultConfiguration;
-            if (tmp.yoyInflationIndexCurvesId == "")
-                tmp.yoyInflationIndexCurvesId = Market::defaultConfiguration;
-            if (tmp.inflationCapFloorPriceSurfacesId == "")
-                tmp.inflationCapFloorPriceSurfacesId = Market::defaultConfiguration;
-            if (tmp.equityCurvesId == "")
-                tmp.equityCurvesId = Market::defaultConfiguration;
-            if (tmp.equityVolatilitiesId == "")
-                tmp.equityVolatilitiesId = Market::defaultConfiguration;
-            if (tmp.securitySpreadsId == "")
-                tmp.securitySpreadsId = Market::defaultConfiguration;
-            if (tmp.securityRecoveryRatesId == "")
-                tmp.securityRecoveryRatesId = Market::defaultConfiguration;
-            addConfiguration(XMLUtils::getAttribute(n, "id"), tmp);
-        } else if (XMLUtils::getNodeName(n) == "DiscountingCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addDiscountingCurves(id, XMLUtils::getChildrenAttributesAndValues(n, "DiscountingCurve", "currency", true));
-        } else if (XMLUtils::getNodeName(n) == "YieldCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addYieldCurves(id, XMLUtils::getChildrenAttributesAndValues(n, "YieldCurve", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "IndexForwardingCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addIndexForwardingCurves(id, XMLUtils::getChildrenAttributesAndValues(n, "Index", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "SwapIndexCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            vector<XMLNode*> nodes = XMLUtils::getChildrenNodes(n, "SwapIndex");
-            map<string, string> swapIndices;
-            for (XMLNode* xn : nodes) {
-                string name = XMLUtils::getAttribute(xn, "name");
-                QL_REQUIRE(name != "", "no name given for SwapIndex");
-                QL_REQUIRE(swapIndices.find(name) == swapIndices.end(), "Duplicate SwapIndex found for " << name);
-                string disc = XMLUtils::getChildValue(xn, "Discounting", true);
-                swapIndices[name] = disc; //.emplace(name, { ibor, disc }); won't work?
+            for (Size i = 0; i < marketObjectData.size(); ++i) {
+                tmp.setId(marketObjectData[i].obj,
+                          XMLUtils::getChildValue(n, marketObjectData[i].xmlName + "Id", false));
+                addConfiguration(XMLUtils::getAttribute(n, "id"), tmp);
             }
-            addSwapIndices(id, swapIndices);
-        } else if (XMLUtils::getNodeName(n) == "FxSpots") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addFxSpots(id, XMLUtils::getChildrenAttributesAndValues(n, "FxSpot", "pair", false));
-        } else if (XMLUtils::getNodeName(n) == "FxVolatilities") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addFxVolatilities(id, XMLUtils::getChildrenAttributesAndValues(n, "FxVolatility", "pair", false));
-        } else if (XMLUtils::getNodeName(n) == "SwaptionVolatilities") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addSwaptionVolatilities(
-                id, XMLUtils::getChildrenAttributesAndValues(n, "SwaptionVolatility", "currency", false));
-        } else if (XMLUtils::getNodeName(n) == "CapFloorVolatilities") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addCapFloorVolatilities(
-                id, XMLUtils::getChildrenAttributesAndValues(n, "CapFloorVolatility", "currency", false));
-        } else if (XMLUtils::getNodeName(n) == "DefaultCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addDefaultCurves(id, XMLUtils::getChildrenAttributesAndValues(n, "DefaultCurve", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "ZeroInflationIndexCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addZeroInflationIndexCurves(
-                id, XMLUtils::getChildrenAttributesAndValues(n, "ZeroInflationIndexCurve", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "YYInflationIndexCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addYoYInflationIndexCurves(
-                id, XMLUtils::getChildrenAttributesAndValues(n, "YYInflationIndexCurve", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "InflationCapFloorPriceSurfaces") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addInflationCapFloorPriceSurfaces(
-                id, XMLUtils::getChildrenAttributesAndValues(n, "InflationCapFloorPriceSurface", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "EquityCurves") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addEquityCurves(id, XMLUtils::getChildrenAttributesAndValues(n, "EquityCurve", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "EquityVolatilities") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addEquityVolatilities(id, XMLUtils::getChildrenAttributesAndValues(n, "EquityVolatility", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "SecuritySpreads") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addSecuritySpreads(id, XMLUtils::getChildrenAttributesAndValues(n, "SecuritySpread", "name", false));
-        } else if (XMLUtils::getNodeName(n) == "SecurityRecoveryRates") {
-            string id = XMLUtils::getAttribute(n, "id");
-            if (id == "")
-                id = Market::defaultConfiguration;
-            addSecurityRecoveryRates(
-                id, XMLUtils::getChildrenAttributesAndValues(n, "SecurityRecoveryRate", "name", false));
-        } else
-            QL_FAIL("TodaysMarketParameters::fromXML(): node not recognized: " << XMLUtils::getNodeName(n));
+        } else {
+            Size i = 0;
+            for (; i < marketObjectData.size(); ++i) {
+                if (XMLUtils::getNodeName(n) == marketObjectData[i].xmlName) {
+                    string id = XMLUtils::getAttribute(n, "id");
+                    if (id == "")
+                        id = Market::defaultConfiguration;
+                    // The XML schema for swap indices is different ...
+                    if (marketObjectData[i].obj == MarketObject::SwapIndexCurve) {
+                        vector<XMLNode*> nodes = XMLUtils::getChildrenNodes(n, marketObjectData[i].xmlSingleName.first);
+                        map<string, string> swapIndices;
+                        for (XMLNode* xn : nodes) {
+                            string name = XMLUtils::getAttribute(xn, marketObjectData[i].xmlSingleName.second);
+                            QL_REQUIRE(name != "", "no name given for SwapIndex");
+                            QL_REQUIRE(swapIndices.find(name) == swapIndices.end(),
+                                       "Duplicate SwapIndex found for " << name);
+                            string disc = XMLUtils::getChildValue(xn, "Discounting", true);
+                            swapIndices[name] = disc; //.emplace(name, { ibor, disc }); won't work?
+                        }
+                        addMarketObject(MarketObject::SwapIndexCurve, id, swapIndices);
+
+                    } else {
+                        auto mp =
+                            XMLUtils::getChildrenAttributesAndValues(n, marketObjectData[i].xmlSingleName.first,
+                                                                     marketObjectData[i].xmlSingleName.second, false);
+			// deprecated attribute currency for capfloor vols and swaption vols
+                        if (marketObjectData[i].obj == MarketObject::CapFloorVol ||
+                            marketObjectData[i].obj == MarketObject::SwaptionVol) {
+                            auto mp2 = XMLUtils::getChildrenAttributesAndValues(
+                                n, marketObjectData[i].xmlSingleName.first, "currency", false);
+                            if (!mp2.empty()) {
+                                mp.insert(mp2.begin(), mp2.end());
+                                WLOG("TodaysMarketParameters: the attribute 'currency' is deprecated for '" +
+                                     marketObjectData[i].xmlName + "', use 'key' instead.");
+                            }
+                        }
+                        Size nc = XMLUtils::getChildrenNodes(n, "").size();
+                        QL_REQUIRE(mp.size() == nc, "TodaysMarketParameters::fromXML(): possible duplicate entry in node " 
+                            << marketObjectData[i].xmlName << ", check for XMLUtils warnings.");
+                        addMarketObject(marketObjectData[i].obj, id, mp);
+                    }
+                    break;
+                }
+            }
+            QL_REQUIRE(i < marketObjectData.size(),
+                       "TodaysMarketParameters::fromXML(): node not recognized: " << XMLUtils::getNodeName(n));
+        }
         n = XMLUtils::getNextSibling(n);
-    }
+    } // while(n)
 }
 
 XMLNode* TodaysMarketParameters::toXML(XMLDocument& doc) {
@@ -257,334 +212,43 @@ XMLNode* TodaysMarketParameters::toXML(XMLDocument& doc) {
     // configurations
     if (configurations_.size() > 0) {
         for (auto iterator = configurations_.begin(); iterator != configurations_.end(); iterator++) {
-
             XMLNode* configurationsNode = XMLUtils::addChild(doc, todaysMarketNode, "Configuration");
             XMLUtils::addAttribute(doc, configurationsNode, "id", iterator->first.c_str());
-
-            if (iterator->second.discountingCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "DiscountingCurvesId",
-                                   iterator->second.discountingCurvesId);
-            }
-            if (iterator->second.yieldCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "YieldCurvesId", iterator->second.yieldCurvesId);
-            }
-            if (iterator->second.indexForwardingCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "IndexForwardingCurvesId",
-                                   iterator->second.indexForwardingCurvesId);
-            }
-            if (iterator->second.swapIndexCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "SwapIndexCurvesId", iterator->second.swapIndexCurvesId);
-            }
-            if (iterator->second.fxSpotsId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "FxSpotsId", iterator->second.fxSpotsId);
-            }
-            if (iterator->second.fxVolatilitiesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "FxVolatilitiesId", iterator->second.fxVolatilitiesId);
-            }
-            if (iterator->second.swaptionVolatilitiesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "SwaptionVolatilitiesId",
-                                   iterator->second.swaptionVolatilitiesId);
-            }
-            if (iterator->second.defaultCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "DefaultCurvesId", iterator->second.defaultCurvesId);
-            }
-            if (iterator->second.zeroInflationIndexCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "ZeroInflationIndexCurvesId",
-                                   iterator->second.zeroInflationIndexCurvesId);
-            }
-            if (iterator->second.yoyInflationIndexCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "YYInflationIndexCurvesId",
-                                   iterator->second.yoyInflationIndexCurvesId);
-            }
-            if (iterator->second.inflationCapFloorPriceSurfacesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "InflationCapFloorPriceSurfaceId",
-                                   iterator->second.inflationCapFloorPriceSurfacesId);
-            }
-            if (iterator->second.equityCurvesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "EquityCurvesId", iterator->second.equityCurvesId);
-            }
-            if (iterator->second.equityVolatilitiesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "EquityVolatilitiesId",
-                                   iterator->second.equityVolatilitiesId);
-            }
-            if (iterator->second.securitySpreadsId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "SecuritySpreadsId", iterator->second.securitySpreadsId);
-            }
-            if (iterator->second.securityRecoveryRatesId != "") {
-                XMLUtils::addChild(doc, configurationsNode, "SecurityRecoveryRatesId",
-                                   iterator->second.securityRecoveryRatesId);
+            for (Size i = 0; i < marketObjectData.size(); ++i) {
+                XMLUtils::addChild(doc, configurationsNode, marketObjectData[i].xmlName + "Id",
+                                   iterator->second(marketObjectData[i].obj)); // Added the "Id" for schema test
             }
         }
     }
 
-    // discounting curves
-    if (discountingCurves_.size() > 0) {
+    for (Size i = 0; i < marketObjectData.size(); ++i) {
+        if (marketObjects_.find(marketObjectData[i].obj) != marketObjects_.end()) {
+            auto mapping = marketObjects_.at(marketObjectData[i].obj);
+            for (auto mappingSetIterator = mapping.begin(); mappingSetIterator != mapping.end(); mappingSetIterator++) {
 
-        for (auto mappingSetIterator = discountingCurves_.begin(); mappingSetIterator != discountingCurves_.end();
-             mappingSetIterator++) {
+                XMLNode* node = XMLUtils::addChild(doc, todaysMarketNode, marketObjectData[i].xmlName);
+                XMLUtils::addAttribute(doc, node, "id", mappingSetIterator->first.c_str());
 
-            XMLNode* discountingCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "DiscountingCurves");
-            XMLUtils::addAttribute(doc, discountingCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* singleMappingNode = doc.allocNode("DiscountingCurve", singleMappingIterator->second);
-                XMLUtils::appendNode(discountingCurvesNode, singleMappingNode);
-                XMLUtils::addAttribute(doc, singleMappingNode, "currency", singleMappingIterator->first);
+                for (auto singleMappingIterator = mappingSetIterator->second.begin();
+                     singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
+                    // Again, swap indices are different...
+                    if (marketObjectData[i].obj == MarketObject::SwapIndexCurve) {
+                        XMLNode* swapIndexNode = XMLUtils::addChild(doc, node, marketObjectData[i].xmlSingleName.first);
+                        XMLUtils::addAttribute(doc, swapIndexNode, marketObjectData[i].xmlSingleName.second,
+                                               singleMappingIterator->first.c_str());
+                        XMLUtils::addChild(doc, swapIndexNode, "Discounting",
+                                           (string)singleMappingIterator->second.c_str());
+                    } else {
+                        XMLNode* singleMappingNode =
+                            doc.allocNode(marketObjectData[i].xmlSingleName.first, singleMappingIterator->second);
+                        XMLUtils::appendNode(node, singleMappingNode);
+                        XMLUtils::addAttribute(doc, singleMappingNode, marketObjectData[i].xmlSingleName.second,
+                                               singleMappingIterator->first);
+                    }
+                }
             }
         }
     }
-
-    // yield curves
-    if (yieldCurves_.size() > 0) {
-
-        for (auto mappingSetIterator = yieldCurves_.begin(); mappingSetIterator != yieldCurves_.end();
-             mappingSetIterator++) {
-
-            XMLNode* yieldCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "YieldCurves");
-            XMLUtils::addAttribute(doc, yieldCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("YieldCurve", singleMappingIterator->second);
-                XMLUtils::appendNode(yieldCurvesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // index Forwarding curves
-    if (indexForwardingCurves_.size() > 0) {
-
-        for (auto mappingSetIterator = indexForwardingCurves_.begin();
-             mappingSetIterator != indexForwardingCurves_.end(); mappingSetIterator++) {
-
-            XMLNode* indexForwardingCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "IndexForwardingCurves");
-            XMLUtils::addAttribute(doc, indexForwardingCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("Index", singleMappingIterator->second);
-                XMLUtils::appendNode(indexForwardingCurvesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // fx Spots
-    if (fxSpots_.size() > 0) {
-
-        for (auto mappingSetIterator = fxSpots_.begin(); mappingSetIterator != fxSpots_.end(); mappingSetIterator++) {
-
-            XMLNode* fxSpotsNode = XMLUtils::addChild(doc, todaysMarketNode, "FxSpots");
-            XMLUtils::addAttribute(doc, fxSpotsNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("FxSpot", singleMappingIterator->second);
-                XMLUtils::appendNode(fxSpotsNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "pair", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // fx Volatilities
-    if (fxVolatilities_.size() > 0) {
-
-        for (auto mappingSetIterator = fxVolatilities_.begin(); mappingSetIterator != fxVolatilities_.end();
-             mappingSetIterator++) {
-
-            XMLNode* fxVolatilitiesNode = XMLUtils::addChild(doc, todaysMarketNode, "FxVolatilities");
-            XMLUtils::addAttribute(doc, fxVolatilitiesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("FxVolatility", singleMappingIterator->second);
-                XMLUtils::appendNode(fxVolatilitiesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "pair", singleMappingIterator->first.c_str());
-            }
-        }
-    }
-
-    // swaption Volatilities
-    if (swaptionVolatilities_.size() > 0) {
-
-        for (auto mappingSetIterator = swaptionVolatilities_.begin(); mappingSetIterator != swaptionVolatilities_.end();
-             mappingSetIterator++) {
-
-            XMLNode* swaptionVolatilitiesNode = XMLUtils::addChild(doc, todaysMarketNode, "SwaptionVolatilities");
-            XMLUtils::addAttribute(doc, swaptionVolatilitiesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("SwaptionVolatility", singleMappingIterator->second);
-                XMLUtils::appendNode(swaptionVolatilitiesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "currency", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // default Curves
-    if (defaultCurves_.size() > 0) {
-
-        for (auto mappingSetIterator = defaultCurves_.begin(); mappingSetIterator != defaultCurves_.end();
-             mappingSetIterator++) {
-
-            XMLNode* defaultCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "DefaultCurves");
-            XMLUtils::addAttribute(doc, defaultCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("DefaultCurve", singleMappingIterator->second);
-                XMLUtils::appendNode(defaultCurvesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // zero inflation Curves
-    if (zeroInflationIndexCurves_.size() > 0) {
-
-        for (auto mappingSetIterator = zeroInflationIndexCurves_.begin();
-             mappingSetIterator != zeroInflationIndexCurves_.end(); mappingSetIterator++) {
-
-            XMLNode* zeroInflationIndexCurvesNode =
-                XMLUtils::addChild(doc, todaysMarketNode, "ZeroInflationIndexCurves");
-            XMLUtils::addAttribute(doc, zeroInflationIndexCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("ZeroInflationIndexCurve", singleMappingIterator->second);
-                XMLUtils::appendNode(zeroInflationIndexCurvesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // yoy inflation Curves
-    if (yoyInflationIndexCurves_.size() > 0) {
-
-        for (auto mappingSetIterator = yoyInflationIndexCurves_.begin();
-             mappingSetIterator != yoyInflationIndexCurves_.end(); mappingSetIterator++) {
-
-            XMLNode* yoyInflationIndexCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "YoyInflationIndexCurves");
-            XMLUtils::addAttribute(doc, yoyInflationIndexCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("YoyInflationIndexCurve", singleMappingIterator->second);
-                XMLUtils::appendNode(yoyInflationIndexCurvesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // inflation CapFloor Price Surfaces
-    if (inflationCapFloorPriceSurfaces_.size() > 0) {
-
-        for (auto mappingSetIterator = inflationCapFloorPriceSurfaces_.begin();
-             mappingSetIterator != inflationCapFloorPriceSurfaces_.end(); mappingSetIterator++) {
-
-            XMLNode* inflationCapFloorPriceSurfacesNode =
-                XMLUtils::addChild(doc, todaysMarketNode, "InflationCapFloorPriceSurfaces");
-            XMLUtils::addAttribute(doc, inflationCapFloorPriceSurfacesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("InflationCapFloorPriceSurface", singleMappingIterator->second);
-                XMLUtils::appendNode(inflationCapFloorPriceSurfacesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-    if (equityCurves_.size() > 0) {
-
-        for (auto mappingSetIterator = equityCurves_.begin(); mappingSetIterator != equityCurves_.end();
-             mappingSetIterator++) {
-
-            XMLNode* equityCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "EquityCurves");
-            XMLUtils::addAttribute(doc, equityCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("EquityCurve", singleMappingIterator->second);
-                XMLUtils::appendNode(equityCurvesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // equity Volatilities
-    if (equityVolatilities_.size() > 0) {
-
-        for (auto mappingSetIterator = equityCurves_.begin(); mappingSetIterator != equityCurves_.end();
-             mappingSetIterator++) {
-
-            XMLNode* equityVolatilitiesNode = XMLUtils::addChild(doc, todaysMarketNode, "EquityVolatilities");
-            XMLUtils::addAttribute(doc, equityVolatilitiesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("EquityVolatility", singleMappingIterator->second);
-                XMLUtils::appendNode(equityVolatilitiesNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "name", singleMappingIterator->first);
-            }
-        }
-    }
-    // swap Indices
-    if (swapIndices_.size() > 0) {
-
-        for (auto mappingSetIterator = swapIndices_.begin(); mappingSetIterator != swapIndices_.end();
-             mappingSetIterator++) {
-
-            XMLNode* swapIndexCurvesNode = XMLUtils::addChild(doc, todaysMarketNode, "SwapIndexCurves");
-            XMLUtils::addAttribute(doc, swapIndexCurvesNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* swapIndexNode = XMLUtils::addChild(doc, swapIndexCurvesNode, "SwapIndex");
-                XMLUtils::addAttribute(doc, swapIndexNode, "name", singleMappingIterator->first.c_str());
-                XMLUtils::addChild(doc, swapIndexNode, "Discounting", (string)singleMappingIterator->second.c_str());
-            }
-        }
-    }
-
-    // security Spreads
-    if (securitySpreads_.size() > 0) {
-
-        for (auto mappingSetIterator = securitySpreads_.begin(); mappingSetIterator != securitySpreads_.end();
-             mappingSetIterator++) {
-
-            XMLNode* bondSpreadsNode = XMLUtils::addChild(doc, todaysMarketNode, "SecuritySpreads");
-            XMLUtils::addAttribute(doc, bondSpreadsNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("SecuritySpreads", singleMappingIterator->second);
-                XMLUtils::appendNode(bondSpreadsNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "pair", singleMappingIterator->first);
-            }
-        }
-    }
-
-    // security Recovery Rates
-    if (securityRecoveryRates_.size() > 0) {
-
-        for (auto mappingSetIterator = securityRecoveryRates_.begin();
-             mappingSetIterator != securityRecoveryRates_.end(); mappingSetIterator++) {
-
-            XMLNode* bondRRNode = XMLUtils::addChild(doc, todaysMarketNode, "SecurityRecoveryRates");
-            XMLUtils::addAttribute(doc, bondRRNode, "id", mappingSetIterator->first.c_str());
-
-            for (auto singleMappingIterator = mappingSetIterator->second.begin();
-                 singleMappingIterator != mappingSetIterator->second.end(); singleMappingIterator++) {
-                XMLNode* mappingNode = doc.allocNode("SecurityRecoveryRates", singleMappingIterator->second);
-                XMLUtils::appendNode(bondRRNode, mappingNode);
-                XMLUtils::addAttribute(doc, mappingNode, "pair", singleMappingIterator->first);
-            }
-        }
-    }
-
     return todaysMarketNode;
 }
 
@@ -602,22 +266,89 @@ void TodaysMarketParameters::curveSpecs(const map<string, map<string, string>>& 
 
 vector<string> TodaysMarketParameters::curveSpecs(const string& configuration) const {
     vector<string> specs;
-    curveSpecs(discountingCurves_, discountingCurvesId(configuration), specs);
-    curveSpecs(yieldCurves_, yieldCurvesId(configuration), specs);
-    curveSpecs(indexForwardingCurves_, indexForwardingCurvesId(configuration), specs);
-    curveSpecs(fxSpots_, fxSpotsId(configuration), specs);
-    curveSpecs(fxVolatilities_, fxVolatilitiesId(configuration), specs);
-    curveSpecs(swaptionVolatilities_, swaptionVolatilitiesId(configuration), specs);
-    curveSpecs(capFloorVolatilities_, capFloorVolatilitiesId(configuration), specs);
-    curveSpecs(defaultCurves_, defaultCurvesId(configuration), specs);
-    curveSpecs(zeroInflationIndexCurves_, zeroInflationIndexCurvesId(configuration), specs);
-    curveSpecs(yoyInflationIndexCurves_, yoyInflationIndexCurvesId(configuration), specs);
-    curveSpecs(inflationCapFloorPriceSurfaces_, inflationCapFloorPriceSurfacesId(configuration), specs);
-    curveSpecs(equityCurves_, equityCurvesId(configuration), specs);
-    curveSpecs(equityVolatilities_, equityVolatilitiesId(configuration), specs);
-    curveSpecs(securitySpreads_, securitySpreadsId(configuration), specs);
-    curveSpecs(securityRecoveryRates_, securityRecoveryRatesId(configuration), specs);
+    for (Size i = 0; i < marketObjectData.size(); ++i) {
+        MarketObject mo = marketObjectData[i].obj;
+        // swap indices have to be excluded here...
+        if (mo != MarketObject::SwapIndexCurve && marketObjects_.find(mo) != marketObjects_.end()) {
+            curveSpecs(marketObjects_.at(mo), marketObjectId(mo, configuration), specs);
+        }
+    }
     return specs;
 }
+
+void TodaysMarketParameters::addMarketObject(const MarketObject o, const string& id,
+                                             const map<string, string>& assignments) {
+
+    // check that we do not have an inconsistent mapping within one market object
+    auto mo = marketObjects_.find(o);
+    if (mo != marketObjects_.end()) {
+        auto mp = mo->second.find(id);
+        if (mp != mo->second.end()) {
+            for (auto const& m : mp->second) {
+                auto a = assignments.find(m.first);
+                if (a != assignments.end()) {
+                    QL_REQUIRE(m.first != a->first || m.second == a->second,
+                               "TodaysMarketParameters, inconsistent mapping is added for market object type "
+                                   << o << ", id " << id << ": " << a->first << " " << a->second << ", but have "
+                                   << m.first << " " << m.second << " already.");
+                }
+            }
+        }
+    }
+
+    // check that we do not have an overlap of names for yield curves and index curves
+    if (o == MarketObject::YieldCurve || o == MarketObject::IndexCurve) {
+        auto mo =
+            marketObjects_.find(o == MarketObject::YieldCurve ? MarketObject::IndexCurve : MarketObject::YieldCurve);
+        if (mo != marketObjects_.end()) {
+            auto mp = mo->second.find(id);
+            if (mp != mo->second.end()) {
+                for (auto const& m : mp->second) {
+                    auto a = assignments.find(m.first);
+                    QL_REQUIRE(a == assignments.end(),
+                               "TodaysMarketParameters, overlap between YieldCurve and IndexCurve names, try to add "
+                               "mapping for market object type "
+                                   << o << ", id " << id << ": " << a->first << " " << a->second << ", but have "
+                                   << m.first << " " << m.second << " already in other market object's mapping");
+                }
+            }
+        }
+    }
+
+    // add the mapping
+    marketObjects_[o][id].insert(assignments.begin(), assignments.end());
+    for (auto s : assignments)
+        DLOG("TodaysMarketParameters, add market objects of type " << o << ": " << id << " " << s.first << " "
+                                                                   << s.second);
+}
+
+const map<string, string>& TodaysMarketParameters::mapping(const MarketObject o, const string& configuration) const {
+    static map<string, string> empty;
+    QL_REQUIRE(hasConfiguration(configuration), "configuration " << configuration << " not found");
+    auto it = marketObjects_.find(o);
+    if (it != marketObjects_.end()) {
+        auto it2 = it->second.find(marketObjectId(o, configuration));
+        if (it2 != it->second.end()) {
+            return it2->second;
+        }
+    }
+    return empty;
+}
+
+map<string, string>& TodaysMarketParameters::mappingReference(const MarketObject o, const string& configuration) {
+    QL_REQUIRE(hasConfiguration(configuration), "configuration " << configuration << " not found");
+    auto it = marketObjects_.find(o);
+    if (it != marketObjects_.end()) {
+        auto it2 = it->second.find(marketObjectId(o, configuration));
+        if (it2 != it->second.end()) {
+            return it2->second;
+        } else {
+	    return it->second[marketObjectId(o, configuration)];
+        }
+    } else {
+        return marketObjects_[o][marketObjectId(o, configuration)];
+    }
+}
+
 } // namespace data
 } // namespace ore

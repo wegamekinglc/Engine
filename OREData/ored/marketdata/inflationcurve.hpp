@@ -18,7 +18,7 @@
 
 /*! \file ored/marketdata/inflationcurve.hpp
     \brief inflation curve class
-    \ingroup marketdata
+    \ingroup curves
 */
 
 #pragma once
@@ -30,16 +30,16 @@
 #include <ored/configuration/curveconfigurations.hpp>
 #include <ored/marketdata/curvespec.hpp>
 #include <ored/marketdata/loader.hpp>
+#include <ored/marketdata/todaysmarketcalibrationinfo.hpp>
 #include <ored/marketdata/yieldcurve.hpp>
 
+namespace ore {
+namespace data {
+using ore::data::Conventions;
+using ore::data::CurveConfigurations;
 using QuantLib::Date;
 using QuantLib::InflationTermStructure;
-using ore::data::CurveConfigurations;
-using ore::data::Conventions;
-
-namespace ore {
 using namespace data;
-namespace data {
 
 //! Wrapper class for building inflation curves
 /*!
@@ -47,9 +47,9 @@ namespace data {
 */
 class InflationCurve {
 public:
-    InflationCurve() {}
+    InflationCurve() : interpolatedIndex_(false) {}
     InflationCurve(Date asof, InflationCurveSpec spec, const Loader& loader, const CurveConfigurations& curveConfigs,
-                   const Conventions& conventions, map<string, boost::shared_ptr<YieldCurve>>& yieldCurves);
+                   map<string, boost::shared_ptr<YieldCurve>>& yieldCurves, const bool buildCalibrationInfo);
 
     //! getters
     const InflationCurveSpec& spec() const { return spec_; }
@@ -58,10 +58,21 @@ public:
 
     const bool interpolatedIndex() const { return interpolatedIndex_; }
 
+    boost::shared_ptr<InflationCurveCalibrationInfo> calibrationInfo() const { return calibrationInfo_; }
+
 private:
     InflationCurveSpec spec_;
     boost::shared_ptr<InflationTermStructure> curve_;
     bool interpolatedIndex_;
+    boost::shared_ptr<InflationCurveCalibrationInfo> calibrationInfo_;
 };
-}
-}
+
+/*! Given an \p asof and inflation swap \p convention, determine the start date of an inflation swap.
+
+    In general, this just returns the \p asof. If the \p convention has a publication roll and a publication schedule,
+    the swap start date will be generated according to this schedule.
+*/
+QuantLib::Date getInflationSwapStart(const Date& asof, const InflationSwapConvention& convention);
+
+} // namespace data
+} // namespace ore

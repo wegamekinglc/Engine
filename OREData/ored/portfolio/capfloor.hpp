@@ -1,5 +1,6 @@
 /*
  Copyright (C) 2016 Quaternion Risk Management Ltd
+ Copyright (C) 2021 Skandinaviska Enskilda Banken AB (publ)
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -18,28 +19,29 @@
 
 /*! \file portfolio/capfloor.hpp
     \brief Ibor cap, floor or collar trade data model and serialization
-    \ingroup portfolio
+    \ingroup tradedata
 */
 
 #pragma once
 
-#include <ored/portfolio/trade.hpp>
 #include <ored/portfolio/legdata.hpp>
+#include <ored/portfolio/trade.hpp>
 
 namespace ore {
 namespace data {
 
 //! Serializable cap, floor, collar
 /*! \ingroup tradedata
-*/
+ */
 class CapFloor : public Trade {
 public:
     CapFloor() : Trade("CapFloor") {}
     CapFloor(const Envelope& env, const string& longShort, const LegData& leg, const vector<double>& caps,
-             const vector<double>& floors)
-        : Trade("CapFloor", env), longShort_(longShort), legData_(leg), caps_(caps), floors_(floors) {}
+             const vector<double>& floors, const PremiumData& premiumData = {})
+        : Trade("CapFloor", env), longShort_(longShort), legData_(leg), caps_(caps), floors_(floors),
+          premiumData_(premiumData) {}
 
-    virtual void build(const boost::shared_ptr<EngineFactory>&);
+    virtual void build(const boost::shared_ptr<EngineFactory>&) override;
 
     //! Inspectors
     //@{
@@ -49,14 +51,22 @@ public:
     const vector<double>& floors() const { return floors_; }
     //@}
 
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+
+    //! \name Trade
+    //@{
+    bool hasCashflows() const override { return true; }
+    //@}
+
+    const std::map<std::string, boost::any>& additionalData() const override;
 
 private:
     string longShort_;
     LegData legData_;
     vector<double> caps_;
     vector<double> floors_;
+    PremiumData premiumData_;
 };
-}
-}
+} // namespace data
+} // namespace ore

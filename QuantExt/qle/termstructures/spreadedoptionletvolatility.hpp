@@ -26,6 +26,7 @@
 
 #include <ql/termstructures/volatility/optionlet/spreadedoptionletvol.hpp>
 
+namespace QuantExt {
 using QuantLib::Date;
 using QuantLib::Handle;
 using QuantLib::OptionletVolatilityStructure;
@@ -35,8 +36,6 @@ using QuantLib::SmileSection;
 using QuantLib::Time;
 using QuantLib::Volatility;
 
-namespace QuantExt {
-
 class SpreadedOptionletVolatility : public QuantLib::SpreadedOptionletVolatility {
 public:
     SpreadedOptionletVolatility(const Handle<OptionletVolatilityStructure>& baseVol, const Handle<Quote>& spread);
@@ -44,11 +43,11 @@ public:
 protected:
     //! \name OptionletVolatilityStructure interface
     //@{
-    boost::shared_ptr<SmileSection> smileSectionImpl(const Date& d) const;
-    boost::shared_ptr<SmileSection> smileSectionImpl(Time optionT) const;
-    Volatility volatilityImpl(Time optionTime, Rate strike) const;
+    boost::shared_ptr<SmileSection> smileSectionImpl(const Date& d) const override;
+    boost::shared_ptr<SmileSection> smileSectionImpl(Time optionT) const override;
+    Volatility volatilityImpl(Time optionTime, Rate strike) const override;
     //@}
 };
-}
+} // namespace QuantExt
 
 #endif

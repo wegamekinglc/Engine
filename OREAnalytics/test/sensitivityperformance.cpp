@@ -16,32 +16,46 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "sensitivityperformance.hpp"
 #include "testmarket.hpp"
 #include "testportfolio.hpp"
+#include <boost/test/unit_test.hpp>
+#include <oret/toplevelfixture.hpp>
+#include <test/oreatoplevelfixture.hpp>
 
-#include <ored/utilities/osutils.hpp>
-#include <ored/utilities/log.hpp>
-#include <orea/cube/npvcube.hpp>
+#include <boost/timer/timer.hpp>
 #include <orea/cube/inmemorycube.hpp>
-#include <ored/model/lgmdata.hpp>
-#include <orea/scenario/scenariosimmarketparameters.hpp>
-#include <ored/model/crossassetmodelbuilder.hpp>
-#include <orea/scenario/scenariosimmarket.hpp>
-#include <orea/scenario/simplescenariofactory.hpp>
+#include <orea/cube/npvcube.hpp>
+#include <orea/engine/filteredsensitivitystream.hpp>
+#include <orea/engine/observationmode.hpp>
+#include <orea/engine/parametricvar.hpp>
+#include <orea/engine/riskfilter.hpp>
+#include <orea/engine/sensitivityaggregator.hpp>
+#include <orea/engine/sensitivityanalysis.hpp>
+#include <orea/engine/sensitivitycubestream.hpp>
+#include <orea/engine/sensitivityfilestream.hpp>
+#include <orea/engine/sensitivityinmemorystream.hpp>
+#include <orea/engine/sensitivityrecord.hpp>
+#include <orea/engine/sensitivitystream.hpp>
+#include <orea/engine/stresstest.hpp>
+#include <orea/engine/valuationcalculator.hpp>
+#include <orea/engine/valuationengine.hpp>
 #include <orea/scenario/crossassetmodelscenariogenerator.hpp>
-#include <qle/methods/multipathgeneratorbase.hpp>
-#include <ql/time/date.hpp>
-#include <ql/math/randomnumbers/mt19937uniformrng.hpp>
-#include <ql/time/calendars/target.hpp>
-#include <ql/time/daycounters/actualactual.hpp>
-#include <orea/engine/all.hpp>
-#include <ored/portfolio/swap.hpp>
+#include <orea/scenario/scenariosimmarket.hpp>
+#include <orea/scenario/scenariosimmarketparameters.hpp>
+#include <orea/scenario/simplescenariofactory.hpp>
+#include <ored/model/crossassetmodelbuilder.hpp>
+#include <ored/model/lgmdata.hpp>
 #include <ored/portfolio/builders/swap.hpp>
 #include <ored/portfolio/builders/swaption.hpp>
 #include <ored/portfolio/portfolio.hpp>
-#include <orea/engine/observationmode.hpp>
-#include <boost/timer.hpp>
+#include <ored/portfolio/swap.hpp>
+#include <ored/utilities/log.hpp>
+#include <ored/utilities/osutils.hpp>
+#include <ql/math/randomnumbers/mt19937uniformrng.hpp>
+#include <ql/time/calendars/target.hpp>
+#include <ql/time/date.hpp>
+#include <ql/time/daycounters/actualactual.hpp>
+#include <qle/methods/multipathgeneratorbase.hpp>
 
 using namespace std;
 using namespace QuantLib;
@@ -50,6 +64,8 @@ using namespace boost::unit_test_framework;
 using namespace ore;
 using namespace ore::data;
 using namespace ore::analytics;
+using boost::timer::cpu_timer;
+using boost::timer::default_places;
 
 namespace {
 
@@ -92,6 +108,8 @@ boost::shared_ptr<data::Conventions> conv() {
     conventions->add(boost::make_shared<data::DepositConvention>("JPY-DEP-CONVENTIONS", "JPY-LIBOR"));
     conventions->add(boost::make_shared<data::DepositConvention>("CHF-DEP-CONVENTIONS", "CHF-LIBOR"));
 
+    InstrumentConventions::instance().setConventions(conventions);
+
     return conventions;
 }
 
@@ -100,34 +118,34 @@ boost::shared_ptr<analytics::ScenarioSimMarketParameters> setupSimMarketData5() 
         new analytics::ScenarioSimMarketParameters());
 
     simMarketData->baseCcy() = "EUR";
-    simMarketData->ccys() = {"EUR", "GBP", "USD", "CHF", "JPY"};
-    simMarketData->yieldCurveTenors() = {1 * Months, 6 * Months, 1 * Years,  2 * Years,  3 * Years,  4 * Years,
-                                         5 * Years,  7 * Years,  10 * Years, 15 * Years, 20 * Years, 30 * Years};
-    simMarketData->indices() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "USD-LIBOR-6M",
-                                "GBP-LIBOR-6M",   "CHF-LIBOR-6M", "JPY-LIBOR-6M"};
+    simMarketData->setDiscountCurveNames({"EUR", "GBP", "USD", "CHF", "JPY"});
+    simMarketData->setYieldCurveTenors("", {1 * Months, 6 * Months, 1 * Years, 2 * Years, 3 * Years, 4 * Years,
+                                            5 * Years, 7 * Years, 10 * Years, 15 * Years, 20 * Years, 30 * Years});
+    simMarketData->setIndices(
+        {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "USD-LIBOR-6M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"});
     simMarketData->interpolation() = "LogLinear";
-    simMarketData->extrapolate() = true;
 
-    simMarketData->swapVolTerms() = {1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years, 20 * Years};
-    simMarketData->swapVolExpiries() = {6 * Months, 1 * Years, 2 * Years,  3 * Years,
-                                        5 * Years,  7 * Years, 10 * Years, 20 * Years};
-    simMarketData->swapVolCcys() = {"EUR", "GBP", "USD", "CHF", "JPY"};
+    simMarketData->setSwapVolTerms("", {1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years, 20 * Years});
+    simMarketData->setSwapVolExpiries(
+        "", {6 * Months, 1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years, 20 * Years});
+    simMarketData->setSwapVolKeys({"EUR", "GBP", "USD", "CHF", "JPY"});
     simMarketData->swapVolDecayMode() = "ForwardVariance";
-    simMarketData->simulateSwapVols() = true; // false;
+    simMarketData->setSimulateSwapVols(true); // false;
 
-    simMarketData->fxVolExpiries() = {1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years};
-    simMarketData->fxVolDecayMode() = "ConstantVariance";
-    simMarketData->simulateFXVols() = true; // false;
-    simMarketData->fxVolCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY", "GBPCHF"};
+    simMarketData->setFxVolExpiries("",
+        vector<Period>{1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years});
+    simMarketData->setFxVolDecayMode(string("ConstantVariance"));
+    simMarketData->setSimulateFXVols(true); // false;
+    simMarketData->setFxVolCcyPairs({"EURUSD", "EURGBP", "EURCHF", "EURJPY", "GBPCHF"});
 
-    simMarketData->fxCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY"};
+    simMarketData->setFxCcyPairs({"EURUSD", "EURGBP", "EURCHF", "EURJPY"});
 
-    simMarketData->simulateCapFloorVols() = true;
+    simMarketData->setSimulateCapFloorVols(true);
     simMarketData->capFloorVolDecayMode() = "ForwardVariance";
-    simMarketData->capFloorVolCcys() = {"EUR", "USD"};
-    simMarketData->capFloorVolExpiries() = {6 * Months, 1 * Years,  2 * Years,  3 * Years, 5 * Years,
-                                            7 * Years,  10 * Years, 15 * Years, 20 * Years};
-    simMarketData->capFloorVolStrikes() = {0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06};
+    simMarketData->setCapFloorVolKeys({"EUR", "USD"});
+    simMarketData->setCapFloorVolExpiries(
+        "", {6 * Months, 1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years, 15 * Years, 20 * Years});
+    simMarketData->setCapFloorVolStrikes("", {0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06});
 
     return simMarketData;
 }
@@ -137,46 +155,45 @@ boost::shared_ptr<analytics::ScenarioSimMarketParameters> setupSimMarketData5Big
         new analytics::ScenarioSimMarketParameters());
 
     simMarketData->baseCcy() = "EUR";
-    simMarketData->ccys() = {"EUR", "GBP", "USD", "CHF", "JPY"};
-    simMarketData->yieldCurveTenors() = {
-        1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,  6 * Months,
-        9 * Months,  10 * Months, 11 * Months, 1 * Years,   13 * Months, 14 * Months, 15 * Months, 16 * Months,
-        17 * Months, 18 * Months, 19 * Months, 20 * Months, 21 * Months, 22 * Months, 23 * Months, 2 * Years,
-        25 * Months, 26 * Months, 27 * Months, 28 * Months, 29 * Months, 30 * Months, 31 * Months, 32 * Months,
-        3 * Years,   40 * Months, 41 * Months, 42 * Months, 43 * Months, 44 * Months, 4 * Years,   52 * Months,
-        53 * Months, 54 * Months, 55 * Months, 56 * Months, 5 * Years,   64 * Months, 65 * Months, 66 * Months,
-        67 * Months, 68 * Months, 6 * Years,   76 * Months, 77 * Months, 78 * Months, 79 * Months, 80 * Months,
-        7 * Years,   88 * Months, 89 * Months, 90 * Months, 91 * Months, 92 * Months, 10 * Years,  15 * Years,
-        20 * Years,  25 * Years,  30 * Years,  50 * Years};
-    simMarketData->indices() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "USD-LIBOR-6M",
-                                "GBP-LIBOR-6M",   "CHF-LIBOR-6M", "JPY-LIBOR-6M"};
+    simMarketData->setDiscountCurveNames({"EUR", "GBP", "USD", "CHF", "JPY"});
+    simMarketData->setYieldCurveTenors(
+        "", {1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,  6 * Months,
+             9 * Months,  10 * Months, 11 * Months, 1 * Years,   13 * Months, 14 * Months, 15 * Months, 16 * Months,
+             17 * Months, 18 * Months, 19 * Months, 20 * Months, 21 * Months, 22 * Months, 23 * Months, 2 * Years,
+             25 * Months, 26 * Months, 27 * Months, 28 * Months, 29 * Months, 30 * Months, 31 * Months, 32 * Months,
+             3 * Years,   40 * Months, 41 * Months, 42 * Months, 43 * Months, 44 * Months, 4 * Years,   52 * Months,
+             53 * Months, 54 * Months, 55 * Months, 56 * Months, 5 * Years,   64 * Months, 65 * Months, 66 * Months,
+             67 * Months, 68 * Months, 6 * Years,   76 * Months, 77 * Months, 78 * Months, 79 * Months, 80 * Months,
+             7 * Years,   88 * Months, 89 * Months, 90 * Months, 91 * Months, 92 * Months, 10 * Years,  15 * Years,
+             20 * Years,  25 * Years,  30 * Years,  50 * Years});
+    simMarketData->setIndices(
+        {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "USD-LIBOR-6M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"});
     simMarketData->interpolation() = "LogLinear";
-    simMarketData->extrapolate() = true;
 
-    simMarketData->swapVolTerms() = {
-        3 * Months,  4 * Months,  5 * Months,  6 * Months,  9 * Months,  10 * Months, 11 * Months, 1 * Years,
-        13 * Months, 14 * Months, 15 * Months, 16 * Months, 17 * Months, 18 * Months, 19 * Months, 20 * Months,
-        21 * Months, 22 * Months, 23 * Months, 2 * Years,   25 * Months, 26 * Months, 27 * Months, 28 * Months,
-        29 * Months, 30 * Months, 31 * Months, 32 * Months, 3 * Years,   40 * Months, 41 * Months, 42 * Months,
-        43 * Months, 44 * Months, 4 * Years,   52 * Months, 53 * Months, 54 * Months, 55 * Months, 56 * Months,
-        5 * Years,   64 * Months, 65 * Months, 66 * Months, 67 * Months, 68 * Months, 6 * Years,   76 * Months,
-        77 * Months, 78 * Months, 79 * Months, 80 * Months, 7 * Years,   88 * Months, 89 * Months, 90 * Months,
-        91 * Months, 92 * Months, 10 * Years,  15 * Years,  20 * Years,  25 * Years,  30 * Years,  50 * Years};
-    simMarketData->swapVolExpiries() = {
-        1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,  6 * Months,
-        9 * Months,  10 * Months, 11 * Months, 1 * Years,   13 * Months, 14 * Months, 15 * Months, 16 * Months,
-        17 * Months, 18 * Months, 19 * Months, 20 * Months, 21 * Months, 22 * Months, 23 * Months, 2 * Years,
-        25 * Months, 26 * Months, 27 * Months, 28 * Months, 29 * Months, 30 * Months, 31 * Months, 32 * Months,
-        3 * Years,   40 * Months, 41 * Months, 42 * Months, 43 * Months, 44 * Months, 4 * Years,   52 * Months,
-        53 * Months, 54 * Months, 55 * Months, 56 * Months, 5 * Years,   64 * Months, 65 * Months, 66 * Months,
-        67 * Months, 68 * Months, 6 * Years,   76 * Months, 77 * Months, 78 * Months, 79 * Months, 80 * Months,
-        7 * Years,   88 * Months, 89 * Months, 90 * Months, 91 * Months, 92 * Months, 10 * Years,  15 * Years,
-        20 * Years,  25 * Years,  30 * Years,  50 * Years};
-    simMarketData->swapVolCcys() = {"EUR", "GBP", "USD", "CHF", "JPY"};
+    simMarketData->setSwapVolTerms(
+        "", {3 * Months,  4 * Months,  5 * Months,  6 * Months,  9 * Months,  10 * Months, 11 * Months, 1 * Years,
+             13 * Months, 14 * Months, 15 * Months, 16 * Months, 17 * Months, 18 * Months, 19 * Months, 20 * Months,
+             21 * Months, 22 * Months, 23 * Months, 2 * Years,   25 * Months, 26 * Months, 27 * Months, 28 * Months,
+             29 * Months, 30 * Months, 31 * Months, 32 * Months, 3 * Years,   40 * Months, 41 * Months, 42 * Months,
+             43 * Months, 44 * Months, 4 * Years,   52 * Months, 53 * Months, 54 * Months, 55 * Months, 56 * Months,
+             5 * Years,   64 * Months, 65 * Months, 66 * Months, 67 * Months, 68 * Months, 6 * Years,   76 * Months,
+             77 * Months, 78 * Months, 79 * Months, 80 * Months, 7 * Years,   88 * Months, 89 * Months, 90 * Months,
+             91 * Months, 92 * Months, 10 * Years,  15 * Years,  20 * Years,  25 * Years,  30 * Years,  50 * Years});
+    simMarketData->setSwapVolExpiries(
+        "", {1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,  6 * Months,
+             9 * Months,  10 * Months, 11 * Months, 1 * Years,   13 * Months, 14 * Months, 15 * Months, 16 * Months,
+             17 * Months, 18 * Months, 19 * Months, 20 * Months, 21 * Months, 22 * Months, 23 * Months, 2 * Years,
+             25 * Months, 26 * Months, 27 * Months, 28 * Months, 29 * Months, 30 * Months, 31 * Months, 32 * Months,
+             3 * Years,   40 * Months, 41 * Months, 42 * Months, 43 * Months, 44 * Months, 4 * Years,   52 * Months,
+             53 * Months, 54 * Months, 55 * Months, 56 * Months, 5 * Years,   64 * Months, 65 * Months, 66 * Months,
+             67 * Months, 68 * Months, 6 * Years,   76 * Months, 77 * Months, 78 * Months, 79 * Months, 80 * Months,
+             7 * Years,   88 * Months, 89 * Months, 90 * Months, 91 * Months, 92 * Months, 10 * Years,  15 * Years,
+             20 * Years,  25 * Years,  30 * Years,  50 * Years});
+    simMarketData->setSwapVolKeys({"EUR", "GBP", "USD", "CHF", "JPY"});
     simMarketData->swapVolDecayMode() = "ForwardVariance";
-    simMarketData->simulateSwapVols() = true; // false;
+    simMarketData->setSimulateSwapVols(true); // false;
 
-    simMarketData->fxVolExpiries() = {
+    vector<Period> tmpFxVolExpiries = {
         1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,  6 * Months,
         9 * Months,  10 * Months, 11 * Months, 1 * Years,   13 * Months, 14 * Months, 15 * Months, 16 * Months,
         17 * Months, 18 * Months, 19 * Months, 20 * Months, 21 * Months, 22 * Months, 23 * Months, 2 * Years,
@@ -186,25 +203,27 @@ boost::shared_ptr<analytics::ScenarioSimMarketParameters> setupSimMarketData5Big
         67 * Months, 68 * Months, 6 * Years,   76 * Months, 77 * Months, 78 * Months, 79 * Months, 80 * Months,
         7 * Years,   88 * Months, 89 * Months, 90 * Months, 91 * Months, 92 * Months, 10 * Years,  15 * Years,
         20 * Years,  25 * Years,  30 * Years,  50 * Years};
-    simMarketData->fxVolDecayMode() = "ConstantVariance";
-    simMarketData->simulateFXVols() = true; // false;
-    simMarketData->fxVolCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY", "GBPCHF"};
 
-    simMarketData->fxCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY"};
+    simMarketData->setFxVolExpiries("", tmpFxVolExpiries);
+    simMarketData->setFxVolDecayMode(string("ConstantVariance"));
+    simMarketData->setSimulateFXVols(true); // false;
+    simMarketData->setFxVolCcyPairs({"EURUSD", "EURGBP", "EURCHF", "EURJPY", "GBPCHF"});
 
-    simMarketData->simulateCapFloorVols() = true;
+    simMarketData->setFxCcyPairs({"EURUSD", "EURGBP", "EURCHF", "EURJPY"});
+
+    simMarketData->setSimulateCapFloorVols(true);
     simMarketData->capFloorVolDecayMode() = "ForwardVariance";
-    simMarketData->capFloorVolCcys() = {"EUR", "USD"};
-    simMarketData->capFloorVolExpiries() = {
-        3 * Months,  4 * Months,  5 * Months,  6 * Months,  9 * Months,  10 * Months, 11 * Months, 1 * Years,
-        13 * Months, 14 * Months, 15 * Months, 16 * Months, 17 * Months, 18 * Months, 19 * Months, 20 * Months,
-        21 * Months, 22 * Months, 23 * Months, 2 * Years,   25 * Months, 26 * Months, 27 * Months, 28 * Months,
-        29 * Months, 30 * Months, 31 * Months, 32 * Months, 3 * Years,   40 * Months, 41 * Months, 42 * Months,
-        43 * Months, 44 * Months, 4 * Years,   52 * Months, 53 * Months, 54 * Months, 55 * Months, 56 * Months,
-        5 * Years,   64 * Months, 65 * Months, 66 * Months, 67 * Months, 68 * Months, 6 * Years,   76 * Months,
-        77 * Months, 78 * Months, 79 * Months, 80 * Months, 7 * Years,   88 * Months, 89 * Months, 90 * Months,
-        91 * Months, 92 * Months, 10 * Years,  15 * Years,  20 * Years,  25 * Years,  30 * Years,  50 * Years};
-    simMarketData->capFloorVolStrikes() = {0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06};
+    simMarketData->setCapFloorVolKeys({"EUR", "USD"});
+    simMarketData->setCapFloorVolExpiries(
+        "", {3 * Months,  4 * Months,  5 * Months,  6 * Months,  9 * Months,  10 * Months, 11 * Months, 1 * Years,
+             13 * Months, 14 * Months, 15 * Months, 16 * Months, 17 * Months, 18 * Months, 19 * Months, 20 * Months,
+             21 * Months, 22 * Months, 23 * Months, 2 * Years,   25 * Months, 26 * Months, 27 * Months, 28 * Months,
+             29 * Months, 30 * Months, 31 * Months, 32 * Months, 3 * Years,   40 * Months, 41 * Months, 42 * Months,
+             43 * Months, 44 * Months, 4 * Years,   52 * Months, 53 * Months, 54 * Months, 55 * Months, 56 * Months,
+             5 * Years,   64 * Months, 65 * Months, 66 * Months, 67 * Months, 68 * Months, 6 * Years,   76 * Months,
+             77 * Months, 78 * Months, 79 * Months, 80 * Months, 7 * Years,   88 * Months, 89 * Months, 90 * Months,
+             91 * Months, 92 * Months, 10 * Years,  15 * Years,  20 * Years,  25 * Years,  30 * Years,  50 * Years});
+    simMarketData->setCapFloorVolStrikes("", {0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06});
 
     return simMarketData;
 }
@@ -226,11 +245,11 @@ boost::shared_ptr<SensitivityScenarioData> setupSensitivityScenarioData5Big() {
     cvsData.shiftType = "Absolute";
     cvsData.shiftSize = 0.0001;
 
-    SensitivityScenarioData::FxShiftData fxsData;
+    SensitivityScenarioData::SpotShiftData fxsData;
     fxsData.shiftType = "Relative";
     fxsData.shiftSize = 0.01;
 
-    SensitivityScenarioData::FxVolShiftData fxvsData;
+    SensitivityScenarioData::VolShiftData fxvsData;
     fxvsData.shiftType = "Relative";
     fxvsData.shiftSize = 1.0;
     fxvsData.shiftExpiries = {1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,
@@ -258,7 +277,7 @@ boost::shared_ptr<SensitivityScenarioData> setupSensitivityScenarioData5Big() {
         91 * Months, 92 * Months, 10 * Years,  15 * Years,  20 * Years,  25 * Years,  30 * Years,  50 * Years};
     cfvsData.shiftStrikes = {0.01, 0.02, 0.03, 0.04, 0.05};
 
-    SensitivityScenarioData::SwaptionVolShiftData swvsData;
+    SensitivityScenarioData::GenericYieldVolShiftData swvsData;
     swvsData.shiftType = "Relative";
     swvsData.shiftSize = 0.01;
     swvsData.shiftExpiries = {1 * Weeks,   2 * Weeks,   1 * Months,  2 * Months,  3 * Months,  4 * Months,  5 * Months,
@@ -281,53 +300,54 @@ boost::shared_ptr<SensitivityScenarioData> setupSensitivityScenarioData5Big() {
         77 * Months, 78 * Months, 79 * Months, 80 * Months, 7 * Years,   88 * Months, 89 * Months, 90 * Months,
         91 * Months, 92 * Months, 10 * Years,  15 * Years,  20 * Years,  25 * Years,  30 * Years,  50 * Years};
 
-    sensiData->discountCurrencies() = {"EUR", "USD", "GBP", "CHF", "JPY"};
-    sensiData->discountCurveShiftData()["EUR"] = cvsData;
+    sensiData->discountCurveShiftData()["EUR"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["USD"] = cvsData;
+    sensiData->discountCurveShiftData()["USD"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["GBP"] = cvsData;
+    sensiData->discountCurveShiftData()["GBP"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["JPY"] = cvsData;
+    sensiData->discountCurveShiftData()["JPY"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["CHF"] = cvsData;
+    sensiData->discountCurveShiftData()["CHF"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexNames() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"};
-    sensiData->indexCurveShiftData()["EUR-EURIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["EUR-EURIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["USD-LIBOR-3M"] = cvsData;
+    sensiData->indexCurveShiftData()["USD-LIBOR-3M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["GBP-LIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["GBP-LIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["JPY-LIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["JPY-LIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["CHF-LIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["CHF-LIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->fxCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY"};
     sensiData->fxShiftData()["EURUSD"] = fxsData;
     sensiData->fxShiftData()["EURGBP"] = fxsData;
     sensiData->fxShiftData()["EURJPY"] = fxsData;
     sensiData->fxShiftData()["EURCHF"] = fxsData;
 
-    sensiData->fxVolCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY", "GBPCHF"};
     sensiData->fxVolShiftData()["EURUSD"] = fxvsData;
     sensiData->fxVolShiftData()["EURGBP"] = fxvsData;
     sensiData->fxVolShiftData()["EURJPY"] = fxvsData;
     sensiData->fxVolShiftData()["EURCHF"] = fxvsData;
     sensiData->fxVolShiftData()["GBPCHF"] = fxvsData;
 
-    sensiData->swaptionVolCurrencies() = {"EUR", "USD", "GBP", "CHF", "JPY"};
     sensiData->swaptionVolShiftData()["EUR"] = swvsData;
     sensiData->swaptionVolShiftData()["GBP"] = swvsData;
     sensiData->swaptionVolShiftData()["USD"] = swvsData;
     sensiData->swaptionVolShiftData()["JPY"] = swvsData;
     sensiData->swaptionVolShiftData()["CHF"] = swvsData;
 
-    sensiData->capFloorVolCurrencies() = {"EUR", "USD"};
-    sensiData->capFloorVolShiftData()["EUR"] = cfvsData;
-    sensiData->capFloorVolShiftData()["EUR"].indexName = "EUR-EURIBOR-6M";
-    sensiData->capFloorVolShiftData()["USD"] = cfvsData;
-    sensiData->capFloorVolShiftData()["USD"].indexName = "USD-LIBOR-3M";
+    sensiData->capFloorVolShiftData()["EUR"] =
+        boost::make_shared<SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
+    sensiData->capFloorVolShiftData()["EUR"]->indexName = "EUR-EURIBOR-6M";
+    sensiData->capFloorVolShiftData()["USD"] =
+        boost::make_shared<SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
+    sensiData->capFloorVolShiftData()["USD"]->indexName = "USD-LIBOR-3M";
 
     return sensiData;
 }
@@ -341,11 +361,11 @@ boost::shared_ptr<SensitivityScenarioData> setupSensitivityScenarioData5() {
     cvsData.shiftType = "Absolute";
     cvsData.shiftSize = 0.0001;
 
-    SensitivityScenarioData::FxShiftData fxsData;
+    SensitivityScenarioData::SpotShiftData fxsData;
     fxsData.shiftType = "Relative";
     fxsData.shiftSize = 0.01;
 
-    SensitivityScenarioData::FxVolShiftData fxvsData;
+    SensitivityScenarioData::VolShiftData fxvsData;
     fxvsData.shiftType = "Relative";
     fxvsData.shiftSize = 1.0;
     fxvsData.shiftExpiries = {5 * Years};
@@ -356,59 +376,60 @@ boost::shared_ptr<SensitivityScenarioData> setupSensitivityScenarioData5() {
     cfvsData.shiftExpiries = {1 * Years, 2 * Years, 3 * Years, 5 * Years, 10 * Years};
     cfvsData.shiftStrikes = {0.01, 0.02, 0.03, 0.04, 0.05};
 
-    SensitivityScenarioData::SwaptionVolShiftData swvsData;
+    SensitivityScenarioData::GenericYieldVolShiftData swvsData;
     swvsData.shiftType = "Relative";
     swvsData.shiftSize = 0.01;
     swvsData.shiftExpiries = {6 * Months, 1 * Years, 3 * Years, 5 * Years, 10 * Years};
     swvsData.shiftTerms = {1 * Years, 3 * Years, 5 * Years, 10 * Years, 20 * Years};
 
-    sensiData->discountCurrencies() = {"EUR", "USD", "GBP", "CHF", "JPY"};
-    sensiData->discountCurveShiftData()["EUR"] = cvsData;
+    sensiData->discountCurveShiftData()["EUR"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["USD"] = cvsData;
+    sensiData->discountCurveShiftData()["USD"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["GBP"] = cvsData;
+    sensiData->discountCurveShiftData()["GBP"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["JPY"] = cvsData;
+    sensiData->discountCurveShiftData()["JPY"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->discountCurveShiftData()["CHF"] = cvsData;
+    sensiData->discountCurveShiftData()["CHF"] = boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexNames() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"};
-    sensiData->indexCurveShiftData()["EUR-EURIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["EUR-EURIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["USD-LIBOR-3M"] = cvsData;
+    sensiData->indexCurveShiftData()["USD-LIBOR-3M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["GBP-LIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["GBP-LIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["JPY-LIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["JPY-LIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->indexCurveShiftData()["CHF-LIBOR-6M"] = cvsData;
+    sensiData->indexCurveShiftData()["CHF-LIBOR-6M"] =
+        boost::make_shared<SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->fxCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY"};
     sensiData->fxShiftData()["EURUSD"] = fxsData;
     sensiData->fxShiftData()["EURGBP"] = fxsData;
     sensiData->fxShiftData()["EURJPY"] = fxsData;
     sensiData->fxShiftData()["EURCHF"] = fxsData;
 
-    sensiData->fxVolCcyPairs() = {"EURUSD", "EURGBP", "EURCHF", "EURJPY", "GBPCHF"};
     sensiData->fxVolShiftData()["EURUSD"] = fxvsData;
     sensiData->fxVolShiftData()["EURGBP"] = fxvsData;
     sensiData->fxVolShiftData()["EURJPY"] = fxvsData;
     sensiData->fxVolShiftData()["EURCHF"] = fxvsData;
     sensiData->fxVolShiftData()["GBPCHF"] = fxvsData;
 
-    sensiData->swaptionVolCurrencies() = {"EUR", "USD", "GBP", "CHF", "JPY"};
     sensiData->swaptionVolShiftData()["EUR"] = swvsData;
     sensiData->swaptionVolShiftData()["GBP"] = swvsData;
     sensiData->swaptionVolShiftData()["USD"] = swvsData;
     sensiData->swaptionVolShiftData()["JPY"] = swvsData;
     sensiData->swaptionVolShiftData()["CHF"] = swvsData;
 
-    sensiData->capFloorVolCurrencies() = {"EUR", "USD"};
-    sensiData->capFloorVolShiftData()["EUR"] = cfvsData;
-    sensiData->capFloorVolShiftData()["EUR"].indexName = "EUR-EURIBOR-6M";
-    sensiData->capFloorVolShiftData()["USD"] = cfvsData;
-    sensiData->capFloorVolShiftData()["USD"].indexName = "USD-LIBOR-3M";
+    sensiData->capFloorVolShiftData()["EUR"] =
+        boost::make_shared<SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
+    sensiData->capFloorVolShiftData()["EUR"]->indexName = "EUR-EURIBOR-6M";
+    sensiData->capFloorVolShiftData()["USD"] =
+        boost::make_shared<SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
+    sensiData->capFloorVolShiftData()["USD"]->indexName = "USD-LIBOR-3M";
 
     return sensiData;
 }
@@ -463,9 +484,6 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
     MersenneTwisterUniformRng rng(seed);
 
     Calendar cal = TARGET();
-    string calStr = "TARGET";
-    string conv = "MF";
-    string rule = "Forward";
     string fixDC = "30/360";
     string floatDC = "ACT/365";
 
@@ -480,7 +498,6 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
         string floatFreq = portfolioSize == 1 ? "6M" : index.substr(index.find('-', 4) + 1);
 
         // fixed details
-        string fixedTenor = portfolioSize == 1 ? "1Y" : randString(rng, fixedTenors);
         Real fixedRate = portfolioSize == 1 ? 0.02 : randInt(rng, minFixedBps, maxFixedBps) / 100.0;
         string fixFreq = portfolioSize == 1 ? "1Y" : randString(rng, fixedTenors);
 
@@ -518,14 +535,16 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
 
 void test_performance(bool bigPortfolio, bool bigScenario, bool lotsOfSensis, bool crossGammas,
                       ObservationMode::Mode om) {
+    cpu_timer t_base;
+    t_base.start();
     Size portfolioSize = bigPortfolio ? 100 : 1;
-    string om_str = (om == ObservationMode::Mode::None) ? "None" : (om == ObservationMode::Mode::Disable)
-                                                                       ? "Disable"
-                                                                       : (om == ObservationMode::Mode::Defer)
-                                                                             ? "Defer"
-                                                                             : (om == ObservationMode::Mode::Unregister)
-                                                                                   ? "Unregister"
-                                                                                   : "???";
+    string om_str = (om == ObservationMode::Mode::None)
+                        ? "None"
+                        : (om == ObservationMode::Mode::Disable)
+                              ? "Disable"
+                              : (om == ObservationMode::Mode::Defer)
+                                    ? "Defer"
+                                    : (om == ObservationMode::Mode::Unregister) ? "Unregister" : "???";
     string bigPfolioStr = bigPortfolio ? "big" : "small";
     string bigScenarioStr = bigScenario ? "big" : "small";
     string lotsOfSensisStr = lotsOfSensis ? "lots" : "few";
@@ -562,9 +581,9 @@ void test_performance(bool bigPortfolio, bool bigScenario, bool lotsOfSensis, bo
     }
 
     // build scenario sim market
-    Conventions conventions = *conv();
+    conv();
 
-    // build porfolio
+    // build portfolio
     boost::shared_ptr<EngineData> data = boost::make_shared<EngineData>();
     data->model("Swap") = "DiscountedCashflows";
     data->engine("Swap") = "DiscountingSwapEngine";
@@ -573,12 +592,13 @@ void test_performance(bool bigPortfolio, bool bigScenario, bool lotsOfSensis, bo
 
     boost::shared_ptr<Portfolio> portfolio = buildPortfolio(portfolioSize);
 
-    boost::timer t2;
-    t2.restart();
+    cpu_timer t2;
+    t2.start();
     boost::shared_ptr<SensitivityAnalysis> sa = boost::make_shared<SensitivityAnalysis>(
-        portfolio, initMarket, Market::defaultConfiguration, data, simMarketData, sensiData, conventions, false);
+        portfolio, initMarket, Market::defaultConfiguration, data, simMarketData, sensiData, false);
     sa->generateSensitivities();
-    Real elapsed = t2.elapsed();
+    t2.stop();
+    Real elapsed = t2.elapsed().wall * 1e-9;
     Size numScenarios = sa->scenarioGenerator()->samples();
     Size scenarioSize = sa->scenarioGenerator()->scenarios().front()->keys().size();
     BOOST_TEST_MESSAGE("number of scenarios=" << numScenarios);
@@ -589,310 +609,60 @@ void test_performance(bool bigPortfolio, bool bigScenario, bool lotsOfSensis, bo
     BOOST_TEST_MESSAGE("Memory usage - " << os::getMemoryUsage());
 
     ObservationMode::instance().setMode(backupOm);
-}
-}
+    t_base.stop();
 
-namespace testsuite {
-
-void SensitivityPerformanceTest::testSensiPerformanceNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(false, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+    BOOST_TEST_MESSAGE("total time = " << t_base.format(default_places, "%w") << " seconds");
 }
+} // namespace
 
-void SensitivityPerformanceTest::testSensiPerformanceDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(false, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_FIXTURE_TEST_SUITE(OREAnalyticsPerformanceTestSuite, ore::test::OreaTopLevelFixture)
+
+BOOST_AUTO_TEST_SUITE(SensitivityPerformanceTest, *boost::unit_test::disabled())
+
+BOOST_AUTO_TEST_CASE(testSensiPerformanceNoneObs) {
+    test_performance(false, false, false, false, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(false, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceDisableObs) {
+    test_performance(false, false, false, false, ObservationMode::Mode::Disable);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(false, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceDeferObs) {
+    test_performance(false, false, false, false, ObservationMode::Mode::Defer);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceCrossGammaNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(false, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceUnregisterObs) {
+    test_performance(false, false, false, false, ObservationMode::Mode::Unregister);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceCrossGammaDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(false, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceCrossGammaNoneObs) {
+    test_performance(false, false, false, true, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceCrossGammaDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(false, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceBigScenarioNoneObs) {
+    test_performance(false, true, false, false, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceCrossGammaUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(false, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceBigPortfolioNoneObs) {
+    test_performance(true, false, false, false, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(false, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceBigPortfolioBigScenarioNoneObs) {
+    test_performance(true, true, false, false, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(false, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceBigPortfolioCrossGammaNoneObs) {
+    test_performance(true, false, false, true, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(false, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceBigScenarioCrossGammaNoneObs) {
+    test_performance(false, true, false, true, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(false, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
+BOOST_AUTO_TEST_CASE(testSensiPerformanceBigPortfolioBigScenarioCrossGammaNoneObs) {
+    test_performance(true, true, false, true, ObservationMode::Mode::None);
 }
 
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(true, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
+BOOST_AUTO_TEST_SUITE_END()
 
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(true, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(true, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(true, false, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(true, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(true, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(true, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(true, true, false, false, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(true, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(true, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(true, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(true, false, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(false, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(false, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(false, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(false, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaNoneObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    test_performance(true, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaDisableObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    test_performance(true, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaDeferObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    test_performance(true, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-void SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaUnregisterObs() {
-    boost::timer t_base;
-    t_base.restart();
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    test_performance(true, true, false, true, om);
-    BOOST_TEST_MESSAGE("total time = " << t_base.elapsed() << " seconds");
-}
-
-test_suite* SensitivityPerformanceTest::suite() {
-
-    test_suite* suite = BOOST_TEST_SUITE("SensitivityPerformanceTest");
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceNoneObs));
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceDisableObs));
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceDeferObs));
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceUnregisterObs));
-
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceCrossGammaNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceCrossGammaDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceCrossGammaDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceCrossGammaUnregisterObs));
-
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioUnregisterObs));
-
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioUnregisterObs));
-
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioUnregisterObs));
-
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioCrossGammaUnregisterObs));
-
-    suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigScenarioCrossGammaUnregisterObs));
-
-    suite->add(
-        BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaNoneObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaDisableObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaDeferObs));
-    // suite->add(BOOST_TEST_CASE(&SensitivityPerformanceTest::testSensiPerformanceBigPortfolioBigScenarioCrossGammaUnregisterObs));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()

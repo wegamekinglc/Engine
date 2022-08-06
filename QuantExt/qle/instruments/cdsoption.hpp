@@ -3,7 +3,7 @@
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
-# for transparent pricing and risk analysis - http://opensourcerisk.org
+ for transparent pricing and risk analysis - http://opensourcerisk.org
 
  ORE is free software: you can redistribute it and/or modify it
  under the terms of the Modified BSD License.  You should have received a
@@ -37,22 +37,23 @@
 /*! \file cdsoption.hpp
     \brief CDS option, removed requirements (rec must knock out,
     no upfront amount), that should be taken care of in pricing engines
+    \ingroup instruments
 */
 
 #ifndef quantext_cds_option_hpp
 #define quantext_cds_option_hpp
 
-#include <ql/option.hpp>
-#include <ql/instruments/creditdefaultswap.hpp>
+#include <qle/instruments/creditdefaultswap.hpp>
 
-using namespace QuantLib;
+#include <ql/option.hpp>
 
 namespace QuantLib {
 class Quote;
 class YieldTermStructure;
-}
+} // namespace QuantLib
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! CDS option
 /*! The side of the swaption is set by choosing the side of the CDS.
@@ -60,19 +61,25 @@ namespace QuantExt {
     selling protection and receiving a coupon. A payer CDS option
     is a right to buy an underlying CDS buying protection and
     paying coupon.
+
+    \ingroup instruments
 */
 class CdsOption : public Option {
 public:
     class arguments;
     class results;
     class engine;
+
+    enum StrikeType { Price, Spread };
+
     CdsOption(const boost::shared_ptr<CreditDefaultSwap>& swap, const boost::shared_ptr<Exercise>& exercise,
-              bool knocksOut = true);
+              bool knocksOut = true, const Real strike = Null<Real>(),
+              const StrikeType strikeType = StrikeType::Spread);
 
     //! \name Instrument interface
     //@{
-    bool isExpired() const;
-    void setupArguments(PricingEngine::arguments*) const;
+    bool isExpired() const override;
+    void setupArguments(PricingEngine::arguments*) const override;
     //@}
     //! \name Inspectors
     //@{
@@ -91,10 +98,12 @@ public:
 private:
     boost::shared_ptr<CreditDefaultSwap> swap_;
     bool knocksOut_;
+    Real strike_;
+    StrikeType strikeType_;
 
     mutable Real riskyAnnuity_;
-    void setupExpired() const;
-    void fetchResults(const PricingEngine::results*) const;
+    void setupExpired() const override;
+    void fetchResults(const PricingEngine::results*) const override;
 };
 
 //! %Arguments for CDS-option calculation
@@ -104,18 +113,21 @@ public:
 
     boost::shared_ptr<CreditDefaultSwap> swap;
     bool knocksOut;
-    void validate() const;
+    Real strike;
+    StrikeType strikeType;
+    void validate() const override;
 };
 
 //! %Results from CDS-option calculation
+//! \ingroup instruments
 class CdsOption::results : public Option::results {
 public:
     Real riskyAnnuity;
-    void reset();
+    void reset() override;
 };
 
 //! base class for swaption engines
 class CdsOption::engine : public GenericEngine<CdsOption::arguments, CdsOption::results> {};
-}
+} // namespace QuantExt
 
 #endif

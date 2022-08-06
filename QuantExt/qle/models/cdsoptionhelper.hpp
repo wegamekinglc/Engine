@@ -25,35 +25,40 @@
 #define quantext_cdsoptionhelper_hpp
 
 #include <qle/instruments/cdsoption.hpp>
+#include <qle/instruments/creditdefaultswap.hpp>
 
-#include <ql/instruments/creditdefaultswap.hpp>
 #include <ql/models/calibrationhelper.hpp>
 #include <ql/quotes/simplequote.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
-
-class CdsOptionHelper : public CalibrationHelper {
+using namespace QuantLib;
+//! CDS option helper
+/*!
+ \ingroup models
+ */
+class CdsOptionHelper : public BlackCalibrationHelper {
 public:
-    CdsOptionHelper(const Date& exerciseDate, const Handle<Quote>& volatility, const Protection::Side side,
-                    const Schedule& schedule, const BusinessDayConvention paymentConvention,
-                    const DayCounter& dayCounter, const Handle<DefaultProbabilityTermStructure>& probability,
-                    const Real recoveryRate, const Handle<YieldTermStructure>& termStructure,
-                    const Rate spread = Null<Rate>(), const Rate upfront = Null<Rate>(),
-                    const bool settlesAccrual = true, const bool paysAtDefaultTime = true,
-                    const Date protectionStart = Date(), const Date upfrontDate = Date(),
-                    const boost::shared_ptr<Claim>& claim = boost::shared_ptr<Claim>(),
-                    const CalibrationHelper::CalibrationErrorType errorType = CalibrationHelper::RelativePriceError);
+    CdsOptionHelper(
+        const Date& exerciseDate, const Handle<Quote>& volatility, const Protection::Side side,
+        const Schedule& schedule, const BusinessDayConvention paymentConvention, const DayCounter& dayCounter,
+        const Handle<DefaultProbabilityTermStructure>& probability, const Real recoveryRate,
+        const Handle<YieldTermStructure>& termStructure, const Rate spread = Null<Rate>(),
+        const Rate upfront = Null<Rate>(), const bool settlesAccrual = true,
+        const CreditDefaultSwap::ProtectionPaymentTime proteectionPaymentTime =
+            CreditDefaultSwap::ProtectionPaymentTime::atDefault,
+        const Date protectionStart = Date(), const Date upfrontDate = Date(),
+        const boost::shared_ptr<Claim>& claim = boost::shared_ptr<Claim>(),
+        const BlackCalibrationHelper::CalibrationErrorType errorType = BlackCalibrationHelper::RelativePriceError);
 
-    virtual void addTimesTo(std::list<Time>& times) const {}
-    virtual Real modelValue() const;
-    virtual Real blackPrice(Volatility volatility) const;
+    virtual void addTimesTo(std::list<Time>& times) const override {}
+    virtual Real modelValue() const override;
+    virtual Real blackPrice(Volatility volatility) const override;
 
     boost::shared_ptr<CreditDefaultSwap> underlying() const { return cds_; }
     boost::shared_ptr<QuantExt::CdsOption> option() const { return option_; }
 
 private:
+    Handle<YieldTermStructure> termStructure_;
     boost::shared_ptr<CreditDefaultSwap> cds_;
     boost::shared_ptr<QuantExt::CdsOption> option_;
     boost::shared_ptr<SimpleQuote> blackVol_;

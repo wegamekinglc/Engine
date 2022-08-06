@@ -24,13 +24,12 @@
 #ifndef quantext_eqbs_parametrization_hpp
 #define quantext_eqbs_parametrization_hpp
 
-#include <qle/models/parametrization.hpp>
 #include <ql/handle.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
-
-using namespace QuantLib;
+#include <qle/models/parametrization.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! EQ Black Scholes parametrizations
 /*! Base class for EQ Black Scholes parametrizations
@@ -53,7 +52,8 @@ public:
     const Handle<Quote> fxSpotToday() const;
     const Handle<YieldTermStructure> equityIrCurveToday() const;
     const Handle<YieldTermStructure> equityDivYieldCurveToday() const;
-    const std::string& eqName() const { return eqName_; }
+
+    Size numberOfParameters() const override { return 1; }
 
 private:
     const Handle<Quote> eqSpotToday_, fxSpotToday_;

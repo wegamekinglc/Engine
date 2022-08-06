@@ -26,8 +26,8 @@
 #define quantext_discounting_currencyswap_engine_hpp
 
 #include <ql/currency.hpp>
-#include <ql/termstructures/yieldtermstructure.hpp>
 #include <ql/handle.hpp>
+#include <ql/termstructures/yieldtermstructure.hpp>
 
 #include <qle/instruments/currencyswap.hpp>
 
@@ -52,8 +52,9 @@ public:
                                   const std::vector<Handle<Quote> >& fxQuotes, const std::vector<Currency>& currencies,
                                   const Currency& npvCurrency,
                                   boost::optional<bool> includeSettlementDateFlows = boost::none,
-                                  Date settlementDate = Date(), Date npvDate = Date());
-    void calculate() const;
+                                  Date settlementDate = Date(), Date npvDate = Date(),
+                                  const std::vector<Date>& spotFXSettleDateVec = std::vector<Date>());
+    void calculate() const override;
     std::vector<Handle<YieldTermStructure> > discountCurves() { return discountCurves_; }
     std::vector<Currency> currencies() { return currencies_; }
     Currency npvCurrency() { return npvCurrency_; }
@@ -69,7 +70,8 @@ private:
     boost::optional<bool> includeSettlementDateFlows_;
     Date settlementDate_;
     Date npvDate_;
+    std::vector<Date> spotFXSettleDateVec_;
 };
-}
+} // namespace QuantExt
 
 #endif

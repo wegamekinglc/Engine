@@ -29,15 +29,14 @@
 
 #include <qle/models/crossassetmodel.hpp>
 
-#include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <orea/scenario/crossassetmodelscenariogenerator.hpp>
+#include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <ored/utilities/xmlutils.hpp>
-
-using namespace QuantLib;
-using namespace QuantExt;
 
 namespace ore {
 namespace analytics {
+using namespace QuantLib;
+using namespace QuantExt;
 
 //! Scenario Generator description
 /*! ScenarioGeneratorData wraps the specification of how to build a scenario generator
@@ -52,57 +51,77 @@ namespace analytics {
  */
 class ScenarioGeneratorData : public XMLSerializable {
 public:
-    //! Supported sequence types
-    enum class SequenceType { MersenneTwister, MersenneTwisterAntithetic, Sobol, SobolBrownianBridge };
-
-    ScenarioGeneratorData() {}
+    ScenarioGeneratorData()
+        : discretization_(CrossAssetStateProcess::discretization::exact), grid_(boost::make_shared<DateGrid>()),
+          sequenceType_(SobolBrownianBridge), seed_(0), samples_(0), ordering_(SobolBrownianGenerator::Steps),
+          directionIntegers_(SobolRsg::JoeKuoD7), withCloseOutLag_(false), withMporStickyDate_(false) {}
 
     //! Constructor
-    ScenarioGeneratorData(CrossAssetStateProcess::discretization discretization,
-                          boost::shared_ptr<ore::analytics::DateGrid> dateGrid, SequenceType sequenceType, long seed,
-                          Size samples)
-        : discretization_(discretization), grid_(dateGrid), sequenceType_(sequenceType), seed_(seed),
-          samples_(samples) {}
+    ScenarioGeneratorData(CrossAssetStateProcess::discretization discretization, boost::shared_ptr<DateGrid> dateGrid,
+                          SequenceType sequenceType, long seed, Size samples,
+                          SobolBrownianGenerator::Ordering ordering = SobolBrownianGenerator::Steps,
+                          SobolRsg::DirectionIntegers directionIntegers = SobolRsg::JoeKuoD7,
+                          bool withCloseOutLag = false, bool withMporStickyDate = false)
+        : discretization_(discretization), sequenceType_(sequenceType), seed_(seed), samples_(samples),
+          ordering_(ordering), directionIntegers_(directionIntegers), withCloseOutLag_(false),
+          withMporStickyDate_(false) {
+        setGrid(dateGrid);
+    }
 
     void clear();
 
     //! Load members from XML
-    virtual void fromXML(XMLNode* node);
+    virtual void fromXML(XMLNode* node) override;
 
     //! Write members to XML
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual XMLNode* toXML(XMLDocument& doc) override;
 
     //! \name Inspectors
     //@{
     CrossAssetStateProcess::discretization discretization() const { return discretization_; }
-    boost::shared_ptr<ore::analytics::DateGrid> grid() const { return grid_; }
+    boost::shared_ptr<DateGrid> getGrid() const { return grid_; }
     SequenceType sequenceType() const { return sequenceType_; }
     long seed() const { return seed_; }
     Size samples() const { return samples_; }
+    SobolBrownianGenerator::Ordering ordering() const { return ordering_; }
+    SobolRsg::DirectionIntegers directionIntegers() const { return directionIntegers_; }
+    boost::shared_ptr<DateGrid> closeOutDateGrid() const { return closeOutDateGrid_; }
+    bool withCloseOutLag() const { return withCloseOutLag_; }
+    bool withMporStickyDate() const { return withMporStickyDate_; }
+    Period closeOutLag() const { return closeOutLag_; }
     //@}
 
     //! \name Setters
     //@{
     CrossAssetStateProcess::discretization& discretization() { return discretization_; }
-    boost::shared_ptr<ore::analytics::DateGrid>& grid() { return grid_; }
+    void setGrid(boost::shared_ptr<DateGrid> grid);
     SequenceType& sequenceType() { return sequenceType_; }
     long& seed() { return seed_; }
     Size& samples() { return samples_; }
+    SobolBrownianGenerator::Ordering& ordering() { return ordering_; }
+    SobolRsg::DirectionIntegers& directionIntegers() { return directionIntegers_; }
+    bool& withCloseOutLag() { return withCloseOutLag_; }
+    bool& withMporStickyDate() { return withMporStickyDate_; }
+    Period& closeOutLag() { return closeOutLag_; }
     //@}
 private:
     CrossAssetStateProcess::discretization discretization_;
-    boost::shared_ptr<ore::analytics::DateGrid> grid_;
+    boost::shared_ptr<DateGrid> grid_;
     SequenceType sequenceType_;
     long seed_;
     Size samples_;
+    SobolBrownianGenerator::Ordering ordering_;
+    SobolRsg::DirectionIntegers directionIntegers_;
+    boost::shared_ptr<DateGrid> closeOutDateGrid_;
+    bool withCloseOutLag_;
+    bool withMporStickyDate_;
+    Period closeOutLag_;
+
+    string gridString_;
 };
 
 //! Enum parsers used in ScenarioGeneratorBuilder's fromXML
-ScenarioGeneratorData::SequenceType parseSequenceType(const string& s);
 CrossAssetStateProcess::discretization parseDiscretization(const string& s);
 
-//! Enum to string used in ScenarioGeneratorData's toXML
-std::ostream& operator<<(std::ostream& out, const ScenarioGeneratorData::SequenceType& type);
-std::ostream& operator<<(std::ostream& out, const CrossAssetStateProcess::discretization& type);
-}
-}
+} // namespace analytics
+} // namespace ore

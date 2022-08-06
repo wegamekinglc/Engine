@@ -24,38 +24,43 @@
 #ifndef quantext_calibrationhelper_fxeqoption_hpp
 #define quantext_calibrationhelper_fxeqoption_hpp
 
-#include <ql/models/calibrationhelper.hpp>
 #include <ql/instruments/vanillaoption.hpp>
-
-using namespace QuantLib;
+#include <ql/models/calibrationhelper.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! FxEq Option Helper
 /*! \ingroup models
-*/
-class FxEqOptionHelper : public CalibrationHelper {
+ */
+class FxEqOptionHelper : public BlackCalibrationHelper {
 public:
     /*! the spot is interpreted as of today (or discounted spot)
         if strike is null, an (fwd-) atm option is constructed,
         a slight approximation is introduced because there is no
         settlement lag, however this applies consistently to
         the black and the model pricing */
-    FxEqOptionHelper(const Period& maturity, const Calendar& calendar, const Real strike, const Handle<Quote> spot,
-                     const Handle<Quote> volatility, const Handle<YieldTermStructure>& domesticYield,
-                     const Handle<YieldTermStructure>& foreignYield,
-                     CalibrationHelper::CalibrationErrorType errorType = CalibrationHelper::RelativePriceError);
-    FxEqOptionHelper(const Date& exerciseDate, const Real strike, const Handle<Quote> spot,
-                     const Handle<Quote> volatility, const Handle<YieldTermStructure>& domesticYield,
-                     const Handle<YieldTermStructure>& foreignYield,
-                     CalibrationHelper::CalibrationErrorType errorType = CalibrationHelper::RelativePriceError);
-    void addTimesTo(std::list<Time>&) const {}
-    void performCalculations() const;
-    Real modelValue() const;
-    Real blackPrice(Real volatility) const;
+    FxEqOptionHelper(
+        const Period& maturity, const Calendar& calendar, const Real strike, const Handle<Quote> spot,
+        const Handle<Quote> volatility, const Handle<YieldTermStructure>& domesticYield,
+        const Handle<YieldTermStructure>& foreignYield,
+        BlackCalibrationHelper::CalibrationErrorType errorType = BlackCalibrationHelper::RelativePriceError);
+    FxEqOptionHelper(
+        const Date& exerciseDate, const Real strike, const Handle<Quote> spot, const Handle<Quote> volatility,
+        const Handle<YieldTermStructure>& domesticYield, const Handle<YieldTermStructure>& foreignYield,
+        BlackCalibrationHelper::CalibrationErrorType errorType = BlackCalibrationHelper::RelativePriceError);
+    void addTimesTo(std::list<Time>&) const override {}
+    void performCalculations() const override;
+    Real modelValue() const override;
+    Real blackPrice(Real volatility) const override;
     boost::shared_ptr<VanillaOption> option() const { return option_; }
+    Real strike() const {
+        calculate();
+        return effStrike_;
+    }
 
 private:
+    Handle<YieldTermStructure> termStructure_;
     const bool hasMaturity_;
     Period maturity_;
     mutable Date exerciseDate_;
@@ -70,6 +75,6 @@ private:
     mutable Real effStrike_;
 };
 
-} // namespace QuantLib
+} // namespace QuantExt
 
 #endif

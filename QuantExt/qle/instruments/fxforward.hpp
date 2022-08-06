@@ -26,14 +26,14 @@
 #define quantext_fxforward_hpp
 
 #include <ql/currency.hpp>
-#include <ql/money.hpp>
 #include <ql/exchangerate.hpp>
 #include <ql/instrument.hpp>
+#include <ql/money.hpp>
 #include <ql/quote.hpp>
-
-using namespace QuantLib;
+#include <qle/indexes/fxindex.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! <strong> FX Forward </strong>
 
@@ -56,9 +56,21 @@ public:
                Date on which currency amounts are exchanged.
         \param payCurrency1
                Pay nominal1 if true, otherwise pay nominal2.
+        \param isPhysicallySettled
+               if true fx forward is physically settled
+        \param payDate
+               Date on which the cashflows are exchanged
+        \param payCcy
+               If cash settled, the settlement currency
+        \param fixingDate
+               If cash settled, the fixing date
+        \param fxIndex
+               If cash settled, the FX index from which to take the fixing on the fixing date
     */
     FxForward(const Real& nominal1, const Currency& currency1, const Real& nominal2, const Currency& currency2,
-              const Date& maturityDate, const bool& payCurrency1);
+              const Date& maturityDate, const bool& payCurrency1, const bool isPhysicallySettled = true,
+              const Date& payDate = Date(), const Currency& payCcy = Currency(), const Date& fixingDate = Date(),
+              const boost::shared_ptr<QuantExt::FxIndex>& fxIndex = nullptr);
 
     /*! \param nominal1
                FX forward nominal amount (domestic currency)
@@ -68,8 +80,20 @@ public:
                Date of the exchange.
         \param sellingNominal
                Sell (pay) nominal1 if true, otherwise buy (receive) nominal.
+        \param isPhysicallySettled
+               if true fx forward is physically settled
+        \param payDate
+               Date on which the cashflows are exchanged
+        \param payCcy
+               If cash settled, the settlement currency
+        \param fixingDate
+               If cash settled, the fixing date
+        \param fxIndex
+               If cash settled, the FX index from which to take the fixing on the fixing date
     */
-    FxForward(const Money& nominal1, const ExchangeRate& forwardRate, const Date& forwardDate, bool sellingNominal);
+    FxForward(const Money& nominal1, const ExchangeRate& forwardRate, const Date& forwardDate, bool sellingNominal,
+              const bool isPhysicallySettled = true, const Date& payDate = Date(), const Currency& payCcy = Currency(),
+              const Date& fixingDate = Date(), const boost::shared_ptr<QuantExt::FxIndex>& fxIndex = nullptr);
 
     /*! \param nominal1
                FX forward nominal amount 1 (domestic currency)
@@ -82,9 +106,21 @@ public:
                FX Forward maturity date
         \param sellingNominal
                Sell (pay) nominal1 if true, otherwise buy (receive) nominal1.
+        \param isPhysicallySettled
+               if true fx forward is physically settled
+        \param payDate
+               Date on which the cashflows are exchanged
+        \param payCcy
+               If cash settled, the settlement currency
+        \param fixingDate
+               If cash settled, the fixing date
+        \param fxIndex
+               If cash settled, the FX index from which to take the fixing on the fixing date
     */
     FxForward(const Money& nominal1, const Handle<Quote>& fxForwardQuote, const Currency& currency2,
-              const Date& maturityDate, bool sellingNominal);
+              const Date& maturityDate, bool sellingNominal, const bool isPhysicallySettled = true,
+              const Date& payDate = Date(), const Currency& payCcy = Currency(), const Date& fixingDate = Date(),
+              const boost::shared_ptr<QuantExt::FxIndex>& fxIndex = nullptr);
     //@}
 
     //! \name Results
@@ -103,9 +139,9 @@ public:
 
     //! \name Instrument interface
     //@{
-    bool isExpired() const;
-    void setupArguments(PricingEngine::arguments*) const;
-    void fetchResults(const PricingEngine::results*) const;
+    bool isExpired() const override;
+    void setupArguments(PricingEngine::arguments*) const override;
+    void fetchResults(const PricingEngine::results*) const override;
     //@}
 
     //! \name Additional interface
@@ -115,14 +151,16 @@ public:
     Currency currency1() const { return currency1_; }
     Currency currency2() const { return currency2_; }
     Date maturityDate() const { return maturityDate_; }
+    Date payDate() const { return payDate_; }
+    Currency payCcy() const { return payCcy_; }
+    boost::shared_ptr<QuantExt::FxIndex> fxIndex() const { return fxIndex_; }
     bool payCurrency1() const { return payCurrency1_; }
-    boost::shared_ptr<PricingEngine> engine() const { return engine_; }
     //@}
 
 private:
     //! \name Instrument interface
     //@{
-    void setupExpired() const;
+    void setupExpired() const override;
     //@}
 
     Real nominal1_;
@@ -131,12 +169,18 @@ private:
     Currency currency2_;
     Date maturityDate_;
     bool payCurrency1_;
+    bool isPhysicallySettled_;
+    Date payDate_;
+    Currency payCcy_;
+    boost::shared_ptr<FxIndex> fxIndex_;
+    Date fixingDate_;
 
     // results
     mutable Money npv_;
     mutable ExchangeRate fairForwardRate_;
 };
 
+//! \ingroup instruments
 class FxForward::arguments : public virtual PricingEngine::arguments {
 public:
     Real nominal1;
@@ -145,17 +189,24 @@ public:
     Currency currency2;
     Date maturityDate;
     bool payCurrency1;
-    void validate() const;
+    bool isPhysicallySettled;
+    Date payDate;
+    Currency payCcy;
+    boost::shared_ptr<FxIndex> fxIndex;
+    Date fixingDate;
+    void validate() const override;
 };
 
+//! \ingroup instruments
 class FxForward::results : public Instrument::results {
 public:
     Money npv;
     ExchangeRate fairForwardRate;
-    void reset();
+    void reset() override;
 };
 
+//! \ingroup instruments
 class FxForward::engine : public GenericEngine<FxForward::arguments, FxForward::results> {};
-}
+} // namespace QuantExt
 
 #endif

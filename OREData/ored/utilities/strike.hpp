@@ -24,14 +24,25 @@
 #pragma once
 
 #include <ql/types.hpp>
-
 #include <string>
 
 namespace ore {
 namespace data {
 
 struct Strike {
-    enum class Type { ATM, ATMF, ATM_Offset, Absolute, Delta };
+    enum class Type {
+        ATM,
+        ATMF,
+        ATM_Offset,
+        Absolute,
+        Delta,
+        DeltaCall,
+        DeltaPut,
+        BF,
+        RR,
+        ATM_Moneyness,
+        ATMF_Moneyness
+    };
     Type type;
     QuantLib::Real value;
 };
@@ -47,5 +58,38 @@ Strike parseStrike(const std::string& s);
 \ingroup utilities
 */
 std::ostream& operator<<(std::ostream& out, const Strike& s);
-}
-}
+
+//! Convert Strike to text
+/*!
+\ingroup utilities
+*/
+std::ostream& operator<<(std::ostream& out, const Strike& s);
+
+//! Logical comparison of strikes
+/*!
+\ingroup utilities
+*/
+bool operator==(const Strike& s1, const Strike& s2);
+
+//! Convenience function that computes an absolute strike
+/*!
+\ingroup utilities
+*/
+QuantLib::Real computeAbsoluteStrike(const Strike& s, const QuantLib::Real atm, const QuantLib::Real atmf);
+
+//! Utility class for handling delta strings ATM, 10P, 25C, ... used e.g. for FX Surfaces
+class DeltaString {
+public:
+    DeltaString(const std::string& s);
+    bool isAtm() const { return isAtm_; }
+    bool isPut() const { return isPut_; }
+    bool isCall() const { return isCall_; }
+    Real delta() const { return delta_; }
+
+private:
+    bool isAtm_, isPut_, isCall_;
+    Real delta_;
+};
+
+} // namespace data
+} // namespace ore

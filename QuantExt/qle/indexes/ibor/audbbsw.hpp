@@ -24,14 +24,13 @@
 #ifndef quantext_audbbsw_hpp
 #define quantext_audbbsw_hpp
 
-#include <ql/indexes/iborindex.hpp>
 #include <ql/currencies/oceania.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/time/calendars/australia.hpp>
 #include <ql/time/daycounters/actual365fixed.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! AUD-BBSW index
 /*! AUD-BBSW rate fixed by the AFMA.
@@ -50,6 +49,6 @@ public:
     AUDbbsw(const Period& tenor, const Handle<YieldTermStructure>& h = Handle<YieldTermStructure>())
         : IborIndex("AUD-BBSW", tenor, 0, AUDCurrency(), Australia(), ModifiedFollowing, false, Actual365Fixed(), h) {}
 };
-}
+} // namespace QuantExt
 
 #endif

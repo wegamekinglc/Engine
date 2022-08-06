@@ -26,13 +26,12 @@
 
 #include <ql/termstructures/volatility/spreadedsmilesection.hpp>
 
+namespace QuantExt {
 using QuantLib::Handle;
 using QuantLib::Quote;
 using QuantLib::Rate;
 using QuantLib::SmileSection;
 using QuantLib::Volatility;
-
-namespace QuantExt {
 
 class SpreadedSmileSection : public QuantLib::SpreadedSmileSection {
 public:
@@ -40,8 +39,8 @@ public:
     SpreadedSmileSection(const boost::shared_ptr<QuantLib::SpreadedSmileSection>& underlyingSection);
 
 protected:
-    Volatility volatilityImpl(Rate strike) const;
+    Volatility volatilityImpl(Rate strike) const override;
 };
-}
+} // namespace QuantExt
 
 #endif

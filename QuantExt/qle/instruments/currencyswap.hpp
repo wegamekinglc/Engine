@@ -25,18 +25,17 @@
 #ifndef quantext_currencyswap_hpp
 #define quantext_currencyswap_hpp
 
+#include <ql/cashflows/cashflows.hpp>
+#include <ql/currencies/europe.hpp>
+#include <ql/currency.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/instruments/swap.hpp>
+#include <ql/money.hpp>
 #include <ql/time/daycounter.hpp>
 #include <ql/time/schedule.hpp>
-#include <ql/cashflows/cashflows.hpp>
-#include <ql/indexes/iborindex.hpp>
-#include <ql/currency.hpp>
-#include <ql/currencies/europe.hpp>
-#include <ql/money.hpp>
-
-using namespace QuantLib;
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! %Currency Interest Rate Swap
 /*!
@@ -53,13 +52,22 @@ public:
     //! \name Constructors
     //@{
     /*! Multi leg constructor. */
-    CurrencySwap(const std::vector<Leg>& legs, const std::vector<bool>& payer, const std::vector<Currency>& currency);
+    CurrencySwap(const std::vector<Leg>& legs, const std::vector<bool>& payer, const std::vector<Currency>& currency,
+                 const bool isPhysicallySettled = true, const bool isResettable = false);
+    //@}
+    //! \name LazyObject interface
+    //@{
+    void alwaysForwardNotifications() override;
+    //@}
+    //! \name Observable interface
+    //@{
+    void deepUpdate() override;
     //@}
     //! \name Instrument interface
     //@{
-    bool isExpired() const;
-    void setupArguments(PricingEngine::arguments*) const;
-    void fetchResults(const PricingEngine::results*) const;
+    bool isExpired() const override;
+    void setupArguments(PricingEngine::arguments*) const override;
+    void fetchResults(const PricingEngine::results*) const override;
     //@}
     //! \name Additional interface
     //@{
@@ -109,7 +117,6 @@ public:
     }
     std::vector<Leg> legs() { return legs_; }
     std::vector<Currency> currencies() { return currency_; }
-    boost::shared_ptr<PricingEngine> engine() { return engine_; }
     //@}
 protected:
     //! \name Constructors
@@ -120,35 +127,41 @@ protected:
     CurrencySwap(Size legs);
     //! \name Instrument interface
     //@{
-    void setupExpired() const;
+    void setupExpired() const override;
     //@}
     // data members
     std::vector<Leg> legs_;
     std::vector<Real> payer_;
     std::vector<Currency> currency_;
+    bool isPhysicallySettled_, isResettable_;
     mutable std::vector<Real> legNPV_, inCcyLegNPV_;
     mutable std::vector<Real> legBPS_, inCcyLegBPS_;
     mutable std::vector<DiscountFactor> startDiscounts_, endDiscounts_;
     mutable DiscountFactor npvDateDiscount_;
 };
 
+//! \ingroup instruments
 class CurrencySwap::arguments : public virtual PricingEngine::arguments {
 public:
     std::vector<Leg> legs;
     std::vector<Real> payer;
     std::vector<Currency> currency;
-    void validate() const;
+    bool isPhysicallySettled;
+    bool isResettable;
+    void validate() const override;
 };
 
+//! \ingroup instruments
 class CurrencySwap::results : public Instrument::results {
 public:
     std::vector<Real> legNPV, inCcyLegNPV;
     std::vector<Real> legBPS, inCcyLegBPS;
     std::vector<DiscountFactor> startDiscounts, endDiscounts;
     DiscountFactor npvDateDiscount;
-    void reset();
+    void reset() override;
 };
 
+//! \ingroup instruments
 class CurrencySwap::engine : public GenericEngine<CurrencySwap::arguments, CurrencySwap::results> {};
 
 //! Vanilla cross currency interest rate swap
@@ -162,7 +175,8 @@ public:
     VanillaCrossCurrencySwap(bool payFixed, Currency fixedCcy, Real fixedNominal, const Schedule& fixedSchedule,
                              Rate fixedRate, const DayCounter& fixedDayCount, Currency floatCcy, Real floatNominal,
                              const Schedule& floatSchedule, const boost::shared_ptr<IborIndex>& iborIndex,
-                             Rate floatSpread, boost::optional<BusinessDayConvention> paymentConvention = boost::none);
+                             Rate floatSpread, boost::optional<BusinessDayConvention> paymentConvention = boost::none,
+                             const bool isPhysicallySettled = true, const bool isResettable = false);
 };
 
 //! Cross currency swap
@@ -178,22 +192,25 @@ public:
                       std::vector<Rate> fixedRates, const DayCounter& fixedDayCount, Currency floatCcy,
                       std::vector<Real> floatNominals, const Schedule& floatSchedule,
                       const boost::shared_ptr<IborIndex>& iborIndex, std::vector<Rate> floatSpreads,
-                      boost::optional<BusinessDayConvention> paymentConvention = boost::none);
+                      boost::optional<BusinessDayConvention> paymentConvention = boost::none,
+                      const bool isPhysicallySettled = true, const bool isResettable = false);
 
     // fixed/fixed
     CrossCurrencySwap(bool pay1, Currency ccy1, std::vector<Real> nominals1, const Schedule& schedule1,
                       std::vector<Rate> fixedRates1, const DayCounter& fixedDayCount1, Currency ccy2,
                       std::vector<Real> nominals2, const Schedule& schedule2, std::vector<Rate> fixedRates2,
                       const DayCounter& fixedDayCount2,
-                      boost::optional<BusinessDayConvention> paymentConvention = boost::none);
+                      boost::optional<BusinessDayConvention> paymentConvention = boost::none,
+                      const bool isPhysicallySettled = true, const bool isResettable = false);
 
     // floating/floating
     CrossCurrencySwap(bool pay1, Currency ccy1, std::vector<Real> nominals1, const Schedule& schedule1,
                       const boost::shared_ptr<IborIndex>& iborIndex1, std::vector<Rate> spreads1, Currency ccy2,
                       std::vector<Real> nominals2, const Schedule& schedule2,
                       const boost::shared_ptr<IborIndex>& iborIndex2, std::vector<Rate> spreads2,
-                      boost::optional<BusinessDayConvention> paymentConvention = boost::none);
+                      boost::optional<BusinessDayConvention> paymentConvention = boost::none,
+                      const bool isPhysicallySettled = true, const bool isResettable = false);
 };
-}
+} // namespace QuantExt
 
 #endif

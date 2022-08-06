@@ -17,7 +17,7 @@
 */
 
 /*! \file ored/utilities/flowanalysis.hpp
-    \brief
+    \brief Extended QuantLib flow analysis
     \ingroup utilities
 */
 #pragma once
@@ -30,7 +30,7 @@ namespace ore {
 namespace data {
 //! Flow Analysis
 /*! \ingroup utilities
-*/
+ */
 std::vector<std::vector<std::string>> flowAnalysis(const QuantLib::Leg&);
-}
-}
+} // namespace data
+} // namespace ore

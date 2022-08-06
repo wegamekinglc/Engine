@@ -25,15 +25,14 @@
 #ifndef quantlib_cc_ois_basis_swap_hpp
 #define quantlib_cc_ois_basis_swap_hpp
 
+#include <ql/currency.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/instruments/swap.hpp>
 #include <ql/time/daycounter.hpp>
 #include <ql/time/schedule.hpp>
-#include <ql/currency.hpp>
-#include <ql/indexes/iborindex.hpp>
-
-using namespace QuantLib;
 
 namespace QuantExt {
+using namespace QuantLib;
 
 // class Schedule;
 // class OvernightIndex;
@@ -41,7 +40,7 @@ namespace QuantExt {
 
 //! Basis swap: compounded overnight rate in ccy 1 vs. compounded overnight rate in ccy 2
 /*! \ingroup instruments
-*/
+ */
 class OvernightIndexedCrossCcyBasisSwap : public Swap {
 public:
     class arguments;
@@ -80,8 +79,8 @@ public:
     Spread fairRecLegSpread() const;
     //@}
     // other
-    void setupArguments(PricingEngine::arguments* args) const;
-    void fetchResults(const PricingEngine::results*) const;
+    void setupArguments(PricingEngine::arguments* args) const override;
+    void fetchResults(const PricingEngine::results*) const override;
 
 private:
     void initialize();
@@ -110,6 +109,7 @@ inline Real OvernightIndexedCrossCcyBasisSwap::paySpread() const { return paySpr
 
 inline Real OvernightIndexedCrossCcyBasisSwap::recSpread() const { return recSpread_; }
 
+//! \ingroup instruments
 class OvernightIndexedCrossCcyBasisSwap::arguments : public Swap::arguments {
 public:
     std::vector<Currency> currency;
@@ -117,15 +117,17 @@ public:
     Real recSpread;
 };
 
+//! \ingroup instruments
 class OvernightIndexedCrossCcyBasisSwap::results : public Swap::results {
 public:
     Real fairPayLegSpread;
     Real fairRecLegSpread;
-    void reset();
+    void reset() override;
 };
 
+//! \ingroup instruments
 class OvernightIndexedCrossCcyBasisSwap::engine
     : public GenericEngine<OvernightIndexedCrossCcyBasisSwap::arguments, OvernightIndexedCrossCcyBasisSwap::results> {};
-}
+} // namespace QuantExt
 
 #endif

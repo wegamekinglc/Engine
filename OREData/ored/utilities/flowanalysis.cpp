@@ -16,31 +16,37 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
+#include <iomanip>
 #include <ored/utilities/flowanalysis.hpp>
 #include <ored/utilities/to_string.hpp>
+#include <ostream>
+#include <ql/cashflows/averagebmacoupon.hpp>
 #include <ql/cashflows/coupon.hpp>
 #include <ql/cashflows/cpicoupon.hpp>
-#include <ql/cashflows/yoyinflationcoupon.hpp>
 #include <ql/cashflows/floatingratecoupon.hpp>
+#include <ql/cashflows/yoyinflationcoupon.hpp>
 #include <ql/indexes/interestrateindex.hpp>
+#include <qle/cashflows/averageonindexedcoupon.hpp>
 #include <qle/cashflows/floatingratefxlinkednotionalcoupon.hpp>
 #include <qle/cashflows/fxlinkedcashflow.hpp>
-#include <iomanip>
-#include <ostream>
-
 using namespace std;
-using QuantLib::Real;
 using QuantLib::Date;
+using QuantLib::Real;
 
 namespace ore {
 namespace data {
 
 class AnalysisGenerator : public QuantLib::AcyclicVisitor,
                           public QuantLib::Visitor<QuantLib::CashFlow>,
+                          public QuantLib::Visitor<QuantLib::IndexedCashFlow>,
                           public QuantLib::Visitor<QuantLib::Coupon>,
                           public QuantLib::Visitor<QuantLib::FloatingRateCoupon>,
+                          public QuantLib::Visitor<QuantExt::AverageONIndexedCoupon>,
+                          public QuantLib::Visitor<QuantLib::AverageBMACoupon>,
                           public QuantLib::Visitor<QuantExt::FXLinkedCashFlow>,
-                          public QuantLib::Visitor<QuantExt::FloatingRateFXLinkedNotionalCoupon> {
+                          public QuantLib::Visitor<QuantExt::AverageFXLinkedCashFlow>,
+                          public QuantLib::Visitor<QuantExt::FloatingRateFXLinkedNotionalCoupon>,
+                          public QuantLib::Visitor<QuantLib::InflationCoupon> {
 private:
     vector<vector<string>> flowAnalysis_;
     static const QuantLib::Size numberOfColumns_ = 5;
@@ -48,11 +54,16 @@ private:
 public:
     AnalysisGenerator();
     void reset();
-    void visit(QuantLib::CashFlow& c);
-    void visit(QuantLib::Coupon& c);
-    void visit(QuantLib::FloatingRateCoupon& c);
-    void visit(QuantExt::FXLinkedCashFlow& c);
-    void visit(QuantExt::FloatingRateFXLinkedNotionalCoupon& c);
+    void visit(QuantLib::CashFlow& c) override;
+    void visit(QuantLib::IndexedCashFlow& c) override;
+    void visit(QuantLib::Coupon& c) override;
+    void visit(QuantLib::FloatingRateCoupon& c) override;
+    void visit(QuantExt::AverageONIndexedCoupon& c) override;
+    void visit(QuantLib::AverageBMACoupon& c) override;
+    void visit(QuantExt::FXLinkedCashFlow& c) override;
+    void visit(QuantExt::AverageFXLinkedCashFlow& c) override;
+    void visit(QuantExt::FloatingRateFXLinkedNotionalCoupon& c) override;
+    void visit(QuantLib::InflationCoupon& c) override;
     const vector<vector<string>>& analysis() const;
 };
 
@@ -95,21 +106,53 @@ void AnalysisGenerator::visit(QuantLib::FloatingRateCoupon& c) {
     flowAnalysis_.back()[INDEX] = c.index()->name();
 }
 
+void AnalysisGenerator::visit(QuantExt::AverageONIndexedCoupon& c) {
+    for (auto& d : c.fixingDates()) {
+        visit(static_cast<QuantLib::Coupon&>(c));
+        flowAnalysis_.back()[FIXING_DATE] = to_string(d);
+        flowAnalysis_.back()[INDEX] = c.index()->name();
+    }
+}
+
+void AnalysisGenerator::visit(QuantLib::AverageBMACoupon& c) {
+    for (auto& d : c.fixingDates()) {
+        visit(static_cast<QuantLib::Coupon&>(c));
+        flowAnalysis_.back()[FIXING_DATE] = to_string(d);
+        flowAnalysis_.back()[INDEX] = c.index()->name();
+    }
+}
+
 void AnalysisGenerator::visit(QuantExt::FXLinkedCashFlow& c) {
     visit(static_cast<QuantLib::CashFlow&>(c));
     flowAnalysis_.back()[FIXING_DATE] = to_string(c.fxFixingDate());
-    flowAnalysis_.back()[INDEX] = c.index()->name();
+    flowAnalysis_.back()[INDEX] = c.fxIndex()->name();
+}
+
+void AnalysisGenerator::visit(QuantExt::AverageFXLinkedCashFlow& c) {
+    visit(static_cast<QuantLib::CashFlow&>(c));
+    flowAnalysis_.back()[FIXING_DATE] = to_string(c.fxFixingDates().back());
+    flowAnalysis_.back()[INDEX] = c.fxIndex()->name();
 }
 
 void AnalysisGenerator::visit(QuantExt::FloatingRateFXLinkedNotionalCoupon& c) {
     // Ibor
     visit(static_cast<QuantLib::FloatingRateCoupon&>(c));
-
     // FX
-    QuantExt::FXLinkedCashFlow d = c.fxLinkedCashFlow();
-    visit(static_cast<QuantExt::FXLinkedCashFlow&>(d));
+    flowAnalysis_.back()[FIXING_DATE] = to_string(c.fxFixingDate());
+    flowAnalysis_.back()[INDEX] = c.fxIndex()->name();
 }
 
+void AnalysisGenerator::visit(QuantLib::InflationCoupon& c) {
+    visit(static_cast<QuantLib::Coupon&>(c));
+    flowAnalysis_.back()[FIXING_DATE] = to_string(c.fixingDate());
+    flowAnalysis_.back()[INDEX] = c.index()->name();
+}
+
+void AnalysisGenerator::visit(QuantLib::IndexedCashFlow& c) {
+    visit(static_cast<QuantLib::CashFlow&>(c));
+    flowAnalysis_.back()[FIXING_DATE] = to_string(c.fixingDate());
+    flowAnalysis_.back()[INDEX] = c.index()->name();
+}
 const vector<vector<string>>& AnalysisGenerator::analysis() const { return flowAnalysis_; }
 
 vector<vector<string>> flowAnalysis(const QuantLib::Leg& leg) {
@@ -118,5 +161,5 @@ vector<vector<string>> flowAnalysis(const QuantLib::Leg& leg) {
         leg[i]->accept(generator);
     return generator.analysis();
 }
-}
-}
+} // namespace data
+} // namespace ore

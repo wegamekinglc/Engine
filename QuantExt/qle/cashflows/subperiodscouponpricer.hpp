@@ -29,35 +29,35 @@
 
 #include <qle/cashflows/subperiodscoupon.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 //! Pricer for sub-period coupons
 /*! \ingroup cashflows
-*/
-class SubPeriodsCouponPricer : public FloatingRateCouponPricer {
+  \todo merge into QuantLib
+ */
+class SubPeriodsCouponPricer1 : public FloatingRateCouponPricer {
 public:
-    SubPeriodsCouponPricer() {}
+    SubPeriodsCouponPricer1() {}
 
-    void initialize(const FloatingRateCoupon& coupon);
-    Rate swapletRate() const;
+    void initialize(const FloatingRateCoupon& coupon) override;
+    Rate swapletRate() const override;
 
-    Real swapletPrice() const { QL_FAIL("swapletPrice not available"); }
-    Real capletPrice(Rate) const { QL_FAIL("capletPrice not available"); }
-    Rate capletRate(Rate) const { QL_FAIL("capletRate not available"); }
-    Real floorletPrice(Rate) const { QL_FAIL("floorletPrice not available"); }
-    Rate floorletRate(Rate) const { QL_FAIL("floorletRate not available"); }
+    Real swapletPrice() const override { QL_FAIL("swapletPrice not available"); }
+    Real capletPrice(Rate) const override { QL_FAIL("capletPrice not available"); }
+    Rate capletRate(Rate) const override { QL_FAIL("capletRate not available"); }
+    Real floorletPrice(Rate) const override { QL_FAIL("floorletPrice not available"); }
+    Rate floorletRate(Rate) const override { QL_FAIL("floorletRate not available"); }
 
 protected:
     Real gearing_;
     Spread spread_;
     Time accrualPeriod_;
     boost::shared_ptr<InterestRateIndex> index_;
-    SubPeriodsCoupon::Type type_;
+    SubPeriodsCoupon1::Type type_;
     bool includeSpread_;
 
-    const SubPeriodsCoupon* coupon_;
+    const SubPeriodsCoupon1* coupon_;
 };
-}
+} // namespace QuantExt
 
 #endif

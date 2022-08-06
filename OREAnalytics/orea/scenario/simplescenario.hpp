@@ -25,14 +25,13 @@
 
 #include <orea/scenario/scenario.hpp>
 
+#include <boost/serialization/export.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/vector.hpp>
-#include <boost/serialization/export.hpp>
-
-using std::string;
 
 namespace ore {
 namespace analytics {
+using std::string;
 
 //-----------------------------------------------------------------------------------------------
 //! Simple Scenario class
@@ -71,6 +70,9 @@ public:
 
     boost::shared_ptr<Scenario> clone() const override;
 
+    //! get data map
+    const std::map<RiskFactorKey, Real> data() const { return data_; }
+
 private:
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive& ar, const unsigned int) {
@@ -87,5 +89,5 @@ private:
     std::vector<RiskFactorKey> keys_;
     std::string label_;
 };
-}
-}
+} // namespace analytics
+} // namespace ore

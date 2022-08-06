@@ -16,20 +16,22 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <test/scenariosimmarket.hpp>
-#include <test/testmarket.hpp>
+#include <boost/test/unit_test.hpp>
 #include <orea/scenario/scenariosimmarket.hpp>
-#include <ored/utilities/log.hpp>
-#include <ored/marketdata/market.hpp>
-#include <ored/marketdata/marketimpl.hpp>
-#include <ql/time/daycounters/actualactual.hpp>
-#include <ql/termstructures/yield/flatforward.hpp>
-#include <ql/termstructures/volatility/equityfx/blackconstantvol.hpp>
-#include <ql/termstructures/volatility/swaption/swaptionconstantvol.hpp>
-#include <ql/termstructures/volatility/capfloor/constantcapfloortermvol.hpp>
-#include <ql/termstructures/credit/flathazardrate.hpp>
 #include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <ored/configuration/conventions.hpp>
+#include <ored/marketdata/market.hpp>
+#include <ored/marketdata/marketimpl.hpp>
+#include <ored/utilities/log.hpp>
+#include <oret/toplevelfixture.hpp>
+#include <ql/termstructures/credit/flathazardrate.hpp>
+#include <ql/termstructures/volatility/capfloor/constantcapfloortermvol.hpp>
+#include <ql/termstructures/volatility/equityfx/blackconstantvol.hpp>
+#include <ql/termstructures/volatility/swaption/swaptionconstantvol.hpp>
+#include <ql/termstructures/yield/flatforward.hpp>
+#include <ql/time/daycounters/actualactual.hpp>
+#include <test/oreatoplevelfixture.hpp>
+#include <test/testmarket.hpp>
 
 #include <ql/indexes/ibor/all.hpp>
 
@@ -38,12 +40,16 @@ using namespace QuantExt;
 using namespace boost::unit_test_framework;
 using namespace std;
 using namespace ore;
+using namespace ore::data;
+
+using testsuite::TestMarket;
 
 namespace {
 
 boost::shared_ptr<data::Conventions> convs() {
-    boost::shared_ptr<data::Conventions> conventions(new data::Conventions());
-
+    boost::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
+    conventions->clear();
+    
     boost::shared_ptr<data::Convention> swapIndexConv(
         new data::SwapIndexConvention("EUR-CMS-2Y", "EUR-6M-SWAP-CONVENTIONS"));
     conventions->add(swapIndexConv);
@@ -58,34 +64,38 @@ boost::shared_ptr<data::Conventions> convs() {
 boost::shared_ptr<analytics::ScenarioSimMarketParameters> scenarioParameters() {
     boost::shared_ptr<analytics::ScenarioSimMarketParameters> parameters(new analytics::ScenarioSimMarketParameters());
     parameters->baseCcy() = "EUR";
-    parameters->ccys() = {"EUR", "USD"};
-    parameters->yieldCurveTenors() = {6 * Months, 1 * Years, 2 * Years};
-    parameters->indices() = {"EUR-EURIBOR-6M", "USD-LIBOR-6M"};
+    parameters->setDiscountCurveNames({"EUR", "USD"});
+    parameters->setYieldCurveTenors("", {6 * Months, 1 * Years, 2 * Years});
+    parameters->setIndices({"EUR-EURIBOR-6M", "USD-LIBOR-6M"});
     parameters->interpolation() = "LogLinear";
-    parameters->extrapolate() = true;
+    parameters->extrapolation() = "FlatFwd";
 
-    parameters->swapVolTerms() = {6 * Months, 1 * Years};
-    parameters->swapVolExpiries() = {1 * Years, 2 * Years};
-    parameters->swapVolCcys() = {"EUR", "USD"};
+    parameters->setSwapVolTerms("", {6 * Months, 1 * Years});
+    parameters->setSwapVolExpiries("", {1 * Years, 2 * Years});
+    parameters->setSwapVolKeys({"EUR", "USD"});
     parameters->swapVolDecayMode() = "ForwardVariance";
 
-    parameters->defaultNames() = {"dc2"};
-    parameters->defaultTenors() = {6 * Months, 8 * Months, 1 * Years, 2 * Years};
+    parameters->setDefaultNames({"dc2"});
+    parameters->setDefaultTenors("", {6 * Months, 8 * Months, 1 * Years, 2 * Years});
 
-    parameters->simulateFXVols() = false;
-    parameters->fxVolExpiries() = {2 * Years, 3 * Years, 4 * Years};
-    parameters->fxVolDecayMode() = "ConstantVariance";
-    parameters->simulateEQVols() = false;
+    parameters->setSimulateFXVols(false);
+    parameters->setFxVolExpiries("", vector<Period>{2 * Years, 3 * Years, 4 * Years});
+    parameters->setFxVolDecayMode(string("ConstantVariance"));
+    parameters->setSimulateEquityVols(false);
 
-    parameters->fxVolCcyPairs() = {"USDEUR"};
+    parameters->setFxVolCcyPairs({"USDEUR"});
 
-    parameters->fxCcyPairs() = {"USDEUR"};
+    parameters->setFxCcyPairs({"USDEUR"});
 
+    parameters->setZeroInflationIndices({"EUHICPXT"});
+    parameters->setZeroInflationTenors("", {6 * Months, 1 * Years, 2 * Years});
+
+    parameters->setSimulateCorrelations(false);
+    parameters->correlationExpiries() = {1 * Years, 2 * Years};
+    parameters->setCorrelationPairs({"EUR-CMS-10Y:EUR-CMS-1Y", "USD-CMS-10Y:USD-CMS-1Y"});
     return parameters;
 }
-}
-
-namespace testsuite {
+} // namespace
 
 void testFxSpot(boost::shared_ptr<ore::data::Market>& initMarket,
                 boost::shared_ptr<ore::analytics::ScenarioSimMarket>& simMarket,
@@ -147,8 +157,8 @@ void testSwaptionVolCurve(boost::shared_ptr<ore::data::Market>& initMarket,
     for (const auto& ccy : parameters->ccys()) {
         Handle<QuantLib::SwaptionVolatilityStructure> simCurve = simMarket->swaptionVol(ccy);
         Handle<QuantLib::SwaptionVolatilityStructure> initCurve = initMarket->swaptionVol(ccy);
-        for (const auto& maturity : parameters->swapVolExpiries()) {
-            for (const auto& tenor : parameters->swapVolTerms()) {
+        for (const auto& maturity : parameters->swapVolExpiries("")) {
+            for (const auto& tenor : parameters->swapVolTerms("")) {
                 BOOST_CHECK_CLOSE(simCurve->volatility(maturity, tenor, 0.0, true),
                                   initCurve->volatility(maturity, tenor, 0.0, true), 1e-12);
             }
@@ -164,8 +174,8 @@ void testFxVolCurve(boost::shared_ptr<data::Market>& initMarket,
         Handle<BlackVolTermStructure> initCurve = initMarket->fxVol(ccyPair);
         vector<Date> dates;
         Date asof = initMarket->asofDate();
-        for (Size i = 0; i < parameters->fxVolExpiries().size(); i++) {
-            dates.push_back(asof + parameters->fxVolExpiries()[i]);
+        for (Size i = 0; i < parameters->fxVolExpiries(ccyPair).size(); i++) {
+            dates.push_back(asof + parameters->fxVolExpiries(ccyPair)[i]);
         }
 
         for (const auto& date : dates) {
@@ -179,13 +189,13 @@ void testDefaultCurve(boost::shared_ptr<ore::data::Market>& initMarket,
                       boost::shared_ptr<analytics::ScenarioSimMarketParameters>& parameters) {
     for (const auto& spec : parameters->defaultNames()) {
 
-        Handle<DefaultProbabilityTermStructure> simCurve = simMarket->defaultCurve(spec);
-        Handle<DefaultProbabilityTermStructure> initCurve = initMarket->defaultCurve(spec);
+        Handle<DefaultProbabilityTermStructure> simCurve = simMarket->defaultCurve(spec)->curve();
+        Handle<DefaultProbabilityTermStructure> initCurve = initMarket->defaultCurve(spec)->curve();
         BOOST_CHECK_EQUAL(initCurve->referenceDate(), simCurve->referenceDate());
         vector<Date> dates;
         Date asof = initMarket->asofDate();
-        for (Size i = 0; i < parameters->defaultTenors().size(); i++) {
-            dates.push_back(asof + parameters->defaultTenors()[i]);
+        for (Size i = 0; i < parameters->defaultTenors("").size(); i++) {
+            dates.push_back(asof + parameters->defaultTenors("")[i]);
         }
 
         for (const auto& date : dates) {
@@ -195,17 +205,58 @@ void testDefaultCurve(boost::shared_ptr<ore::data::Market>& initMarket,
     }
 }
 
+void testZeroInflationCurve(boost::shared_ptr<ore::data::Market>& initMarket,
+                            boost::shared_ptr<ore::analytics::ScenarioSimMarket>& simMarket,
+                            boost::shared_ptr<analytics::ScenarioSimMarketParameters>& parameters) {
+    for (const auto& spec : parameters->zeroInflationIndices()) {
+
+        Handle<ZeroInflationTermStructure> simCurve = simMarket->zeroInflationIndex(spec)->zeroInflationTermStructure();
+        Handle<ZeroInflationTermStructure> initCurve =
+            initMarket->zeroInflationIndex(spec)->zeroInflationTermStructure();
+        BOOST_CHECK_EQUAL(initCurve->referenceDate(), simCurve->referenceDate());
+        vector<Date> dates;
+        Date asof = initMarket->asofDate();
+        for (Size i = 0; i < parameters->zeroInflationTenors("").size(); i++) {
+            dates.push_back(asof + parameters->zeroInflationTenors("")[i]);
+        }
+
+        for (const auto& date : dates) {
+            BOOST_CHECK_CLOSE(simCurve->zeroRate(date), initCurve->zeroRate(date), 1e-12);
+        }
+    }
+}
+
+void testCorrelationCurve(boost::shared_ptr<ore::data::Market>& initMarket,
+                          boost::shared_ptr<ore::analytics::ScenarioSimMarket>& simMarket,
+                          boost::shared_ptr<analytics::ScenarioSimMarketParameters>& parameters) {
+    for (const auto& spec : parameters->correlationPairs()) {
+        vector<string> tokens;
+        boost::split(tokens, spec, boost::is_any_of(":&"));
+        QL_REQUIRE(tokens.size() == 2, "not a valid correlation pair: " << spec);
+        pair<string, string> pair = std::make_pair(tokens[0], tokens[1]);
+        Handle<QuantExt::CorrelationTermStructure> simCurve = simMarket->correlationCurve(pair.first, pair.second);
+        Handle<QuantExt::CorrelationTermStructure> initCurve = initMarket->correlationCurve(pair.first, pair.second);
+        BOOST_CHECK_EQUAL(initCurve->referenceDate(), simCurve->referenceDate());
+        vector<Date> dates;
+        Date asof = initMarket->asofDate();
+        for (Size i = 0; i < parameters->correlationExpiries().size(); i++) {
+            dates.push_back(asof + parameters->correlationExpiries()[i]);
+        }
+
+        for (const auto& date : dates) {
+            BOOST_CHECK_CLOSE(simCurve->correlation(date), initCurve->correlation(date), 1e-12);
+        }
+    }
+}
+
 void testToXML(boost::shared_ptr<analytics::ScenarioSimMarketParameters> params) {
 
     BOOST_TEST_MESSAGE("Testing to XML...");
     XMLDocument outDoc;
-    XMLDocument inDoc;
     string testFile = "simtest.xml";
-    XMLNode* node = params->toXML(outDoc);
+    XMLNode* simulationNode = params->toXML(outDoc);
 
-    XMLNode* simulationNode = outDoc.allocNode("Simulation");
     outDoc.appendNode(simulationNode);
-    XMLUtils::appendNode(simulationNode, node);
     outDoc.toFile(testFile);
 
     boost::shared_ptr<analytics::ScenarioSimMarketParameters> newParams(new analytics::ScenarioSimMarketParameters());
@@ -214,9 +265,15 @@ void testToXML(boost::shared_ptr<analytics::ScenarioSimMarketParameters> params)
 
     newParams->baseCcy() = "JPY";
     BOOST_CHECK(*params != *newParams);
+
+    remove("simtest.xml");
 }
 
-void ScenarioSimMarketTest::testScenarioSimMarket() {
+BOOST_FIXTURE_TEST_SUITE(OREAnalyticsTestSuite, ore::test::OreaTopLevelFixture)
+
+BOOST_AUTO_TEST_SUITE(ScenarioSimMarketTest)
+
+BOOST_AUTO_TEST_CASE(testScenarioSimMarket) {
     BOOST_TEST_MESSAGE("Testing OREAnalytics ScenarioSimMarket...");
 
     SavedSettings backup;
@@ -230,10 +287,11 @@ void ScenarioSimMarketTest::testScenarioSimMarket() {
 
     // build scenario
     boost::shared_ptr<analytics::ScenarioSimMarketParameters> parameters = scenarioParameters();
-    Conventions conventions = *convs();
+    convs();
     // build scenario sim market
     boost::shared_ptr<analytics::ScenarioSimMarket> simMarket(
-        new analytics::ScenarioSimMarket(scenarioGenerator, initMarket, parameters, conventions));
+        new analytics::ScenarioSimMarket(initMarket, parameters));
+    simMarket->scenarioGenerator() = scenarioGenerator;
 
     // test
     testFxSpot(initMarket, simMarket, parameters);
@@ -242,19 +300,11 @@ void ScenarioSimMarketTest::testScenarioSimMarket() {
     testSwaptionVolCurve(initMarket, simMarket, parameters);
     testFxVolCurve(initMarket, simMarket, parameters);
     testDefaultCurve(initMarket, simMarket, parameters);
+    testZeroInflationCurve(initMarket, simMarket, parameters);
+    testCorrelationCurve(initMarket, simMarket, parameters);
     testToXML(parameters);
 }
 
-test_suite* ScenarioSimMarketTest::suite() {
-    // boost::shared_ptr<ore::data::FileLogger> logger =
-    // boost::make_shared<ore::data::FileLogger>("simmarket_test.log");
-    // ore::data::Log::instance().removeAllLoggers();
-    // ore::data::Log::instance().registerLogger(logger);
-    // ore::data::Log::instance().switchOn();
-    // ore::data::Log::instance().setMask(255);
+BOOST_AUTO_TEST_SUITE_END()
 
-    test_suite* suite = BOOST_TEST_SUITE("ScenarioSimMarketTests");
-    suite->add(BOOST_TEST_CASE(&ScenarioSimMarketTest::testScenarioSimMarket));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()

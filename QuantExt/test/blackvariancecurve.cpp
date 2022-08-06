@@ -16,22 +16,25 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "blackvariancecurve.hpp"
-#include <qle/termstructures/blackvariancecurve3.hpp>
-#include <ql/termstructures/volatility/equityfx/blackvariancecurve.hpp>
+#include "toplevelfixture.hpp"
+#include <boost/make_shared.hpp>
+#include <boost/test/unit_test.hpp>
 #include <ql/quotes/simplequote.hpp>
+#include <ql/termstructures/volatility/equityfx/blackvariancecurve.hpp>
 #include <ql/time/calendars/target.hpp>
 #include <ql/time/daycounters/actualactual.hpp>
-#include <boost/make_shared.hpp>
+#include <qle/termstructures/blackvariancecurve3.hpp>
 
 using namespace boost::unit_test_framework;
 using namespace QuantLib;
 using namespace QuantExt;
 using namespace std;
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(QuantExtTestSuite, qle::test::TopLevelFixture)
 
-void BlackVarianceCurveTest::testBlackVarianceCurve() {
+BOOST_AUTO_TEST_SUITE(BlackVarianceCurveTest)
+
+BOOST_AUTO_TEST_CASE(testBlackVarianceCurve) {
 
     BOOST_TEST_MESSAGE("Testing QuantExt::BlackVarianceCurve3...");
 
@@ -42,7 +45,7 @@ void BlackVarianceCurveTest::testBlackVarianceCurve() {
     Natural settlementDays = 0;
     Calendar cal = TARGET();
     BusinessDayConvention bdc = Following;
-    DayCounter dc = ActualActual();
+    DayCounter dc = ActualActual(ActualActual::ISDA);
 
     vector<Time> times;
     vector<Date> dates;
@@ -94,9 +97,6 @@ void BlackVarianceCurveTest::testBlackVarianceCurve() {
     }
 }
 
-test_suite* BlackVarianceCurveTest::suite() {
-    test_suite* suite = BOOST_TEST_SUITE("BlackVarianceCurveTest");
-    suite->add(BOOST_TEST_CASE(&BlackVarianceCurveTest::testBlackVarianceCurve));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

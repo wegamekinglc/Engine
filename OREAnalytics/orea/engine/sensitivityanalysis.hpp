@@ -17,20 +17,23 @@
 */
 
 /*! \file engine/sensitivityanalysis.hpp
-    \brief Perfrom sensitivity analysis for a given portfolio
+    \brief Perform sensitivity analysis for a given portfolio
     \ingroup simulation
 */
 
 #pragma once
 
-#include <ored/portfolio/portfolio.hpp>
-#include <ored/marketdata/market.hpp>
-#include <ored/report/report.hpp>
-#include <orea/cube/npvcube.hpp>
-#include <orea/scenario/scenariosimmarketparameters.hpp>
+#include <orea/cube/npvsensicube.hpp>
+#include <orea/cube/sensitivitycube.hpp>
 #include <orea/scenario/scenariosimmarket.hpp>
+#include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <orea/scenario/sensitivityscenariodata.hpp>
 #include <orea/scenario/sensitivityscenariogenerator.hpp>
+#include <ored/marketdata/market.hpp>
+#include <ored/portfolio/portfolio.hpp>
+#include <ored/portfolio/referencedata.hpp>
+#include <ored/report/report.hpp>
+#include <ored/utilities/progressbar.hpp>
 
 #include <map>
 #include <set>
@@ -52,53 +55,31 @@ class ValuationCalculator;
   - running the scenario "engine" to apply these and compute the NPV impacts of all required shifts
   - compile first and second order sensitivities for all factors and all trades
   - fill result structures that can be queried
-  - write sensitivity report to a file
 
   \ingroup simulation
 */
 
-class SensitivityAnalysis {
+class SensitivityAnalysis : public ore::data::ProgressReporter {
 public:
     //! Constructor
     SensitivityAnalysis(const boost::shared_ptr<ore::data::Portfolio>& portfolio,
                         const boost::shared_ptr<ore::data::Market>& market, const string& marketConfiguration,
                         const boost::shared_ptr<ore::data::EngineData>& engineData,
                         const boost::shared_ptr<ScenarioSimMarketParameters>& simMarketData,
-                        const boost::shared_ptr<SensitivityScenarioData>& sensitivityData,
-                        const Conventions& conventions, const bool recalibrateModels,
-                        const bool nonShiftedBaseCurrencyConversion = false);
+                        const boost::shared_ptr<SensitivityScenarioData>& sensitivityData, const bool recalibrateModels,
+                        const boost::shared_ptr<ore::data::CurveConfigurations>& curveConfigs = nullptr,
+                        const boost::shared_ptr<ore::data::TodaysMarketParameters>& todaysMarketParams = nullptr,
+                        const bool nonShiftedBaseCurrencyConversion = false,
+                        std::vector<boost::shared_ptr<ore::data::EngineBuilder>> extraEngineBuilders = {},
+                        std::vector<boost::shared_ptr<ore::data::LegBuilder>> extraLegBuilders = {},
+                        const boost::shared_ptr<ReferenceDataManager>& referenceData = nullptr,
+                        const IborFallbackConfig& iborFallbackConfig = IborFallbackConfig::defaultConfig(),
+                        const bool continueOnError = false, bool analyticFxSensis = false, bool dryRun = false);
 
     virtual ~SensitivityAnalysis() {}
 
     //! Generate the Sensitivities
-    void generateSensitivities();
-
-    //! Return set of trades analysed
-    const std::set<std::string>& trades() const;
-
-    //! Return unique set of factors shifted
-    const std::map<std::string, QuantLib::Real>& factors() const;
-
-    //! Return base NPV by trade, before shift
-    const std::map<std::string, Real>& baseNPV() const;
-
-    //! Return delta/vega (first order sensitivity times shift) by trade/factor pair
-    const std::map<std::pair<std::string, std::string>, Real>& delta() const;
-
-    //! Return gamma (second order sensitivity times shift^2) by trade/factor pair
-    const std::map<std::pair<std::string, std::string>, Real>& gamma() const;
-
-    //! Return cross gamma (mixed second order sensitivity times shift^2) by trade/factor1/factor2
-    const std::map<std::tuple<std::string, std::string, std::string>, Real>& crossGamma() const;
-
-    //! Write "raw" NPV by trade/scenario (contains base, up and down shift scenarios)
-    void writeScenarioReport(const boost::shared_ptr<ore::data::Report>& report, Real outputThreshold = 0.0);
-
-    //! Write deltas and gammas by trade/factor pair
-    void writeSensitivityReport(const boost::shared_ptr<ore::data::Report>& report, Real outputThreshold = 0.0);
-
-    //! Write cross gammas by trade/factor1/factor2
-    void writeCrossGammaReport(const boost::shared_ptr<ore::data::Report>& report, Real outputThreshold = 0.0);
+    virtual void generateSensitivities(boost::shared_ptr<NPVSensiCube> cube = boost::shared_ptr<NPVSensiCube>());
 
     //! The ASOF date for the sensitivity analysis
     virtual const QuantLib::Date asof() const { return asof_; }
@@ -120,33 +101,35 @@ public:
     //! A getter for SensitivityScenarioData
     virtual const boost::shared_ptr<SensitivityScenarioData> sensitivityData() const { return sensitivityData_; }
 
-    //! A getter for Conventions
-    virtual const Conventions& conventions() const { return conventions_; }
+    //! override shift tenors with sim market tenors
+    void overrideTenors(const bool b) { overrideTenors_ = b; }
+
+    //! the portfolio of trades
+    boost::shared_ptr<Portfolio> portfolio() const { return portfolio_; }
+
+    //! a wrapper for the sensitivity results cube
+    boost::shared_ptr<SensitivityCube> sensiCube() const { return sensiCube_; }
 
 protected:
     //! initialize the various components that will be passed to the sensitivities valuation engine
-    void initialize(boost::shared_ptr<NPVCube>& cube);
+    virtual void initialize(boost::shared_ptr<NPVSensiCube>& cube);
     //! initialize the cube with the appropriate dimensions
-    virtual void initializeCube(boost::shared_ptr<NPVCube>& cube) const;
+    virtual void initializeCube(boost::shared_ptr<NPVSensiCube>& cube) const;
     //! build engine factory
     virtual boost::shared_ptr<EngineFactory>
-    buildFactory(const std::vector<boost::shared_ptr<EngineBuilder>> extraBuilders = {}) const;
+    buildFactory(const std::vector<boost::shared_ptr<EngineBuilder>> extraBuilders = {},
+                 const std::vector<boost::shared_ptr<LegBuilder>> extraLegBuilders = {}) const;
     //! reset and rebuild the portfolio to make use of the appropriate engine factory
     virtual void resetPortfolio(const boost::shared_ptr<EngineFactory>& factory);
-    //! build the ScenarioSimMarket that will be used by ValuationEngine
-    virtual void initializeSimMarket();
-    //! initialize the SensitivityScenarioGenerator that determines which sensitivities to compute
-    virtual void initializeSensitivityScenarioGenerator(boost::shared_ptr<ScenarioFactory> scenFact = {});
+    /*! build the ScenarioSimMarket that will be used by ValuationEngine and
+     * initialize the SensitivityScenarioGenerator that determines which sensitivities to compute */
+    virtual void initializeSimMarket(boost::shared_ptr<ScenarioFactory> scenFact = {});
 
     //! build valuation calculators for valuation engine
-    std::vector<boost::shared_ptr<ValuationCalculator>> buildValuationCalculators() const;
-    //! collect the sensitivity results from the cube and populate appropriate containers
-    void collectResultsFromCube(const boost::shared_ptr<NPVCube>& cube);
+    virtual std::vector<boost::shared_ptr<ValuationCalculator>> buildValuationCalculators() const;
 
-    //! archive the actual shift size for each risk factor (so as to interpret results)
-    void storeFactorShifts(const ShiftScenarioGenerator::ScenarioDescription& desc);
-    //! returns the shift size corresponding to a particular risk factor
-    Real getShiftSize(const RiskFactorKey& desc) const;
+    //! Overwrite FX sensitivities in the cube with first order analytical values where possible.
+    virtual void addAnalyticFxSensitivities();
 
     boost::shared_ptr<ore::data::Market> market_;
     std::string marketConfiguration_;
@@ -155,29 +138,43 @@ protected:
     boost::shared_ptr<ScenarioSimMarket> simMarket_;
     boost::shared_ptr<ScenarioSimMarketParameters> simMarketData_;
     boost::shared_ptr<SensitivityScenarioData> sensitivityData_;
-    Conventions conventions_;
     bool recalibrateModels_;
+    //! Optional curve configurations. Used in building the scenario sim market.
+    boost::shared_ptr<ore::data::CurveConfigurations> curveConfigs_;
+    //! Optional todays market parameters. Used in building the scenario sim market.
+    boost::shared_ptr<ore::data::TodaysMarketParameters> todaysMarketParams_;
+    bool overrideTenors_;
 
-    // base NPV by trade
-    std::map<std::string, Real> baseNPV_;
-    // NPV respectively sensitivity by trade and factor
-    std::map<std::pair<string, string>, Real> upNPV_, downNPV_, delta_, gamma_;
-    // cross gamma by trade, factor1, factor2
-    std::map<std::tuple<string, string, string>, Real> crossNPV_, crossGamma_;
-    // unique set of factors
-    std::map<std::string, QuantLib::Real> factors_;
-    // unique set of trades
-    std::set<std::string> trades_;
     // if true, convert sensis to base currency using the original (non-shifted) FX rate
     bool nonShiftedBaseCurrencyConversion_;
+    std::vector<boost::shared_ptr<ore::data::EngineBuilder>> extraEngineBuilders_;
+    std::vector<boost::shared_ptr<ore::data::LegBuilder>> extraLegBuilders_;
+    boost::shared_ptr<ore::data::ReferenceDataManager> referenceData_;
+    IborFallbackConfig iborFallbackConfig_;
+    // if true, the processing is continued even on build errors
+    bool continueOnError_;
     //! the engine data (provided as input, needed to construct the engine factory)
     boost::shared_ptr<EngineData> engineData_;
     //! the portfolio (provided as input)
     boost::shared_ptr<Portfolio> portfolio_;
+    //! Extract analytic FX sensitivities on trades where possible.
+    bool analyticFxSensis_;
+    //! do dry run
+    bool dryRun_;
+
     //! initializationFlag
     bool initialized_, computed_;
     //! model builders
-    std::set<boost::shared_ptr<ModelBuilder>> modelBuilders_;
+    std::set<std::pair<string, boost::shared_ptr<ModelBuilder>>> modelBuilders_;
+    //! sensitivityCube
+    boost::shared_ptr<SensitivityCube> sensiCube_;
 };
-}
-}
+
+/*! Returns the absolute shift size corresponding to a particular risk factor \p key
+    given sensitivity parameters \p sensiParams and a simulation market \p simMarket
+*/
+Real getShiftSize(const RiskFactorKey& key, const SensitivityScenarioData& sensiParams,
+                  const boost::shared_ptr<ScenarioSimMarket>& simMarket, const std::string& marketConfiguration = "");
+
+} // namespace analytics
+} // namespace ore

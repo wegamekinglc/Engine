@@ -19,26 +19,31 @@
 #include <ored/utilities/osutils.hpp>
 #include <ored/version.hpp>
 
-#include <iomanip>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 
-#include <ql/version.hpp>
 #include <boost/version.hpp>
+#include <ql/version.hpp>
 
 #if defined(_WIN32) || defined(_WIN64)
+#include <intrin.h>
+// windows.h must be included before psapi.h
+// clang-format off
 #include <windows.h>
 #include <psapi.h>
+// clang-format on
 #elif __APPLE__
-#include <unistd.h>
 #include <sys/sysctl.h>
-#else
-#include <stdio.h>
 #include <unistd.h>
+#include <mach/mach.h>
+#else
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <stdio.h>
 #include <sys/resource.h> // getrusage()
 #include <sys/utsname.h>  // uname()
-#include <boost/algorithm/string/trim.hpp>
-#include <boost/algorithm/string/predicate.hpp>
+#include <unistd.h>
 #endif
 
 using namespace std;
@@ -57,7 +62,7 @@ string memoryString(unsigned long long m) {
         oss << m / (double)(1024 * 1024 * 1024) << "GB";
     return oss.str();
 }
-}
+} // namespace
 
 namespace ore {
 namespace data {
@@ -81,6 +86,8 @@ string getSystemDetails() {
 }
 
 string getMemoryUsage() { return memoryString(getMemoryUsageBytes()); }
+
+string getPeakMemoryUsage() { return memoryString(getPeakMemoryUsageBytes()); }
 
 // -------------------------------------
 // ---- Windows stuff
@@ -153,6 +160,13 @@ unsigned long long getMemoryUsageBytes() {
     PROCESS_MEMORY_COUNTERS info;
     if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info)))
         return 0;
+    return info.WorkingSetSize;
+}
+
+unsigned long long getPeakMemoryUsageBytes() {
+    PROCESS_MEMORY_COUNTERS info;
+    if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info)))
+        return 0;
     return info.PeakWorkingSetSize;
 }
 
@@ -179,10 +193,14 @@ string getHostname() {
 // -------------------------------------
 #else
 
-unsigned long long getMemoryUsageBytes() {
+unsigned long long getPeakMemoryUsageBytes() {
     rusage ru;
     getrusage(RUSAGE_SELF, &ru);
-    return ru.ru_maxrss;
+#if defined __APPLE__
+    return (size_t)ru.ru_maxrss;
+#else
+    return (size_t)(ru.ru_maxrss * 1024L);
+#endif
 }
 
 string getUsername() {
@@ -229,6 +247,14 @@ unsigned int getNumberCores() {
     size_t len = sizeof(ncpus);
     sysctlbyname("hw.physicalcpu_max", &ncpus, &len, NULL, 0);
     return ncpus;
+}
+
+unsigned long long getMemoryUsageBytes() {
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t infoCount = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &infoCount) != KERN_SUCCESS)
+        return 0ULL; /* Can't access? */
+    return (unsigned long long)info.resident_size;
 }
 
 string getMemoryRAM() {
@@ -295,6 +321,19 @@ unsigned int getNumberCores() {
         return 0;
     else
         return n;
+}
+
+unsigned long long getMemoryUsageBytes() {
+    unsigned long long rss = 0ULL;
+    FILE* fp = NULL;
+    if ((fp = fopen("/proc/self/statm", "r")) == NULL)
+        return 0ULL; /* Can't open? */
+    if (fscanf(fp, "%*s%llu", &rss) != 1) {
+        fclose(fp);
+        return 0ULL; /* Can't read? */
+    }
+    fclose(fp);
+    return (unsigned long long)rss * (unsigned long long)sysconf(_SC_PAGESIZE);
 }
 
 string getMemoryRAM() { return parseProcFile("/proc/meminfo", "MemTotal"); }

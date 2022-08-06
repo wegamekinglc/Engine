@@ -18,7 +18,7 @@
 
 /*! \file qle/cashflows/couponpricer.hpp
     \brief Utility functions for setting coupon pricers on legs
-        \ingroup cashflows
+    \ingroup cashflows
 */
 
 #ifndef quantext_coupon_pricer_hpp
@@ -28,13 +28,9 @@
 
 #include <ql/cashflows/couponpricer.hpp>
 
-#include <qle/cashflows/averageonindexedcouponpricer.hpp>
-#include <qle/cashflows/subperiodscouponpricer.hpp>
-
-using namespace QuantLib;
-
 namespace QuantExt {
-/*!	\addtogroup cashflows
+using namespace QuantLib;
+/*! \addtogroup cashflows
     @{
 */
 //! Set Coupon Pricer
@@ -43,6 +39,6 @@ void setCouponPricer(const Leg& leg, const boost::shared_ptr<FloatingRateCouponP
 void setCouponPricers(const Leg& leg, const std::vector<boost::shared_ptr<FloatingRateCouponPricer> >&);
 
 // @}
-}
+} // namespace QuantExt
 
 #endif

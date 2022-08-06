@@ -16,15 +16,15 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include "staticallycorrectedyieldtermstructure.hpp"
+#include "toplevelfixture.hpp"
+#include "utilities.hpp"
+#include <boost/test/unit_test.hpp>
 
 #include <qle/termstructures/staticallycorrectedyieldtermstructure.hpp>
 
+#include <ql/quotes/simplequote.hpp>
 #include <ql/termstructures/yield/flatforward.hpp>
 #include <ql/time/calendars/nullcalendar.hpp>
-#include <ql/quotes/simplequote.hpp>
-
-#include <test-suite/utilities.hpp>
 
 #include <boost/make_shared.hpp>
 
@@ -32,9 +32,11 @@ using namespace QuantExt;
 using namespace QuantLib;
 using namespace boost::unit_test_framework;
 
-namespace testsuite {
+BOOST_FIXTURE_TEST_SUITE(QuantExtTestSuite, qle::test::TopLevelFixture)
 
-void StaticallyCorrectedYieldTermStructureTest::testCorrectedYts() {
+BOOST_AUTO_TEST_SUITE(StaticallyCorrectedYieVldTermStructureTest)
+
+BOOST_AUTO_TEST_CASE(testCorrectedYts) {
 
     SavedSettings backup;
 
@@ -110,16 +112,14 @@ void StaticallyCorrectedYieldTermStructureTest::testCorrectedYts() {
                         "can not verify corrected2 df ("
                             << corrected2->discount(1.0) << ") against expected df ("
                             << floating->discount(1.0) * target->discount(t + 1.0) * source->discount(t) /
-                                   (target->discount(t) * source->discount(t + 1.0)) << ") on eval date "
-                            << Settings::instance().evaluationDate() << ", difference is "
+                                   (target->discount(t) * source->discount(t + 1.0))
+                            << ") on eval date " << Settings::instance().evaluationDate() << ", difference is "
                             << floating->discount(1.0) * target->discount(t + 1.0) * source->discount(t) /
                                        (target->discount(t) * source->discount(t + 1.0)) -
-                                   corrected2->discount(1.0) << ", tolerance is " << tol);
+                                   corrected2->discount(1.0)
+                            << ", tolerance is " << tol);
 }
 
-test_suite* StaticallyCorrectedYieldTermStructureTest::suite() {
-    test_suite* suite = BOOST_TEST_SUITE("StaticallyCorrectedYieldTermStructure tests");
-    suite->add(QUANTLIB_TEST_CASE(&StaticallyCorrectedYieldTermStructureTest::testCorrectedYts));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

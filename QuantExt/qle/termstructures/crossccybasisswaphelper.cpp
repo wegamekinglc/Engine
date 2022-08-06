@@ -15,32 +15,47 @@
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
-
+#include <qle/pricingengines/crossccyswapengine.hpp>
 #ifdef QL_USE_INDEXED_COUPON
 #include <ql/cashflows/floatingratecoupon.hpp>
 #endif
 
 #include <qle/termstructures/crossccybasisswaphelper.hpp>
-#include <qle/pricingengines/crossccyswapengine.hpp>
+
+#include <boost/make_shared.hpp>
 
 namespace QuantExt {
 
 namespace {
 void no_deletion(YieldTermStructure*) {}
-}
+} // namespace
 
-CrossCcyBasisSwapHelper::CrossCcyBasisSwapHelper(const Handle<Quote>& spreadQuote, const Handle<Quote>& spotFX,
-                                                 Natural settlementDays, const Calendar& settlementCalendar,
-                                                 const Period& swapTenor, BusinessDayConvention rollConvention,
-                                                 const boost::shared_ptr<QuantLib::IborIndex>& flatIndex,
-                                                 const boost::shared_ptr<QuantLib::IborIndex>& spreadIndex,
-                                                 const Handle<YieldTermStructure>& flatDiscountCurve,
-                                                 const Handle<YieldTermStructure>& spreadDiscountCurve, bool eom,
-                                                 bool flatIsDomestic)
+CrossCcyBasisSwapHelper::CrossCcyBasisSwapHelper(
+    const Handle<Quote>& spreadQuote, const Handle<Quote>& spotFX, Natural settlementDays,
+    const Calendar& settlementCalendar, const Period& swapTenor, BusinessDayConvention rollConvention,
+    const boost::shared_ptr<QuantLib::IborIndex>& flatIndex, const boost::shared_ptr<QuantLib::IborIndex>& spreadIndex,
+    const Handle<YieldTermStructure>& flatDiscountCurve, const Handle<YieldTermStructure>& spreadDiscountCurve,
+    bool eom, bool flatIsDomestic, boost::optional<Period> flatTenor, boost::optional<Period> spreadTenor,
+    Real spreadOnFlatLeg, Real flatGearing, Real spreadGearing, const Calendar& flatCalendar,
+    const Calendar& spreadCalendar, const std::vector<Natural>& spotFXSettleDaysVec,
+    const std::vector<Calendar>& spotFXSettleCalendarVec, Size paymentLag, Size flatPaymentLag,
+    boost::optional<bool> includeSpread, boost::optional<Period> lookback, boost::optional<Size> fixingDays,
+    boost::optional<Size> rateCutoff, boost::optional<bool> isAveraged, boost::optional<bool> flatIncludeSpread,
+    boost::optional<Period> flatLookback, boost::optional<Size> flatFixingDays, boost::optional<Size> flatRateCutoff,
+    boost::optional<bool> flatIsAveraged, const bool telescopicValueDates)
     : RelativeDateRateHelper(spreadQuote), spotFX_(spotFX), settlementDays_(settlementDays),
       settlementCalendar_(settlementCalendar), swapTenor_(swapTenor), rollConvention_(rollConvention),
       flatIndex_(flatIndex), spreadIndex_(spreadIndex), flatDiscountCurve_(flatDiscountCurve),
-      spreadDiscountCurve_(spreadDiscountCurve), eom_(eom), flatIsDomestic_(flatIsDomestic) {
+      spreadDiscountCurve_(spreadDiscountCurve), eom_(eom), flatIsDomestic_(flatIsDomestic),
+      flatTenor_(flatTenor ? *flatTenor : flatIndex_->tenor()),
+      spreadTenor_(spreadTenor ? *spreadTenor : spreadIndex_->tenor()), spreadOnFlatLeg_(spreadOnFlatLeg),
+      flatGearing_(flatGearing), spreadGearing_(spreadGearing), flatCalendar_(flatCalendar),
+      spreadCalendar_(spreadCalendar), spotFXSettleDaysVec_(spotFXSettleDaysVec),
+      spotFXSettleCalendarVec_(spotFXSettleCalendarVec), paymentLag_(paymentLag), flatPaymentLag_(flatPaymentLag),
+      includeSpread_(includeSpread), lookback_(lookback), fixingDays_(fixingDays), rateCutoff_(rateCutoff),
+      isAveraged_(isAveraged), flatIncludeSpread_(flatIncludeSpread), flatLookback_(flatLookback),
+      flatFixingDays_(flatFixingDays), flatRateCutoff_(flatRateCutoff), flatIsAveraged_(flatIsAveraged),
+      telescopicValueDates_(telescopicValueDates) {
 
     flatLegCurrency_ = flatIndex_->currency();
     spreadLegCurrency_ = spreadIndex_->currency();
@@ -53,6 +68,20 @@ CrossCcyBasisSwapHelper::CrossCcyBasisSwapHelper(const Handle<Quote>& spreadQuot
     QL_REQUIRE(!(flatIndexHasCurve && spreadIndexHasCurve && haveFlatDiscountCurve && haveSpreadDiscountCurve),
                "Have all curves, "
                "nothing to solve for.");
+
+    if (flatCalendar_.empty())
+        flatCalendar_ = settlementCalendar;
+    if (spreadCalendar_.empty())
+        spreadCalendar_ = settlementCalendar;
+
+    // check spotFXSettleDaysVec_ and spotFXSettleCalendarVec_
+    Size numSpotFXSettleDays = spotFXSettleDaysVec_.size();
+    QL_REQUIRE(numSpotFXSettleDays == spotFXSettleCalendarVec_.size(),
+               "Array size of spot fx settlement days must equal that of spot fx settlement calendars");
+    if (numSpotFXSettleDays == 0) {
+        spotFXSettleDaysVec_.resize(1, 0);
+        spotFXSettleCalendarVec_.resize(1, settlementCalendar);
+    }
 
     /* Link the curve being bootstrapped to the index if the index has
        no projection curve */
@@ -82,24 +111,35 @@ CrossCcyBasisSwapHelper::CrossCcyBasisSwapHelper(const Handle<Quote>& spreadQuot
 
 void CrossCcyBasisSwapHelper::initializeDates() {
 
-    Date settlementDate = settlementCalendar_.advance(evaluationDate_, settlementDays_, Days);
+    Date refDate = evaluationDate_;
+    // if the evaluation date is not a business day
+    // then move to the next business day
+    refDate = settlementCalendar_.adjust(refDate);
+
+    Date settlementDate = settlementCalendar_.advance(refDate, settlementDays_, Days);
     Date maturityDate = settlementDate + swapTenor_;
 
-    Period flatLegTenor = flatIndex_->tenor();
+    // calc spotFXSettleDate
+    Date spotFXSettleDate = refDate;
+    Size numSpotFXSettleDays = spotFXSettleDaysVec_.size(); // guaranteed to be at least 1
+    for (Size i = 0; i < numSpotFXSettleDays; i++) {
+        // Guaranteed here that spotFXSettleDaysVec_ and spotFXSettleCalendarVec_ have the same size
+        spotFXSettleDate = spotFXSettleCalendarVec_[i].advance(spotFXSettleDate, spotFXSettleDaysVec_[i], Days);
+    }
+
     Schedule flatLegSchedule = MakeSchedule()
                                    .from(settlementDate)
                                    .to(maturityDate)
-                                   .withTenor(flatLegTenor)
-                                   .withCalendar(settlementCalendar_)
+                                   .withTenor(flatTenor_)
+                                   .withCalendar(flatCalendar_)
                                    .withConvention(rollConvention_)
                                    .endOfMonth(eom_);
 
-    Period spreadLegTenor = spreadIndex_->tenor();
     Schedule spreadLegSchedule = MakeSchedule()
                                      .from(settlementDate)
                                      .to(maturityDate)
-                                     .withTenor(spreadLegTenor)
-                                     .withCalendar(settlementCalendar_)
+                                     .withTenor(spreadTenor_)
+                                     .withCalendar(spreadCalendar_)
                                      .withConvention(rollConvention_)
                                      .endOfMonth(eom_);
 
@@ -112,18 +152,21 @@ void CrossCcyBasisSwapHelper::initializeDates() {
     }
 
     /* Arbitrarily set the spread leg as the pay leg */
-    swap_ = boost::shared_ptr<CrossCcyBasisSwap>(
-        new CrossCcyBasisSwap(spreadLegNominal, spreadLegCurrency_, spreadLegSchedule, spreadIndex_, 0.0,
-                              flatLegNominal, flatLegCurrency_, flatLegSchedule, flatIndex_, 0.0));
+    swap_ = boost::make_shared<CrossCcyBasisSwap>(
+        spreadLegNominal, spreadLegCurrency_, spreadLegSchedule, spreadIndex_, 0.0, spreadGearing_, flatLegNominal,
+        flatLegCurrency_, flatLegSchedule, flatIndex_, spreadOnFlatLeg_, flatGearing_, paymentLag_, flatPaymentLag_,
+        includeSpread_, lookback_, fixingDays_, rateCutoff_, isAveraged_, flatIncludeSpread_, flatLookback_,
+        flatFixingDays_, flatRateCutoff_, flatIsAveraged_, telescopicValueDates_);
 
-    Handle<Quote> spotFX(*spotFX_);
     boost::shared_ptr<PricingEngine> engine;
     if (flatIsDomestic_) {
-        engine.reset(new CrossCcySwapEngine(flatLegCurrency_, flatDiscountRLH_, spreadLegCurrency_, spreadDiscountRLH_,
-                                            spotFX, boost::none, settlementDate, settlementDate));
+        engine = boost::make_shared<CrossCcySwapEngine>(flatLegCurrency_, flatDiscountRLH_, spreadLegCurrency_,
+                                                        spreadDiscountRLH_, spotFX_, boost::none, Date(), Date(),
+                                                        spotFXSettleDate);
     } else {
-        engine.reset(new CrossCcySwapEngine(spreadLegCurrency_, spreadDiscountRLH_, flatLegCurrency_, flatDiscountRLH_,
-                                            spotFX, boost::none, settlementDate, settlementDate));
+        engine = boost::make_shared<CrossCcySwapEngine>(spreadLegCurrency_, spreadDiscountRLH_, flatLegCurrency_,
+                                                        flatDiscountRLH_, spotFX_, boost::none, Date(), Date(),
+                                                        spotFXSettleDate);
     }
     swap_->setPricingEngine(engine);
 
@@ -178,7 +221,7 @@ void CrossCcyBasisSwapHelper::setTermStructure(YieldTermStructure* t) {
 
 Real CrossCcyBasisSwapHelper::impliedQuote() const {
     QL_REQUIRE(termStructure_, "Term structure needs to be set");
-    swap_->recalculate();
+    swap_->deepUpdate();
     return swap_->fairPaySpread();
 }
 
@@ -189,4 +232,4 @@ void CrossCcyBasisSwapHelper::accept(AcyclicVisitor& v) {
     else
         RateHelper::accept(v);
 }
-}
+} // namespace QuantExt

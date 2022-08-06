@@ -24,14 +24,13 @@
 #ifndef quantext_skkbribor_hpp
 #define quantext_skkbribor_hpp
 
-#include <ql/indexes/iborindex.hpp>
 #include <ql/currencies/europe.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/time/calendars/slovakia.hpp>
 #include <ql/time/daycounters/actual360.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! SKK-BRIBOR index
 /*! SKK-BRIBOR rate overseen by the central bank of the Slovak Republic.
@@ -49,6 +48,6 @@ public:
     SKKBribor(const Period& tenor, const Handle<YieldTermStructure>& h = Handle<YieldTermStructure>())
         : IborIndex("SKK-BRIBOR", tenor, 2, SKKCurrency(), Slovakia(), ModifiedFollowing, false, Actual360(), h) {}
 };
-}
+} // namespace QuantExt
 
 #endif

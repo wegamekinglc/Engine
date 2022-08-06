@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2017 Quaternion Risk Management Ltd
+ Copyright (C) 2021 Quaternion Risk Management Ltd
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -16,81 +16,96 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*
- Copyright (C) 2008 Roland Stamm
- Copyright (C) 2009 Jose Aparicio
-
- This file is part of QuantLib, a free-software/open-source library
- for financial quantitative analysts and developers - http://quantlib.org/
-
- QuantLib is free software: you can redistribute it and/or modify it
- under the terms of the QuantLib license.  You should have received a
- copy of the license along with this program; if not, please email
- <quantlib-dev@lists.sf.net>. The license is also available online at
- <http://quantlib.org/license.shtml>.
-
- This program is distributed in the hope that it will be useful, but WITHOUT
- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- FOR A PARTICULAR PURPOSE.  See the license for more details.
-*/
-
 #include <qle/pricingengines/blackcdsoptionengine.hpp>
-
-#include <ql/pricingengines/blackformula.hpp>
-#include <ql/termstructures/yieldtermstructure.hpp>
-#include <ql/quote.hpp>
 #include <ql/exercise.hpp>
+#include <ql/pricingengines/blackformula.hpp>
+#include <string>
+
+using namespace QuantLib;
+using std::string;
 
 namespace QuantExt {
 
-BlackCdsOptionEngine::BlackCdsOptionEngine(const Handle<DefaultProbabilityTermStructure>& probability,
-                                           Real recoveryRate, const Handle<YieldTermStructure>& termStructure,
-                                           const Handle<Quote>& volatility)
-    : probability_(probability), recoveryRate_(recoveryRate), termStructure_(termStructure), volatility_(volatility) {
-
+BlackCdsOptionEngine::BlackCdsOptionEngine(const Handle<DefaultProbabilityTermStructure>& probability, Real recovery,
+                                           const Handle<YieldTermStructure>& discount,
+                                           const QuantLib::Handle<QuantExt::CreditVolCurve>& volatility)
+    : probability_(probability), recovery_(recovery), discount_(discount), volatility_(volatility) {
     registerWith(probability_);
-    registerWith(termStructure_);
+    registerWith(discount_);
     registerWith(volatility_);
 }
 
+const Handle<DefaultProbabilityTermStructure>& BlackCdsOptionEngine::probability() const {
+    return probability_;
+}
+
+Real BlackCdsOptionEngine::recovery() const {
+    return recovery_;
+}
+
+const Handle<YieldTermStructure> BlackCdsOptionEngine::discount() const {
+    return discount_;
+}
+
+const Handle<CreditVolCurve> BlackCdsOptionEngine::volatility() const {
+    return volatility_;
+}
+
+
 void BlackCdsOptionEngine::calculate() const {
 
-    Date maturityDate = arguments_.swap->coupons().front()->date();
-    Date exerciseDate = arguments_.exercise->date(0);
-    QL_REQUIRE(maturityDate > exerciseDate, "Underlying CDS should start after option maturity");
-    Date settlement = termStructure_->referenceDate();
+    QL_REQUIRE(arguments_.strikeType == CdsOption::Spread, "BlackCdsOptionEngine does not support valuation" <<
+        " of single name options quoted in terms of strike price.");
 
-    Rate spotFwdSpread = arguments_.swap->fairSpread();
-    Rate swapSpread = arguments_.swap->runningSpread();
+    // Reference to the underlying forward starting CDS, from expiry date $t_E$ to maturity $T$.
+    const auto& cds = *arguments_.swap;
 
-    DayCounter tSDc = termStructure_->dayCounter();
+    // Get the additional results of the underlying CDS (need to call NPV first for calculation).
+    cds.NPV();
+    results_.additionalResults = cds.additionalResults();
 
-    // The sense of the underlying/option has to be sent this way
-    // to the Black formula, no sign.
-    Real riskyAnnuity = std::fabs(arguments_.swap->couponLegNPV() / swapSpread);
-    results_.riskyAnnuity = riskyAnnuity;
+    // Add some entries to additional results.
+    Real forward = cds.fairSpreadClean();
+    results_.additionalResults["forwardSpread"] = forward;
+    const Real& strike = arguments_.strike;
+    results_.additionalResults["strikeSpread"] = strike;
 
-    // incorporate upfront amount
-    swapSpread -=
-        (arguments_.swap->side() == Protection::Buyer ? -1.0 : 1.0) * arguments_.swap->upfrontNPV() / riskyAnnuity;
+    // Calculate risky PV01, as of the valuation date i.e. time 0, for the period from $t_E$ to underlying 
+    // CDS maturity $T$. This risky PV01 does not include the non-risky accrual from the CDS premium leg coupon date 
+    // immediately preceding the expiry date up to the expiry date.
+    Real rpv01 = std::abs(cds.couponLegNPV() + cds.accrualRebateNPV()) / (cds.notional() * cds.runningSpread());
+    results_.additionalResults["riskyAnnuity"] = rpv01;
 
-    Time T = tSDc.yearFraction(settlement, exerciseDate);
+    // Read the volatility from the volatility surface, assumed to have strike dimension in terms of spread.
+    const Date& exerciseDate = arguments_.exercise->dates().front();
+    Real underlyingLength = volatility_->dayCounter().yearFraction(exerciseDate, cds.maturity());
+    Real vol = volatility_->volatility(exerciseDate, underlyingLength, strike, CreditVolCurve::Type::Spread);
+    Real stdDev = vol * std::sqrt(volatility_->timeFromReference(exerciseDate));
+    results_.additionalResults["volatility"] = vol;
+    results_.additionalResults["standardDeviation"] = stdDev;
 
-    Real stdDev = volatility_->value() * std::sqrt(T);
-    Option::Type callPut = (arguments_.side == Protection::Buyer) ? Option::Call : Option::Put;
+    // Option type
+    Option::Type callPut = cds.side() == Protection::Buyer ? Option::Call : Option::Put;
+    results_.additionalResults["callPut"] = callPut == Option::Call ? string("Call") : string("Put");
 
-    results_.value = blackFormula(callPut, swapSpread, spotFwdSpread, stdDev, riskyAnnuity);
+    // NPV, Section 9.3.7 O'Kane 2008.
+    results_.value = rpv01 * cds.notional() * blackFormula(callPut, strike, forward, stdDev, 1.0);
 
-    // if a non knock-out payer option, add front end protection value
-    if (arguments_.side == Protection::Buyer && !arguments_.knocksOut) {
-        Real frontEndProtection = callPut * arguments_.swap->notional() * (1. - recoveryRate_) *
-                                  probability_->defaultProbability(exerciseDate) *
-                                  termStructure_->discount(exerciseDate);
-        results_.value += frontEndProtection;
+    // If it is non-knockout and a payer, add the value of the default payout.
+    // Section 2.2 of Richard J.Martin, 2019 or Section 9.3.7 O'Kane 2008.
+    if (!arguments_.knocksOut && cds.side() == Protection::Buyer) {
+
+        DiscountFactor disc = discount_->discount(exerciseDate);
+        results_.additionalResults["discountToExercise"] = disc;
+
+        Probability sp = probability_->survivalProbability(exerciseDate);
+        results_.additionalResults["survivalProbabilityToExercise"] = sp;
+
+        Real nonKoPv = disc * sp * (1 - recovery_);
+        results_.additionalResults["nonKnockoutPv"] = nonKoPv;
+
+        results_.value += nonKoPv;
     }
 }
 
-Handle<YieldTermStructure> BlackCdsOptionEngine::termStructure() { return termStructure_; }
-
-Handle<Quote> BlackCdsOptionEngine::volatility() { return volatility_; }
 }

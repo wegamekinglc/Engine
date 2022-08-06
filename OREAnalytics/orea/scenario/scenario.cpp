@@ -16,11 +16,11 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
+#include <boost/algorithm/string/split.hpp>
 #include <orea/scenario/scenario.hpp>
 #include <ored/utilities/parsers.hpp>
 #include <ql/errors.hpp>
 #include <vector>
-#include <boost/algorithm/string/split.hpp>
 
 using namespace ore::data;
 
@@ -37,23 +37,73 @@ std::ostream& operator<<(std::ostream& out, const RiskFactorKey::KeyType& type) 
         return out << "IndexCurve";
     case RiskFactorKey::KeyType::SwaptionVolatility:
         return out << "SwaptionVolatility";
+    case RiskFactorKey::KeyType::YieldVolatility:
+        return out << "YieldVolatility";
     case RiskFactorKey::KeyType::OptionletVolatility:
         return out << "OptionletVolatility";
     case RiskFactorKey::KeyType::FXSpot:
         return out << "FXSpot";
     case RiskFactorKey::KeyType::FXVolatility:
         return out << "FXVolatility";
-    case RiskFactorKey::KeyType::EQSpot:
-        return out << "EQSpot";
-    case RiskFactorKey::KeyType::EQVolatility:
-        return out << "EQVolatility";
+    case RiskFactorKey::KeyType::EquitySpot:
+        return out << "EquitySpot";
+    case RiskFactorKey::KeyType::EquityVolatility:
+        return out << "EquityVolatility";
+    case RiskFactorKey::KeyType::DividendYield:
+        return out << "DividendYield";
+    case RiskFactorKey::KeyType::SurvivalProbability:
+        return out << "SurvivalProbability";
+    case RiskFactorKey::KeyType::RecoveryRate:
+        return out << "RecoveryRate";
+    case RiskFactorKey::KeyType::CDSVolatility:
+        return out << "CDSVolatility";
+    case RiskFactorKey::KeyType::BaseCorrelation:
+        return out << "BaseCorrelation";
+    case RiskFactorKey::KeyType::CPIIndex:
+        return out << "CPIIndex";
+    case RiskFactorKey::KeyType::ZeroInflationCurve:
+        return out << "ZeroInflationCurve";
+    case RiskFactorKey::KeyType::YoYInflationCurve:
+        return out << "YoYInflationCurve";
+    case RiskFactorKey::KeyType::YoYInflationCapFloorVolatility:
+        return out << "YoYInflationCapFloorVolatility";
+    case RiskFactorKey::KeyType::ZeroInflationCapFloorVolatility:
+        return out << "ZeroInflationCapFloorVolatility";
+    case RiskFactorKey::KeyType::CommodityCurve:
+        return out << "CommodityCurve";
+    case RiskFactorKey::KeyType::CommodityVolatility:
+        return out << "CommodityVolatility";
+    case RiskFactorKey::KeyType::SecuritySpread:
+        return out << "SecuritySpread";
+    case RiskFactorKey::KeyType::Correlation:
+        return out << "Correlation";
+    case RiskFactorKey::KeyType::CPR:
+        return out << "CPR";
     default:
         return out << "?";
     }
 }
 
 std::ostream& operator<<(std::ostream& out, const RiskFactorKey& key) {
-    return out << key.keytype << "/" << key.name << "/" << key.index;
+    // If empty key just return empty string (not "?//0")
+    if (key == RiskFactorKey()) {
+        return out << "";
+    }
+
+    string keyStr = key.name;
+    size_t index = 0;
+    while (true) {
+        /* Locate the substring to replace. */
+        index = keyStr.find("/", index);
+        if (index == std::string::npos)
+            break;
+
+        keyStr.replace(index, 1, "\\/");
+        index += 2;
+    }
+
+    // If not empty key
+    return out << key.keytype << "/" << keyStr << "/" << key.index;
 }
 
 RiskFactorKey::KeyType parseRiskFactorKeyType(const string& str) {
@@ -65,23 +115,60 @@ RiskFactorKey::KeyType parseRiskFactorKeyType(const string& str) {
         return RiskFactorKey::KeyType::IndexCurve;
     else if (str == "SwaptionVolatility")
         return RiskFactorKey::KeyType::SwaptionVolatility;
+    else if (str == "YieldVolatility")
+        return RiskFactorKey::KeyType::YieldVolatility;
+    else if (str == "OptionletVolatility")
+        return RiskFactorKey::KeyType::OptionletVolatility;
     else if (str == "FXSpot")
         return RiskFactorKey::KeyType::FXSpot;
     else if (str == "FXVolatility")
         return RiskFactorKey::KeyType::FXVolatility;
-    else if (str == "EQSpot")
-        return RiskFactorKey::KeyType::EQSpot;
-    else if (str == "EQVolatility")
-        return RiskFactorKey::KeyType::EQVolatility;
+    else if (str == "EquitySpot")
+        return RiskFactorKey::KeyType::EquitySpot;
+    else if (str == "EquityVolatility")
+        return RiskFactorKey::KeyType::EquityVolatility;
+    else if (str == "DividendYield")
+        return RiskFactorKey::KeyType::DividendYield;
+    else if (str == "SurvivalProbability")
+        return RiskFactorKey::KeyType::SurvivalProbability;
+    else if (str == "RecoveryRate")
+        return RiskFactorKey::KeyType::RecoveryRate;
+    else if (str == "CDSVolatility")
+        return RiskFactorKey::KeyType::CDSVolatility;
+    else if (str == "BaseCorrelation")
+        return RiskFactorKey::KeyType::BaseCorrelation;
+    else if (str == "CPIIndex")
+        return RiskFactorKey::KeyType::CPIIndex;
+    else if (str == "ZeroInflationCurve")
+        return RiskFactorKey::KeyType::ZeroInflationCurve;
+    else if (str == "YoYInflationCurve")
+        return RiskFactorKey::KeyType::YoYInflationCurve;
+    else if (str == "YoYInflationCapFloorVolatility")
+        return RiskFactorKey::KeyType::YoYInflationCapFloorVolatility;
+    else if (str == "ZeroInflationCapFloorVolatility")
+        return RiskFactorKey::KeyType::ZeroInflationCapFloorVolatility;
+    else if (str == "CommodityCurve")
+        return RiskFactorKey::KeyType::CommodityCurve;
+    else if (str == "CommodityVolatility")
+        return RiskFactorKey::KeyType::CommodityVolatility;
+    else if (str == "SecuritySpread")
+        return RiskFactorKey::KeyType::SecuritySpread;
+    else if (str == "Correlation")
+        return RiskFactorKey::KeyType::Correlation;
+    else if (str == "CPR")
+        return RiskFactorKey::KeyType::CPR;
+
     QL_FAIL("RiskFactorKey " << str << " does not exist.");
 }
 
 RiskFactorKey parseRiskFactorKey(const string& str) {
-    std::vector<string> tokens;
-    boost::split(tokens, str, boost::is_any_of("/"), boost::token_compress_on);
+    boost::escaped_list_separator<char> sep('\\', '/', '\"');
+    boost::tokenizer<boost::escaped_list_separator<char> > tokenSplit(str, sep);
+    vector<string> tokens(tokenSplit.begin(), tokenSplit.end());
+
     QL_REQUIRE(tokens.size() == 3, "Could not parse key " << str);
     RiskFactorKey rfk(parseRiskFactorKeyType(tokens[0]), tokens[1], parseInteger(tokens[2]));
     return rfk;
 }
-}
-}
+} // namespace analytics
+} // namespace ore

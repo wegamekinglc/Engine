@@ -16,20 +16,20 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*! \file portfolio/equityoption.hpp
-\brief Equity Option data model and serialization
-\ingroup openxva::portfolio
+/*! \file portfolio/equityforward.hpp
+\brief Equity Forward data model and serialization
+\ingroup tradedata
 */
 
 #pragma once
 
-#include <ored/portfolio/trade.hpp>
 #include <ored/portfolio/optiondata.hpp>
-
-using std::string;
+#include <ored/portfolio/trade.hpp>
+#include <ored/portfolio/underlying.hpp>
 
 namespace ore {
 namespace data {
+using std::string;
 
 //! Serializable Equity Forward contract
 /*!
@@ -37,31 +37,37 @@ namespace data {
 */
 class EquityForward : public Trade {
 public:
-    EquityForward() : Trade("EquityForward") {}
-    EquityForward(Envelope& env, string longShort, string name, string currency, double quantity, string maturityDate,
-                  double strike)
-        : Trade("EquityForward", env), longShort_(longShort), eqName_(name), currency_(currency), quantity_(quantity),
-          maturityDate_(maturityDate), strike_(strike) {}
+    EquityForward() : Trade("EquityForward"), quantity_(0.0), strike_(0.0) {}
+    EquityForward(Envelope& env, string longShort, EquityUnderlying equityUnderlying, string currency,
+                  QuantLib::Real quantity, string maturityDate, QuantLib::Real strike, string strikeCurrency = "")
+        : Trade("EquityForward", env), longShort_(longShort), equityUnderlying_(equityUnderlying), currency_(currency),
+          quantity_(quantity), maturityDate_(maturityDate), strike_(strike), strikeCurrency_(strikeCurrency) {}
 
-    void build(const boost::shared_ptr<EngineFactory>&);
+    void build(const boost::shared_ptr<EngineFactory>&) override;
+
+    //! Add underlying Equity names
+    std::map<AssetClass, std::set<std::string>>
+    underlyingIndices(const boost::shared_ptr<ReferenceDataManager>& referenceDataManager = nullptr) const override;
 
     string longShort() { return longShort_; }
-    string eqName() { return eqName_; }
+    const string& eqName() const { return equityUnderlying_.name(); }
     string currency() { return currency_; }
     double quantity() { return quantity_; }
     string maturityDate() { return maturityDate_; }
     double strike() { return strike_; }
+    string strikeCurrency() { return strikeCurrency_; }
 
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
 
 private:
     string longShort_;
-    string eqName_;
+    EquityUnderlying equityUnderlying_;
     string currency_;
-    double quantity_;
+    QuantLib::Real quantity_;
     string maturityDate_;
-    double strike_;
+    QuantLib::Real strike_;
+    string strikeCurrency_;
 };
-}
-}
+} // namespace data
+} // namespace ore

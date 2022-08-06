@@ -27,7 +27,7 @@ namespace QuantExt {
 
 namespace {
 void no_deletion(YieldTermStructure*) {}
-}
+} // namespace
 
 BasisTwoSwapHelper::BasisTwoSwapHelper(const Handle<Quote>& spread, const Period& swapTenor, const Calendar& calendar,
                                        // Long tenor swap
@@ -135,8 +135,8 @@ void BasisTwoSwapHelper::setTermStructure(YieldTermStructure* t) {
 
 Real BasisTwoSwapHelper::impliedQuote() const {
     QL_REQUIRE(termStructure_ != 0, "Termstructure not set");
-    longSwap_->recalculate();
-    shortSwap_->recalculate();
+    longSwap_->deepUpdate();
+    shortSwap_->deepUpdate();
     if (longMinusShort_)
         return longSwap_->fairRate() - shortSwap_->fairRate();
     else
@@ -150,4 +150,4 @@ void BasisTwoSwapHelper::accept(AcyclicVisitor& v) {
     else
         RateHelper::accept(v);
 }
-}
+} // namespace QuantExt

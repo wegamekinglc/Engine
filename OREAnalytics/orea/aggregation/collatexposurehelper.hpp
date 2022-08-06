@@ -24,15 +24,14 @@
 #pragma once
 
 #include <orea/aggregation/collateralaccount.hpp>
-#include <ql/time/date.hpp>
 #include <ql/handle.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
-
-using namespace QuantLib;
+#include <ql/time/date.hpp>
 
 namespace ore {
-using namespace data;
 namespace analytics {
+using namespace QuantLib;
+using namespace data;
 
 //! Collateral Exposure Helper
 /*!
@@ -59,8 +58,9 @@ public:
       -- (our margin postings settle instantaneously)
       - 'AsymmetricDVA' => margin postings to ctp only settle after margin period of risk
       -- (margin calls to receive collateral from counterparty settle instantaneously)
+      - 'NoLag' => margin calls/postings settled without margin period of risk delay
     */
-    enum CalculationType { Symmetric, AsymmetricCVA, AsymmetricDVA };
+    enum CalculationType { Symmetric, AsymmetricCVA, AsymmetricDVA, NoLag };
 
     /*!
       Calculates CSA margin requirement, taking the following into account
@@ -92,6 +92,14 @@ public:
                                  const bool& eligMarginReqDateCtp = true);
 
     /*!
+        Computes the Credit Support Amount for the portfolio, given an unsecured exposure as input
+        All calculations done in CSA currency
+    */
+    static Real creditSupportAmount(
+        const boost::shared_ptr<ore::data::NettingSetDefinition>& nettingSet,
+        const Real& uncollatValueCsaCur);
+
+    /*!
       Takes a netting set (and scenario exposures) as input
       and returns collateral balance paths per scenario
     */
@@ -104,5 +112,5 @@ public:
 
 //! Convert text representation to CollateralExposureHelper::CalculationType
 CollateralExposureHelper::CalculationType parseCollateralCalculationType(const string& s);
-}
-}
+} // namespace analytics
+} // namespace ore

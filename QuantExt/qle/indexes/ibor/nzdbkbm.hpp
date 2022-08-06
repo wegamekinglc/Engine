@@ -24,14 +24,13 @@
 #ifndef quantext_nzdbkbm_hpp
 #define quantext_nzdbkbm_hpp
 
-#include <ql/indexes/iborindex.hpp>
 #include <ql/currencies/oceania.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/time/calendars/newzealand.hpp>
 #include <ql/time/daycounters/actualactual.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! NZD-BKBM index
 /*! NZD-BKBM rate published by NZFMA.
@@ -45,8 +44,8 @@ namespace QuantExt {
 class NZDBKBM : public IborIndex {
 public:
     NZDBKBM(const Period& tenor, const Handle<YieldTermStructure>& h = Handle<YieldTermStructure>())
-        : IborIndex("NZD-BKBM", tenor, 2, NZDCurrency(), NewZealand(), ModifiedFollowing, false, ActualActual(), h) {}
+        : IborIndex("NZD-BKBM", tenor, 2, NZDCurrency(), NewZealand(), ModifiedFollowing, false, ActualActual(ActualActual::ISDA), h) {}
 };
-}
+} // namespace QuantExt
 
 #endif

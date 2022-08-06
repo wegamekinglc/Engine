@@ -24,13 +24,12 @@
 #ifndef quantext_fxbs_parametrization_hpp
 #define quantext_fxbs_parametrization_hpp
 
-#include <qle/models/parametrization.hpp>
 #include <ql/handle.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
-
-using namespace QuantLib;
+#include <qle/models/parametrization.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! FX Black Scholes parametrizations
 /*! Base class for FX Black Scholes parametrizations
@@ -47,6 +46,8 @@ public:
     virtual Real sigma(const Time t) const;
     virtual Real stdDeviation(const Time t) const;
     const Handle<Quote> fxSpotToday() const;
+
+    Size numberOfParameters() const override { return 1; }
 
 private:
     const Handle<Quote> fxSpotToday_;

@@ -27,7 +27,7 @@ LgmScenarioGenerator::LgmScenarioGenerator(boost::shared_ptr<QuantExt::LGM> mode
                                            boost::shared_ptr<QuantExt::MultiPathGeneratorBase> pathGenerator,
                                            boost::shared_ptr<ScenarioFactory> scenarioFactory,
                                            boost::shared_ptr<ScenarioSimMarketParameters> simMarketConfig, Date today,
-                                           ore::analytics::DateGrid grid)
+                                           DateGrid grid)
     : ScenarioPathGenerator(today, grid.dates(), grid.timeGrid()), model_(model), pathGenerator_(pathGenerator),
       scenarioFactory_(scenarioFactory), simMarketConfig_(simMarketConfig) {
     QL_REQUIRE(timeGrid_.size() == dates_.size() + 1, "date/time grid size mismatch");
@@ -41,7 +41,7 @@ std::vector<boost::shared_ptr<Scenario>> LgmScenarioGenerator::nextPath() {
 
     std::string ccy = model_->parametrization()->currency().code();
     vector<RiskFactorKey> keys;
-    for (Size k = 0; k < simMarketConfig_->yieldCurveTenors().size(); k++)
+    for (Size k = 0; k < simMarketConfig_->yieldCurveTenors(ccy).size(); k++)
         keys.emplace_back(RiskFactorKey::KeyType::DiscountCurve, ccy, k);
 
     for (Size i = 0; i < dates_.size(); i++) {
@@ -56,8 +56,8 @@ std::vector<boost::shared_ptr<Scenario>> LgmScenarioGenerator::nextPath() {
         scenarios[i]->setNumeraire(model_->numeraire(t, z0));
 
         Real z = sample.value[0][i + 1]; // LGM factor value, second index = 0 holds initial values
-        for (Size k = 0; k < simMarketConfig_->yieldCurveTenors().size(); k++) {
-            Date d = dates_[i] + simMarketConfig_->yieldCurveTenors()[k];
+        for (Size k = 0; k < simMarketConfig_->yieldCurveTenors(ccy).size(); k++) {
+            Date d = dates_[i] + simMarketConfig_->yieldCurveTenors(ccy)[k];
             Real T = dc.yearFraction(dates_[i], d);
             Real discount = model_->discountBond(t, t + T, z);
             scenarios[i]->add(keys[k], discount);
@@ -65,5 +65,5 @@ std::vector<boost::shared_ptr<Scenario>> LgmScenarioGenerator::nextPath() {
     }
     return scenarios;
 }
-}
-}
+} // namespace analytics
+} // namespace ore

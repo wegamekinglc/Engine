@@ -8,6 +8,13 @@
 *.user
 *.opendb
 *.tdo
+*.pyg
+*.synctex
+*.nav
+*.bnm
+*.vrb
+*.snm
+w18-test-*.tex
 
 ##########################
 # Docs
@@ -33,6 +40,28 @@ OREAnalytics/doc/man/
 OREAnalytics/doc/orea.tag
 OREAnalytics/doc/xml/
 
+QuantExtPlus/doc/.time-stamp
+QuantExtPlus/doc/.time-stamp-man
+QuantExtPlus/doc/html
+QuantExtPlus/doc/man
+QuantExtPlus/doc/quantextplus.tag
+QuantExtPlus/doc/xml
+
+OREDataPlus/doc/.time-stamp
+OREDataPlus/doc/.time-stamp-man
+OREDataPlus/doc/html/
+OREDataPlus/doc/man/
+OREDataPlus/doc/oredp.tag
+OREDataPlus/doc/xml/
+
+OREPlus/Analytics/doc/.time-stamp
+OREPlus/Analytics/doc/.time-stamp-man
+OREPlus/Analytics/doc/html/
+OREPlus/Analytics/doc/man/
+OREPlus/Analytics/doc/oreap.tag
+OREPlus/Analytics/doc/xml/
+
+Docs/CodingStandards/ORE CodingStandards.pdf
 Docs/UserGuide/userguide.pdf
 
 ##########################
@@ -40,6 +69,10 @@ Docs/UserGuide/userguide.pdf
 ##########################
 Examples/Example_?/Output/
 Examples/Example_[0-9][0-9]/Output/
+# these are generated
+Examples/Example_26/Input/EUR_xois_portfolio.xml
+Examples/Example_26/Input/USD_xois_portfolio.xml
+Examples/Example_26/Input/ois_portfolio.xml
 
 ##################
 # XCode files
@@ -134,15 +167,20 @@ config.hpp.in
 QuantExt/test/quantext-test-suite
 QuantExt/test/main.cpp
 OREData/test/ored-test-suite
+OREData/test/main.cpp
 OREAnalytics/test/orea-test-suite
+OREAnalytics/test/main.cpp
 App/Release
 App/Debug
 App/lib
 App/ore
+QuantExt/UpgradeLog.XML
+QuantExt/_UpgradeReport_Files
 QuantExt/qle/config.hpp
 OREData/ored/config.hpp
 OREAnalytics/orea/config.hpp
 App/config.hpp
+OREPlus/Base/orepbase/config.hpp
 
 ########################
 # generated Python files
@@ -154,6 +192,7 @@ App/config.hpp
 ########################
 *.idea
 *.ipynb_checkpoints
+*.pytest_cache
 
 ##########################
 # generated QuantLib files
@@ -199,11 +238,16 @@ Doxyfile
 bin/
 lib/
 build/
+build_debug/
 
 # Visual Studio database files
 *.sdf
 *.opensdf
 *.db
+.vs/
+
+# Visual Studio Code files
+.vscode/
 
 # config folders
 config/
@@ -222,13 +266,16 @@ GRTAGS
 # more artefacts / binaries
 ###########################
 
+Docs/UserGuide/userguide.pdf
 Examples/*/Output/*.csv
 Examples/*/Output/log.txt
 Examples/*/Output/*.pdf
+*/*/Output/*
 Test/test
 Test/simulation
 Test/Output/
 */test/*.txt
+!*/test/CMakeLists.txt
 *.dSYM/
 *.dat
 *_region_*
@@ -259,5 +306,18 @@ ipch/
 *.VC.VC.opendb
 
 *log.txt
-*.csv
 *.dat
+
+
+##########################
+# Examples output
+##########################
+Examples/*/Output/
+logs/
+
+Examples/**/pricingstats.csv
+
+# Windows latex build output
+*fdb_latexmk
+*.fls
+

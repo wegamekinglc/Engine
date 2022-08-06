@@ -40,11 +40,13 @@
 #include <boost/config/auto_link.hpp>
 #define BOOST_LIB_NAME boost_date_time
 #include <boost/config/auto_link.hpp>
-#define BOOST_LIB_NAME boost_regex
-#include <boost/config/auto_link.hpp>
 #define BOOST_LIB_NAME boost_filesystem
 #include <boost/config/auto_link.hpp>
 #define BOOST_LIB_NAME boost_system
+#include <boost/config/auto_link.hpp>
+#define BOOST_LIB_NAME boost_timer
+#include <boost/config/auto_link.hpp>
+#define BOOST_LIB_NAME boost_chrono
 #include <boost/config/auto_link.hpp>
 #endif
 
@@ -67,9 +69,12 @@ int main(int argc, char** argv) {
     string inputFile(argv[1]);
 
     boost::shared_ptr<Parameters> params = boost::make_shared<Parameters>();
-    params->fromFile(inputFile);
-    OREApp ore(params);
-    ore.run();
-
-    return 0;
+    try {
+        params->fromFile(inputFile);
+        OREApp ore(params);
+        return ore.run();
+    } catch (const exception& e) {
+        cout << endl << "an error occurred: " << e.what() << endl;
+        return -1;
+    }
 }

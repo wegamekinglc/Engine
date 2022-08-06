@@ -21,10 +21,10 @@
     \ingroup
 */
 
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <iomanip>
 #include <ored/utilities/log.hpp>
 #include <ql/errors.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
 
 using namespace boost::posix_time;
 using namespace std;
@@ -38,7 +38,10 @@ const string FileLogger::name = "FileLogger";
 
 // -- Buffer Logger
 
-void BufferLogger::log(unsigned, const string& s) { buffer_.push(s); }
+void BufferLogger::log(unsigned level, const string& s) {
+    if (level <= minLevel_)
+        buffer_.push(s);
+}
 
 bool BufferLogger::hasNext() { return !buffer_.empty(); }
 
@@ -76,23 +79,29 @@ Log::Log() : loggers_(), enabled_(false), mask_(255), ls_() {
 }
 
 void Log::registerLogger(const boost::shared_ptr<Logger>& logger) {
-    QL_REQUIRE(loggers_.find(logger->name()) == loggers_.end(), "Logger with name " << logger->name()
-                                                                                    << " already registered");
+    boost::unique_lock<boost::shared_mutex> lock(mutex_);
+    QL_REQUIRE(loggers_.find(logger->name()) == loggers_.end(),
+               "Logger with name " << logger->name() << " already registered");
     loggers_[logger->name()] = logger;
 }
 
 boost::shared_ptr<Logger>& Log::logger(const string& name) {
+    boost::shared_lock<boost::shared_mutex> lock(mutex_);
     QL_REQUIRE(loggers_.find(name) != loggers_.end(), "No logger found with name " << name);
     return loggers_[name];
 }
 
 void Log::removeLogger(const string& name) {
+    boost::unique_lock<boost::shared_mutex> lock(mutex_);
     map<string, boost::shared_ptr<Logger>>::iterator it = loggers_.find(name);
     QL_REQUIRE(it != loggers_.end(), "No logger found with name " << name);
     loggers_.erase(it);
 }
 
-void Log::removeAllLoggers() { loggers_.clear(); }
+void Log::removeAllLoggers() {
+    boost::unique_lock<boost::shared_mutex> lock(mutex_);
+    loggers_.clear();
+}
 
 void Log::header(unsigned m, const char* filename, int lineNo) {
     // 1. Reset stringstream
@@ -123,6 +132,9 @@ void Log::header(unsigned m, const char* filename, int lineNo) {
     case ORE_DATA:
         ls_ << "DATA     ";
         break;
+    case ORE_MEMORY:
+        ls_ << "MEMORY   ";
+        break;
     }
 
     // Timestamp
@@ -147,6 +159,10 @@ void Log::header(unsigned m, const char* filename, int lineNo) {
     }
 
     ls_ << " : ";
+
+    // log pid if given
+    if (pid_ > 0)
+        ls_ << " [" << pid_ << "] ";
 }
 
 void Log::log(unsigned m) {
@@ -161,7 +177,7 @@ void Log::log(unsigned m) {
 LoggerStream::LoggerStream(unsigned mask, const char* filename, unsigned lineNo)
     : mask_(mask), filename_(filename), lineNo_(lineNo), ss_() {
     QL_REQUIRE(mask == ORE_ALERT || mask == ORE_CRITICAL || mask == ORE_ERROR || mask == ORE_WARNING ||
-                   mask == ORE_NOTICE || mask == ORE_DEBUG,
+                   mask == ORE_NOTICE || mask == ORE_DEBUG || mask == ORE_DATA,
                "Invalid log mask " << mask);
 }
 
@@ -170,11 +186,21 @@ LoggerStream::~LoggerStream() {
     while (getline(ss_, text)) {
         // we expand the MLOG macro here so we can overwrite __FILE__ and __LINE__
         if (ore::data::Log::instance().enabled() && ore::data::Log::instance().filter(mask_)) {
+            boost::unique_lock<boost::shared_mutex> lock(ore::data::Log::instance().mutex());
             ore::data::Log::instance().header(mask_, filename_, lineNo_);
             ore::data::Log::instance().logStream() << text;
             ore::data::Log::instance().log(mask_);
         }
     }
 }
+
+string StructuredErrorMessage::jsonify(const string& s) const {
+    string str = s;
+    boost::replace_all(str, "\\", "\\\\"); // do this before the below otherwise we get \\"
+    boost::replace_all(str, "\"", "\\\"");
+    boost::replace_all(str, "\r", "\\r");
+    boost::replace_all(str, "\n", "\\n");
+    return str;
 }
-}
+} // namespace data
+} // namespace ore

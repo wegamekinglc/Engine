@@ -25,33 +25,35 @@
 #define quantext_flat_extrapolation_hpp
 
 #include <ql/math/interpolation.hpp>
+#include <ql/math/interpolations/cubicinterpolation.hpp>
 #include <ql/math/interpolations/linearinterpolation.hpp>
+#include <ql/math/interpolations/loginterpolation.hpp>
 
 #include <boost/make_shared.hpp>
 
+namespace QuantExt {
 using namespace QuantLib;
 
-namespace QuantExt {
-
 //! Flat extrapolation given a base interpolation
-/*! \ingroup interpolations */
+/*! \ingroup math
+ */
 class FlatExtrapolation : public Interpolation {
 private:
     class FlatExtrapolationImpl : public Interpolation::Impl {
 
     public:
         FlatExtrapolationImpl(const boost::shared_ptr<Interpolation>& i) : i_(i) {}
-        void update() { i_->update(); }
-        Real xMin() const { return i_->xMin(); }
-        Real xMax() const { return i_->xMax(); }
-        std::vector<Real> xValues() const { QL_FAIL("not implemented"); }
-        std::vector<Real> yValues() const { QL_FAIL("not implemented"); }
-        bool isInRange(Real x) const { return i_->isInRange(x); }
-        Real value(Real x) const {
+        void update() override { i_->update(); }
+        Real xMin() const override { return i_->xMin(); }
+        Real xMax() const override { return i_->xMax(); }
+        std::vector<Real> xValues() const override { QL_FAIL("not implemented"); }
+        std::vector<Real> yValues() const override { QL_FAIL("not implemented"); }
+        bool isInRange(Real x) const override { return i_->isInRange(x); }
+        Real value(Real x) const override {
             Real tmp = std::max(std::min(x, i_->xMax()), i_->xMin());
             return i_->operator()(tmp);
         }
-        Real primitive(Real x) const {
+        Real primitive(Real x) const override {
             if (x >= i_->xMin() && x <= i_->xMax()) {
                 return i_->primitive(x);
             }
@@ -61,7 +63,7 @@ private:
                 return i_->primitive(i_->xMax()) + (x - i_->xMax());
             }
         }
-        Real derivative(Real x) const {
+        Real derivative(Real x) const override {
             if (x > i_->xMin() && x < i_->xMax()) {
                 return i_->derivative(x);
             } else {
@@ -70,7 +72,7 @@ private:
                 return 0.0;
             }
         }
-        Real secondDerivative(Real x) const {
+        Real secondDerivative(Real x) const override {
             if (x > i_->xMin() && x < i_->xMax()) {
                 return i_->secondDerivative(x);
             } else {
@@ -99,6 +101,56 @@ public:
     }
     static const bool global = false;
     static const Size requiredPoints = 2;
+};
+
+//! %Linear-interpolation and flat extrapolation factory and traits
+class LogLinearFlat {
+public:
+    template <class I1, class I2> Interpolation interpolate(const I1& xBegin, const I1& xEnd, const I2& yBegin) const {
+        return FlatExtrapolation(boost::make_shared<LogLinearInterpolation>(xBegin, xEnd, yBegin));
+    }
+    static const bool global = false;
+    static const Size requiredPoints = 2;
+};
+
+//! Hermite interpolation and flat extrapolation factory and traits
+class HermiteFlat {
+public:
+     template <class I1, class I2> Interpolation interpolate(const I1& xBegin, const I1& xEnd, const I2& yBegin) const {
+         return FlatExtrapolation(boost::make_shared<Parabolic>(xBegin, xEnd, yBegin));
+     }
+     static const bool global = false;
+     static const Size requiredPoints = 2;
+};
+
+//! Cubic interpolation and flat extrapolation factory and traits
+class CubicFlat {
+public:
+    CubicFlat(
+        QuantLib::CubicInterpolation::DerivativeApprox da = QuantLib::CubicInterpolation::Kruger,
+        bool monotonic = false,
+        QuantLib::CubicInterpolation::BoundaryCondition leftCondition = QuantLib::CubicInterpolation::SecondDerivative,
+        QuantLib::Real leftConditionValue = 0.0,
+        QuantLib::CubicInterpolation::BoundaryCondition rightCondition = QuantLib::CubicInterpolation::SecondDerivative,
+        QuantLib::Real rightConditionValue = 0.0)
+        : da_(da), monotonic_(monotonic), leftType_(leftCondition), rightType_(rightCondition),
+          leftValue_(leftConditionValue), rightValue_(rightConditionValue) {}
+
+    template <class I1, class I2> Interpolation interpolate(const I1& xBegin, const I1& xEnd, const I2& yBegin) const {
+        return FlatExtrapolation(boost::make_shared<CubicInterpolation>(
+            xBegin, xEnd, yBegin, da_, monotonic_, leftType_, leftValue_, rightType_, rightValue_));
+    }
+
+    static const bool global = true;
+    static const Size requiredPoints = 2;
+
+private:
+    QuantLib::CubicInterpolation::DerivativeApprox da_;
+    bool monotonic_;
+    QuantLib::CubicInterpolation::BoundaryCondition leftType_;
+    QuantLib::CubicInterpolation::BoundaryCondition rightType_;
+    QuantLib::Real leftValue_;
+    QuantLib::Real rightValue_;
 };
 
 } // namespace QuantExt

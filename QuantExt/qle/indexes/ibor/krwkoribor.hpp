@@ -24,14 +24,13 @@
 #ifndef quantext_krwkoribor_hpp
 #define quantext_krwkoribor_hpp
 
-#include <ql/indexes/iborindex.hpp>
 #include <ql/currencies/asia.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/time/calendars/southkorea.hpp>
 #include <ql/time/daycounters/actual365fixed.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! KRW-KORIBOR index
 /*! KRW-KORIIBOR rate.
@@ -43,9 +42,9 @@ namespace QuantExt {
 class KRWKoribor : public IborIndex {
 public:
     KRWKoribor(const Period& tenor, const Handle<YieldTermStructure>& h = Handle<YieldTermStructure>())
-        : IborIndex("KRW-KORIBOR", tenor, 2, KRWCurrency(), SouthKorea(), ModifiedFollowing, false, Actual365Fixed(),
-                    h) {}
+        : IborIndex("KRW-KORIBOR", tenor, 2, KRWCurrency(), SouthKorea(SouthKorea::Settlement), ModifiedFollowing,
+                    false, Actual365Fixed(), h) {}
 };
-}
+} // namespace QuantExt
 
 #endif

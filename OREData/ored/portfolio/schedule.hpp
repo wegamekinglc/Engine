@@ -18,13 +18,14 @@
 
 /*! \file portfolio/schedule.hpp
     \brief trade schedule data model and serialization
-    \ingroup portfolio
+    \ingroup tradedata
 */
 
 #pragma once
 
 #include <ored/utilities/xmlutils.hpp>
 #include <ql/time/schedule.hpp>
+// #include <ored/utilities/parsers.hpp>
 
 namespace ore {
 namespace data {
@@ -37,17 +38,21 @@ class ScheduleRules : public XMLSerializable {
 public:
     //! Default constructor
     ScheduleRules() {}
-    //! Constructor
-    ScheduleRules(const string& startDate, const string& endDate, const string& tenor, const string& calendar,
-                  const string& convention, const string& termConvention, const string& rule,
+
+    ScheduleRules(const string& startDate, const string& endDate, const string& tenor,
+                                 const string& calendar, const string& convention, const string& termConvention, const string& rule,
                   const string& endOfMonth = "N", const string& firstDate = "", const string& lastDate = "")
         : startDate_(startDate), endDate_(endDate), tenor_(tenor), calendar_(calendar), convention_(convention),
           termConvention_(termConvention), rule_(rule), endOfMonth_(endOfMonth), firstDate_(firstDate),
           lastDate_(lastDate) {}
+    
+    //! Check if key attributes are empty
+    const bool hasData() const { return !startDate_.empty() && !tenor_.empty(); }
 
     //! \name Inspectors
     //@{
     const string& startDate() const { return startDate_; }
+    // might be empty, indicating a perpetual schedule
     const string& endDate() const { return endDate_; }
     const string& tenor() const { return tenor_; }
     const string& calendar() const { return calendar_; }
@@ -59,10 +64,18 @@ public:
     const string& lastDate() const { return lastDate_; }
     //@}
 
+    //! \name Modifiers
+    //@{
+    string& modifyStartDate() { return startDate_; }
+    string& modifyEndDate() { return endDate_; }
+
+    string& modifyCalendar() { return calendar_; }
+    //@}
+
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 private:
     string startDate_;
@@ -75,9 +88,10 @@ private:
     string endOfMonth_;
     string firstDate_;
     string lastDate_;
+    bool adjustEndDateToPreviousMonthEnd_{false};
 };
 
-//! Serializable object holding schedule dates data
+//! Serializable object holding schedule Dates data
 /*!
   \ingroup tradedata
 */
@@ -86,22 +100,77 @@ public:
     //! Default constructor
     ScheduleDates() {}
     //! Constructor
-    ScheduleDates(const string& calendar, const vector<string>& dates) : calendar_(calendar), dates_(dates) {}
+    ScheduleDates(const string& calendar, const string& convention, const string& tenor, const vector<string>& dates,
+                  const string& endOfMonth = "")
+        : calendar_(calendar), convention_(convention), tenor_(tenor), endOfMonth_(endOfMonth), dates_(dates) {}
+
+    //! Check if key attributes are empty
+    bool hasData() const { return dates_.size() > 0 && !tenor_.empty(); }
 
     //! \name Inspectors
     //@{
     const string& calendar() const { return calendar_; }
+    const string& convention() const { return convention_; }
+    const string& tenor() const { return tenor_; }
+    const string& endOfMonth() const { return endOfMonth_; }
     const vector<string>& dates() const { return dates_; }
+    //@}
+
+    //! \name Modifiers
+    //@{
+    vector<string>& modifyDates() { return dates_; }
     //@}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 private:
     string calendar_;
+    string convention_;
+    string tenor_;
+    string endOfMonth_;
     vector<string> dates_;
+};
+
+//! Serializable object holding Derived schedule data
+/*!
+  \ingroup tradedata
+*/
+class ScheduleDerived : public XMLSerializable {
+public:
+    //! Default constructor
+    ScheduleDerived() {}
+    //! Constructor
+    ScheduleDerived(const string& baseSchedule, const string& calendar, const string& convention, const string& shift)
+        : baseSchedule_(baseSchedule), calendar_(calendar), convention_(convention), shift_(shift) {}
+
+    //! \name Inspectors
+    //@{
+    const string& baseSchedule() const { return baseSchedule_; }
+    const string& calendar() const { return calendar_; }
+    const string& convention() const { return convention_; }
+    const string& shift() const { return shift_; }
+    //@}
+
+    //! \name Modifiers
+    //@{
+    string& modifyCalendar() { return calendar_; }
+    string& modifyConvention() { return convention_; }
+    string& modifyShift() { return shift_; }
+    //@}
+
+    //! \name Serialisation
+    //@{
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
+    //@}
+private:
+    string baseSchedule_;
+    string calendar_;
+    string convention_;
+    string shift_;
 };
 
 //! Serializable schedule data
@@ -113,34 +182,84 @@ public:
     //! Default constructor
     ScheduleData() {}
     //! Constructor with ScheduleDates
-    ScheduleData(const ScheduleDates& dates) { addDates(dates); }
+    ScheduleData(const ScheduleDates& dates, const string& name = "") : name_(name) { addDates(dates); }
     //! Constructor with ScheduleRules
-    ScheduleData(const ScheduleRules& rules) { addRules(rules); }
+    ScheduleData(const ScheduleRules& rules, const string& name = "") : name_(name) { addRules(rules); }
+    //! Constructor with ScheduleDerived
+    ScheduleData(const ScheduleDerived& derived, const string& name = "") : name_(name) { addDerived(derived); }
 
     //! Add dates
     void addDates(const ScheduleDates& dates) { dates_.emplace_back(dates); }
     //! Add rules
     void addRules(const ScheduleRules& rules) { rules_.emplace_back(rules); }
+    //! Add derived schedules
+    void addDerived(const ScheduleDerived& derived) {
+        derived_.emplace_back(derived);
+        hasDerived_ = true;
+    }
+    //! Check if has any dates/rules/derived schedules
+    bool hasData() const { return dates_.size() > 0 || rules_.size() > 0 || derived_.size() > 0; }
+    vector<string> baseScheduleNames();
 
     //! \name Inspectors
     //@{
     const vector<ScheduleDates>& dates() const { return dates_; }
     const vector<ScheduleRules>& rules() const { return rules_; }
+    const vector<ScheduleDerived>& derived() const { return derived_; }
+    const string& name() const { return name_; }
+    const bool& hasDerived() const { return hasDerived_; }
+    //@}
+
+    //! \name Modifiers
+    //@{
+    vector<ScheduleDates>& modifyDates() { return dates_; }
+    vector<ScheduleRules>& modifyRules() { return rules_; }
+    vector<ScheduleDerived>& modifyDerived() { return derived_; }
     //@}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 private:
     vector<ScheduleDates> dates_;
     vector<ScheduleRules> rules_;
+    vector<ScheduleDerived> derived_;
+    string name_ = "";
+    bool hasDerived_ = false;
+};
+
+// Container class to support building of derived schedules
+class ScheduleBuilder {
+// USAGE:
+//  1. Initialise a ScheduleBuilder obj
+//  2. For each Schedule obj that will be built from a given ScheduleData obj:
+//      i. Initialise an empty Schedule obj
+//     ii. Add the Schedule obj in i. and the corresponding ScheduleData obj into the ScheduleBuilder obj in 1.
+//         using the ScheduleBuilder::add() method.
+//  3. Once all required schedules are added for the instrument/leg, call ScheduleBuilder::makeSchedules()
+//     with the appropriate openEndDateReplacement, if relevant.
+//     If successful, each Schedule obj, derived or otherwise, should have been assigned the correct schedule.
+// NOTE / WARNING:
+//  * The schedules should be initialised at the same, or higher, scope as the call to makeSchedules() (and to add())
+      
+public:
+    void add(QuantLib::Schedule& schedule, const ScheduleData& scheduleData);
+    void makeSchedules(const QuantLib::Date& openEndDateReplacement = QuantLib::Null<QuantLib::Date>());
+
+private:
+    map<string, pair<ScheduleData, QuantLib::Schedule&>> schedules_;
 };
 
 //! Functions
-QuantLib::Schedule makeSchedule(const ScheduleData& data);
+QuantLib::Schedule makeSchedule(const ScheduleData& data,
+                                const QuantLib::Date& openEndDateReplacement = QuantLib::Null<QuantLib::Date>(),
+                                const map<string, QuantLib::Schedule>& baseSchedules = map<string, QuantLib::Schedule>());
 QuantLib::Schedule makeSchedule(const ScheduleDates& dates);
-QuantLib::Schedule makeSchedule(const ScheduleRules& rules);
-}
-}
+QuantLib::Schedule makeSchedule(const ScheduleRules& rules,
+                                const QuantLib::Date& openEndDateReplacement = QuantLib::Null<QuantLib::Date>());
+QuantLib::Schedule makeSchedule(const ScheduleDerived& derived, const QuantLib::Schedule& baseSchedule);
+
+} // namespace data
+} // namespace ore

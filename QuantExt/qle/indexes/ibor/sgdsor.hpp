@@ -24,14 +24,13 @@
 #ifndef quantext_sgdsor_hpp
 #define quantext_sgdsor_hpp
 
-#include <ql/indexes/iborindex.hpp>
 #include <ql/currencies/asia.hpp>
+#include <ql/indexes/iborindex.hpp>
 #include <ql/time/calendars/singapore.hpp>
 #include <ql/time/daycounters/actual365fixed.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! SGD-SOR index
 /*! SGD-SOR rate published by ABS.
@@ -47,6 +46,6 @@ public:
     SGDSor(const Period& tenor, const Handle<YieldTermStructure>& h = Handle<YieldTermStructure>())
         : IborIndex("SGD-SOR", tenor, 2, SGDCurrency(), Singapore(), ModifiedFollowing, false, Actual365Fixed(), h) {}
 };
-}
+} // namespace QuantExt
 
 #endif

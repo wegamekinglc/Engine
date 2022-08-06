@@ -17,11 +17,11 @@
 */
 
 #include <ql/cashflows/cashflows.hpp>
-#include <ql/cashflows/simplecashflow.hpp>
 #include <ql/cashflows/fixedratecoupon.hpp>
 #include <ql/cashflows/floatingratecoupon.hpp>
 #include <ql/cashflows/iborcoupon.hpp>
 #include <ql/cashflows/inflationcoupon.hpp>
+#include <ql/cashflows/simplecashflow.hpp>
 #include <ql/utilities/dataformatters.hpp>
 
 #include <qle/pricingengines/discountingswapenginemulticurve.hpp>
@@ -43,9 +43,9 @@ public:
     virtual Real bpsFactor() const { return 0.0; }
     void setCallAmount(bool flag) { callAmount_ = flag; }
 
-    void visit(CashFlow& c);
-    void visit(Coupon& c);
-    void visit(IborCoupon& c);
+    void visit(CashFlow& c) override;
+    void visit(Coupon& c) override;
+    void visit(IborCoupon& c) override;
 
 private:
     Real amount_;
@@ -84,11 +84,11 @@ class AdditionalAmountGetter : public AmountGetter {
 
 public:
     AdditionalAmountGetter() {}
-    Real bpsFactor() const { return bpsFactor_; }
+    Real bpsFactor() const override { return bpsFactor_; }
 
-    void visit(CashFlow& c);
-    void visit(Coupon& c);
-    void visit(IborCoupon& c);
+    void visit(CashFlow& c) override;
+    void visit(Coupon& c) override;
+    void visit(IborCoupon& c) override;
 
 private:
     Real bpsFactor_;
@@ -108,7 +108,7 @@ void AdditionalAmountGetter::visit(IborCoupon& c) {
     AmountGetter::visit(c);
     bpsFactor_ = c.accrualPeriod() * c.nominal();
 }
-}
+} // namespace
 
 class DiscountingSwapEngineMultiCurve::AmountImpl {
 public:
@@ -142,9 +142,10 @@ void DiscountingSwapEngineMultiCurve::calculate() const {
     if (settlementDate_ == Date()) {
         settlementDate = referenceDate;
     } else {
-        QL_REQUIRE(settlementDate >= referenceDate,
-                   "settlement date (" << settlementDate << ") before "
-                                                            "discount curve reference date (" << referenceDate << ")");
+        QL_REQUIRE(settlementDate >= referenceDate, "settlement date (" << settlementDate
+                                                                        << ") before "
+                                                                           "discount curve reference date ("
+                                                                        << referenceDate << ")");
     }
 
     // - Instrument::results
@@ -154,8 +155,9 @@ void DiscountingSwapEngineMultiCurve::calculate() const {
     if (npvDate_ == Date()) {
         results_.valuationDate = referenceDate;
     } else {
-        QL_REQUIRE(npvDate_ >= referenceDate, "npv date (" << npvDate_ << ") before "
-                                                                          "discount curve reference date ("
+        QL_REQUIRE(npvDate_ >= referenceDate, "npv date (" << npvDate_
+                                                           << ") before "
+                                                              "discount curve reference date ("
                                                            << referenceDate << ")");
     }
 
@@ -183,7 +185,7 @@ void DiscountingSwapEngineMultiCurve::calculate() const {
 
         for (Size j = 0; j < leg.size(); j++) {
 
-            /* Exclude cashflows that have occured taking into account the
+            /* Exclude cashflows that have occurred taking into account the
             settlement date and includeSettlementDateFlows flag */
             if (leg[j]->hasOccurred(settlementDate, includeRefDateFlows)) {
                 continue;
@@ -207,4 +209,4 @@ void DiscountingSwapEngineMultiCurve::calculate() const {
         results_.value += results_.legNPV[i];
     }
 }
-}
+} // namespace QuantExt

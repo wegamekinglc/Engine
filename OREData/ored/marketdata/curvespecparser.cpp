@@ -22,6 +22,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/make_shared.hpp>
+#include <boost/tokenizer.hpp>
 
 #include <map>
 #include <vector>
@@ -36,29 +37,37 @@ static CurveSpec::CurveType parseCurveSpecType(const string& s) {
         {"Yield", CurveSpec::CurveType::Yield},
         {"CapFloorVolatility", CurveSpec::CurveType::CapFloorVolatility},
         {"SwaptionVolatility", CurveSpec::CurveType::SwaptionVolatility},
+        {"YieldVolatility", CurveSpec::CurveType::YieldVolatility},
         {"FX", CurveSpec::CurveType::FX},
         {"FXVolatility", CurveSpec::CurveType::FXVolatility},
         {"Default", CurveSpec::CurveType::Default},
+        {"CDSVolatility", CurveSpec::CurveType::CDSVolatility},
+        {"BaseCorrelation", CurveSpec::CurveType::BaseCorrelation},
         {"Inflation", CurveSpec::CurveType::Inflation},
-        {"InflationCapFloorPrice", CurveSpec::CurveType::InflationCapFloorPrice},
+        {"InflationCapFloorVolatility", CurveSpec::CurveType::InflationCapFloorVolatility},
         {"Equity", CurveSpec::CurveType::Equity},
         {"EquityVolatility", CurveSpec::CurveType::EquityVolatility},
-        {"SecuritySpread", CurveSpec::CurveType::SecuritySpread},
-        {"SecurityRecoveryRate", CurveSpec::CurveType::SecurityRecoveryRate}};
+        {"Security", CurveSpec::CurveType::Security},
+        {"Commodity", CurveSpec::CurveType::Commodity},
+        {"Correlation", CurveSpec::CurveType::Correlation},
+        {"CommodityVolatility", CurveSpec::CurveType::CommodityVolatility}};
 
     auto it = b.find(s);
     if (it != b.end()) {
         return it->second;
     } else {
-        QL_FAIL("Cannot convert " << s << " to CurveSpecType");
+        QL_FAIL("Cannot convert \"" << s << "\" to CurveSpecType");
     }
 }
 
 //! function to convert a string into a curve spec
 boost::shared_ptr<CurveSpec> parseCurveSpec(const string& s) {
 
-    vector<string> tokens;
-    boost::split(tokens, s, boost::is_any_of("/"));
+
+    boost::escaped_list_separator<char> sep('\\', '/', '\"');
+    boost::tokenizer<boost::escaped_list_separator<char> > tokenSplit(s, sep);
+
+    vector<string> tokens(tokenSplit.begin(), tokenSplit.end());
 
     QL_REQUIRE(tokens.size() > 1, "number of tokens too small in curve spec " << s);
 
@@ -87,6 +96,24 @@ boost::shared_ptr<CurveSpec> parseCurveSpec(const string& s) {
         return boost::make_shared<DefaultCurveSpec>(ccy, curveConfigID);
     }
 
+    case CurveSpec::CurveType::CDSVolatility: {
+        // CDSVolatility/CurveConfigID
+        QL_REQUIRE(tokens.size() == 2, "Unexpected number"
+                                       " of tokens in cds vol spec "
+                                           << s);
+        const string& curveConfigID = tokens[1];
+        return boost::make_shared<CDSVolatilityCurveSpec>(curveConfigID);
+    }
+
+    case CurveSpec::CurveType::BaseCorrelation: {
+        // BaseCorrelation/CurveConfigID
+        QL_REQUIRE(tokens.size() == 2, "Unexpected number"
+                                       " of tokens in cds vol spec "
+                                           << s);
+        const string& curveConfigID = tokens[1];
+        return boost::make_shared<BaseCorrelationCurveSpec>(curveConfigID);
+    }
+
     case CurveSpec::CurveType::FX: {
         // FX/USD/CHF
         QL_REQUIRE(tokens.size() == 3, "Unexpected number"
@@ -113,19 +140,30 @@ boost::shared_ptr<CurveSpec> parseCurveSpec(const string& s) {
         QL_REQUIRE(tokens.size() == 3, "Unexpected number"
                                        " of tokens in swaption vol curve spec "
                                            << s);
-        const string& ccy = tokens[1];
+        const string& key = tokens[1];
         const string& curveConfigID = tokens[2];
-        return boost::make_shared<SwaptionVolatilityCurveSpec>(ccy, curveConfigID);
+        return boost::make_shared<SwaptionVolatilityCurveSpec>(key, curveConfigID);
+    }
+
+    case CurveSpec::CurveType::YieldVolatility: {
+        // YieldVolatility/CurveConfigID
+        QL_REQUIRE(tokens.size() == 2, "Unexpected number"
+                                       " of tokens in yield vol curve spec "
+                                           << s);
+        const string& curveConfigID = tokens[1];
+        return boost::make_shared<YieldVolatilityCurveSpec>(curveConfigID);
     }
 
     case CurveSpec::CurveType::CapFloorVolatility: {
-        // e.g. CapFloorVolatility/EUR/CurveConfigID
+        // e.g. CapFloorVolatility/EUR-EURIBOR-3M/CurveConfigID
+        //      CapFloorVolatility/EUR-ESTER/CurveConfigID
+        //      CapFloorVolatility/EUR/CurveConfigID
         QL_REQUIRE(tokens.size() == 3, "Unexpected number"
                                        " of tokens in CapFloor volatility curve spec "
                                            << s);
-        const string& ccy = tokens[1];
+        const string& key = tokens[1];
         const string& curveConfigID = tokens[2];
-        return boost::make_shared<CapFloorVolatilityCurveSpec>(ccy, curveConfigID);
+        return boost::make_shared<CapFloorVolatilityCurveSpec>(key, curveConfigID);
     }
 
     case CurveSpec::CurveType::Inflation: {
@@ -138,14 +176,14 @@ boost::shared_ptr<CurveSpec> parseCurveSpec(const string& s) {
         return boost::make_shared<InflationCurveSpec>(index, curveConfigID);
     }
 
-    case CurveSpec::CurveType::InflationCapFloorPrice: {
-        // InflationCapFloorPrice/EUHICPXT/CurveConfigID
+    case CurveSpec::CurveType::InflationCapFloorVolatility: {
+        // e.g. InflationCapFloorVolatility/EUHICPXT/CurveConfigID
         QL_REQUIRE(tokens.size() == 3, "Unexpected number"
-                                       " of tokens in inflation cap floor price surface spec "
+                                       " of tokens in InflationCapFloor volatility curve spec "
                                            << s);
         const string& index = tokens[1];
         const string& curveConfigID = tokens[2];
-        return boost::make_shared<InflationCapFloorPriceSurfaceSpec>(index, curveConfigID);
+        return boost::make_shared<InflationCapFloorVolatilityCurveSpec>(index, curveConfigID);
     }
 
     case CurveSpec::CurveType::Equity: {
@@ -168,22 +206,32 @@ boost::shared_ptr<CurveSpec> parseCurveSpec(const string& s) {
         return boost::make_shared<EquityVolatilityCurveSpec>(ccy, curveConfigID);
     }
 
-    case CurveSpec::CurveType::SecuritySpread: {
-        // SecuritySpread/ISIN
+    case CurveSpec::CurveType::Security: {
+        // Security/ISIN
         QL_REQUIRE(tokens.size() == 2, "Unexpected number"
                                        " of tokens in Security Spread spec "
                                            << s);
         const string& securityID = tokens[1];
-        return boost::make_shared<SecuritySpreadSpec>(securityID);
+        return boost::make_shared<SecuritySpec>(securityID);
     }
 
-    case CurveSpec::CurveType::SecurityRecoveryRate: {
-        // SecurityRecoveryRate/ISIN
-        QL_REQUIRE(tokens.size() == 2, "Unexpected number"
-                                       " of tokens in Security Recovery Rate spec "
-                                           << s);
-        const string& securityID = tokens[1];
-        return boost::make_shared<SecurityRecoveryRateSpec>(securityID);
+    case CurveSpec::CurveType::Commodity: {
+        // Commodity/CCY/CommodityCurveConfigId
+        QL_REQUIRE(tokens.size() == 3, "Unexpected number of tokens in commodity curve spec " << s);
+        return boost::make_shared<CommodityCurveSpec>(tokens[1], tokens[2]);
+    }
+
+    case CurveSpec::CurveType::CommodityVolatility: {
+        // CommodityVolatility/CCY/CommodityVolatilityConfigId
+        QL_REQUIRE(tokens.size() == 3, "Unexpected number of tokens in commodity volatility spec " << s);
+        return boost::make_shared<CommodityVolatilityCurveSpec>(tokens[1], tokens[2]);
+    }
+
+    case CurveSpec::CurveType::Correlation: {
+        // Correlation/CorrelationCurveConfigId
+        QL_REQUIRE(tokens.size() == 2, "Unexpected number of tokens in correlation spec " << s);
+        string id = tokens[1];
+        return boost::make_shared<CorrelationCurveSpec>(id);
     }
 
         // TODO: the rest...
@@ -191,5 +239,5 @@ boost::shared_ptr<CurveSpec> parseCurveSpec(const string& s) {
 
     QL_FAIL("Unable to convert \"" << s << "\" into CurveSpec");
 }
-}
-}
+} // namespace data
+} // namespace ore

@@ -33,18 +33,21 @@ MultiPathGeneratorMersenneTwister::MultiPathGeneratorMersenneTwister(
 void MultiPathGeneratorMersenneTwister::reset() {
     PseudoRandom::rsg_type rsg = PseudoRandom::make_sequence_generator(process_->size() * (grid_.size() - 1), seed_);
     pg_ = boost::make_shared<MultiPathGenerator<PseudoRandom::rsg_type> >(process_, grid_, rsg, false);
+    antitheticVariate_ = true;
 }
 
 MultiPathGeneratorSobol::MultiPathGeneratorSobol(const boost::shared_ptr<StochasticProcess>& process,
-                                                 const TimeGrid& grid, BigNatural seed)
-    : process_(process), grid_(grid), seed_(seed) {
+                                                 const TimeGrid& grid, BigNatural seed,
+                                                 SobolRsg::DirectionIntegers directionIntegers)
+    : process_(process), grid_(grid), seed_(seed), directionIntegers_(directionIntegers) {
     reset();
 }
 
 void MultiPathGeneratorSobol::reset() {
-    LowDiscrepancy::rsg_type rsg =
-        LowDiscrepancy::make_sequence_generator(process_->size() * (grid_.size() - 1), seed_);
-    pg_ = boost::make_shared<MultiPathGenerator<LowDiscrepancy::rsg_type> >(process_, grid_, rsg);
+    pg_ = boost::make_shared<MultiPathGenerator<InverseCumulativeRsg<SobolRsg, InverseCumulativeNormal> > >(
+        process_, grid_,
+        InverseCumulativeRsg<SobolRsg, InverseCumulativeNormal>(
+            SobolRsg(process_->size() * (grid_.size() - 1), seed_, directionIntegers_)));
 }
 
 MultiPathGeneratorSobolBrownianBridge::MultiPathGeneratorSobolBrownianBridge(
@@ -81,4 +84,39 @@ const Sample<MultiPath>& MultiPathGeneratorSobolBrownianBridge::next() const {
     return next_;
 }
 
-} // namesapce QuantExt
+boost::shared_ptr<MultiPathGeneratorBase> makeMultiPathGenerator(const SequenceType s,
+                                                                 const boost::shared_ptr<StochasticProcess>& process,
+                                                                 const TimeGrid& timeGrid, const BigNatural seed,
+                                                                 const SobolBrownianGenerator::Ordering ordering,
+                                                                 const SobolRsg::DirectionIntegers directionIntegers) {
+    switch (s) {
+    case MersenneTwister:
+        return boost::make_shared<QuantExt::MultiPathGeneratorMersenneTwister>(process, timeGrid, seed, false);
+    case MersenneTwisterAntithetic:
+        return boost::make_shared<QuantExt::MultiPathGeneratorMersenneTwister>(process, timeGrid, seed, true);
+    case Sobol:
+        return boost::make_shared<QuantExt::MultiPathGeneratorSobol>(process, timeGrid, seed, directionIntegers);
+    case SobolBrownianBridge:
+        return boost::make_shared<QuantExt::MultiPathGeneratorSobolBrownianBridge>(process, timeGrid, ordering, seed,
+                                                                                   directionIntegers);
+    default:
+        QL_FAIL("Unknown sequence type");
+    }
+}
+
+std::ostream& operator<<(std::ostream& out, const SequenceType s) {
+    switch (s) {
+    case MersenneTwister:
+        return out << "MersenneTwister";
+    case MersenneTwisterAntithetic:
+        return out << "MersenneTwisterAntithetic";
+    case Sobol:
+        return out << "Sobol";
+    case SobolBrownianBridge:
+        return out << "SobolBrownianBridge";
+    default:
+        return out << "Unknown sequence type";
+    }
+}
+
+} // namespace QuantExt

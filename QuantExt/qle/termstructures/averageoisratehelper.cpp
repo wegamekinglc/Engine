@@ -16,14 +16,14 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <qle/termstructures/averageoisratehelper.hpp>
 #include <qle/instruments/makeaverageois.hpp>
+#include <qle/termstructures/averageoisratehelper.hpp>
 
 namespace QuantExt {
 
 namespace {
 void no_deletion(YieldTermStructure*) {}
-}
+} // namespace
 
 AverageOISRateHelper::AverageOISRateHelper(const Handle<Quote>& fixedRate, const Period& spotLagTenor,
                                            const Period& swapTenor,
@@ -35,11 +35,13 @@ AverageOISRateHelper::AverageOISRateHelper(const Handle<Quote>& fixedRate, const
                                            const boost::shared_ptr<OvernightIndex>& overnightIndex,
                                            const Period& onTenor, const Handle<Quote>& onSpread, Natural rateCutoff,
                                            // Exogenous discount curve
-                                           const Handle<YieldTermStructure>& discountCurve)
+                                           const Handle<YieldTermStructure>& discountCurve,
+                                           const bool telescopicValueDates)
     : RelativeDateRateHelper(fixedRate), spotLagTenor_(spotLagTenor), swapTenor_(swapTenor), fixedTenor_(fixedTenor),
       fixedDayCounter_(fixedDayCounter), fixedCalendar_(fixedCalendar), fixedConvention_(fixedConvention),
       fixedPaymentAdjustment_(fixedPaymentAdjustment), overnightIndex_(overnightIndex), onTenor_(onTenor),
-      onSpread_(onSpread), rateCutoff_(rateCutoff), discountHandle_(discountCurve) {
+      onSpread_(onSpread), rateCutoff_(rateCutoff), discountHandle_(discountCurve),
+      telescopicValueDates_(telescopicValueDates) {
 
     bool onIndexHasCurve = !overnightIndex_->forwardingTermStructure().empty();
     bool haveDiscountCurve = !discountHandle_.empty();
@@ -66,7 +68,8 @@ void AverageOISRateHelper::initializeDates() {
             .withFixedTerminationDateConvention(fixedConvention_)
             .withFixedPaymentAdjustment(fixedPaymentAdjustment_)
             .withRateCutoff(rateCutoff_)
-            .withDiscountingTermStructure(discountRelinkableHandle_);
+            .withDiscountingTermStructure(discountRelinkableHandle_)
+            .withTelescopicValueDates(telescopicValueDates_);
 
     earliestDate_ = averageOIS_->startDate();
     latestDate_ = averageOIS_->maturityDate();
@@ -75,7 +78,7 @@ void AverageOISRateHelper::initializeDates() {
 Real AverageOISRateHelper::impliedQuote() const {
 
     QL_REQUIRE(termStructure_ != 0, "term structure not set");
-    averageOIS_->recalculate();
+    averageOIS_->deepUpdate();
 
     // Calculate the fair fixed rate after accounting for the
     // spread in the spread quote. Recall, the spread quote was
@@ -115,4 +118,4 @@ void AverageOISRateHelper::accept(AcyclicVisitor& v) {
     else
         RateHelper::accept(v);
 }
-}
+} // namespace QuantExt

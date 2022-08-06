@@ -23,100 +23,51 @@
 
 #pragma once
 
-#include <ql/types.hpp>
+#include <ored/configuration/genericyieldvolcurveconfig.hpp>
+#include <ql/time/calendar.hpp>
 #include <ql/time/daycounter.hpp>
 #include <ql/time/period.hpp>
-#include <ql/time/calendar.hpp>
-#include <ored/utilities/xmlutils.hpp>
-
-using std::string;
-using std::vector;
-using ore::data::XMLSerializable;
-using ore::data::XMLNode;
-using ore::data::XMLDocument;
-using QuantLib::Period;
-using QuantLib::DayCounter;
-using QuantLib::Calendar;
-using QuantLib::BusinessDayConvention;
+#include <ql/types.hpp>
 
 namespace ore {
 namespace data {
 
-//! Swaption Volatility curve configuration
+//! Swaption volatility curve configuration class
 /*!
   \ingroup configuration
 */
-class SwaptionVolatilityCurveConfig : public XMLSerializable {
+class SwaptionVolatilityCurveConfig : public GenericYieldVolatilityCurveConfig {
 public:
-    //! supported volatility dimensions
-    enum class Dimension { ATM, Smile };
-    // supported volatility types
-    enum class VolatilityType { Lognormal, Normal, ShiftedLognormal };
-
-    //! \name Constructors/Destructors
-    //@{
-    //! Default constructor
-    SwaptionVolatilityCurveConfig() {}
+    //! ctor, currency is derived from swap index base
+    SwaptionVolatilityCurveConfig()
+        : GenericYieldVolatilityCurveConfig("Swap", "SwaptionVolatility", "SWAPTION", "", true, true) {}
     //! Detailed constructor
     SwaptionVolatilityCurveConfig(const string& curveID, const string& curveDescription, const Dimension& dimension,
                                   const VolatilityType& volatilityType, const bool extrapolate,
-                                  const bool flatExtrapolation, const vector<Period>& optionTenors,
-                                  const vector<Period>& swapTenors, const DayCounter& dayCounter,
+                                  const bool flatExtrapolation, const vector<string>& optionTenors,
+                                  const vector<string>& swapTenors, const DayCounter& dayCounter,
                                   const Calendar& calendar, const BusinessDayConvention& businessDayConvention,
-                                  const string& shortSwapIndexBase, const string& swapIndexBase);
-    //! Default destructor
-    virtual ~SwaptionVolatilityCurveConfig() {}
-    //@}
-
-    //! \name Serialisation
-    //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
-    //@}
-
-    //! \name Inspectors
-    //@{
-    const string& curveID() const { return curveID_; }
-    const string& curveDescription() const { return curveDescription_; }
-    const Dimension& dimension() const { return dimension_; }
-    const VolatilityType& volatilityType() const { return volatilityType_; }
-    const bool& extrapolate() const { return extrapolate_; }
-    const bool& flatExtrapolation() const { return flatExtrapolation_; }
-    const vector<Period>& optionTenors() const { return optionTenors_; }
-    const vector<Period>& swapTenors() const { return swapTenors_; }
-    const DayCounter& dayCounter() const { return dayCounter_; }
-    const Calendar& calendar() const { return calendar_; }
-    const BusinessDayConvention& businessDayConvention() const { return businessDayConvention_; }
-    const string& shortSwapIndexBase() const { return shortSwapIndexBase_; }
-    const string& swapIndexBase() const { return swapIndexBase_; }
-    //@}
-
-    //! \name Setters
-    //@{
-    string& curveID() { return curveID_; }
-    string& curveDescription() { return curveDescription_; }
-    Dimension& dimension() { return dimension_; }
-    VolatilityType& volatilityType() { return volatilityType_; }
-    bool& flatExtrapolation() { return flatExtrapolation_; }
-    vector<Period>& optionTenors() { return optionTenors_; }
-    vector<Period>& swapTenors() { return swapTenors_; }
-    DayCounter& dayCounter() { return dayCounter_; }
-    Calendar& calendar() { return calendar_; }
-    string& shortSwapIndexBase() { return shortSwapIndexBase_; }
-    string& swapIndexBase() { return swapIndexBase_; }
-    //@}
-
-private:
-    string curveID_;
-    string curveDescription_;
-    Dimension dimension_;
-    VolatilityType volatilityType_;
-    bool extrapolate_, flatExtrapolation_;
-    vector<Period> optionTenors_, swapTenors_;
-    DayCounter dayCounter_;
-    Calendar calendar_;
-    BusinessDayConvention businessDayConvention_;
-    string shortSwapIndexBase_, swapIndexBase_;
+                                  const string& shortSwapIndexBase, const string& swapIndexBase,
+                                  // Only required for smile
+                                  const vector<string>& smileOptionTenors = vector<string>(),
+                                  const vector<string>& smileSwapTenors = vector<string>(),
+                                  const vector<string>& smileSpreads = vector<string>(),
+				  const std::string& smileDynamics = "")
+        : GenericYieldVolatilityCurveConfig("Swap", "SwaptionVolatility", "SWAPTION", "", curveID, curveDescription, "",
+                                            dimension, volatilityType, extrapolate, flatExtrapolation, optionTenors,
+                                            swapTenors, dayCounter, calendar, businessDayConvention, shortSwapIndexBase,
+                                            swapIndexBase, smileOptionTenors, smileSwapTenors, smileSpreads,
+					    smileDynamics) {}
+    //! Detailled constructor for proxy config
+    SwaptionVolatilityCurveConfig(const string& curveID, const string& curveDescription,
+                                  const string& proxySourceCurveId, const string& proxySourceShortSwapIndexBase,
+                                  const string& proxySourceSwapIndexBase, const string& proxyTargetShortSwapIndexBase,
+                                  const string& proxyTargetSwapIndexBase,
+				  const std::string& smileDynamics = "")
+        : GenericYieldVolatilityCurveConfig("Swap", "SwaptionVolatility", "", curveID, curveDescription, "",
+                                            proxySourceCurveId, proxySourceShortSwapIndexBase, proxySourceSwapIndexBase,
+                                            proxyTargetShortSwapIndexBase, proxyTargetSwapIndexBase, smileDynamics) {}
 };
-}
-}
+
+} // namespace data
+} // namespace ore

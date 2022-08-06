@@ -24,16 +24,15 @@
 #ifndef quantext_oisratehelper_hpp
 #define quantext_oisratehelper_hpp
 
-#include <ql/termstructures/yield/ratehelpers.hpp>
 #include <ql/instruments/overnightindexedswap.hpp>
-
-using namespace QuantLib;
+#include <ql/termstructures/yield/ratehelpers.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Rate helper for bootstrapping using Overnight Indexed Swaps
 /*! \ingroup termstructures
-*/
+ */
 class OISRateHelper : public RelativeDateRateHelper {
 public:
     OISRateHelper(Natural settlementDays, const Period& swapTenor, const Handle<Quote>& fixedRate,
@@ -42,11 +41,12 @@ public:
                   BusinessDayConvention fixedConvention = Following,
                   BusinessDayConvention paymentAdjustment = Following,
                   DateGeneration::Rule rule = DateGeneration::Backward,
-                  const Handle<YieldTermStructure>& discountingCurve = Handle<YieldTermStructure>());
+                  const Handle<YieldTermStructure>& discountingCurve = Handle<YieldTermStructure>(),
+                  bool telescopicValueDates = false);
     //! \name RateHelper interface
     //@{
-    Real impliedQuote() const;
-    void setTermStructure(YieldTermStructure*);
+    Real impliedQuote() const override;
+    void setTermStructure(YieldTermStructure*) override;
     //@}
     //! \name inspectors
     //@{
@@ -54,10 +54,10 @@ public:
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 protected:
-    void initializeDates();
+    void initializeDates() override;
 
     Natural settlementDays_;
     Period swapTenor_;
@@ -74,11 +74,12 @@ protected:
     RelinkableHandle<YieldTermStructure> termStructureHandle_;
     Handle<YieldTermStructure> discountHandle_;
     RelinkableHandle<YieldTermStructure> discountRelinkableHandle_;
+    bool telescopicValueDates_;
 };
 
 //! Rate helper for bootstrapping using Overnight Indexed Swaps
 /*! \ingroup termstructures
-*/
+ */
 class DatedOISRateHelper : public RateHelper {
 public:
     DatedOISRateHelper(const Date& startDate, const Date& endDate, const Handle<Quote>& fixedRate,
@@ -87,15 +88,16 @@ public:
                        BusinessDayConvention fixedConvention = Following,
                        BusinessDayConvention paymentAdjustment = Following,
                        DateGeneration::Rule rule = DateGeneration::Backward,
-                       const Handle<YieldTermStructure>& discountingCurve = Handle<YieldTermStructure>());
+                       const Handle<YieldTermStructure>& discountingCurve = Handle<YieldTermStructure>(),
+                       bool telescopicValueDates = false);
     //! \name RateHelper interface
     //@{
-    Real impliedQuote() const;
-    void setTermStructure(YieldTermStructure*);
+    Real impliedQuote() const override;
+    void setTermStructure(YieldTermStructure*) override;
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 protected:
     boost::shared_ptr<OvernightIndex> overnightIndex_;
@@ -110,7 +112,8 @@ protected:
     RelinkableHandle<YieldTermStructure> termStructureHandle_;
     Handle<YieldTermStructure> discountHandle_;
     RelinkableHandle<YieldTermStructure> discountRelinkableHandle_;
+    bool telescopicValueDates_;
 };
-}
+} // namespace QuantExt
 
 #endif

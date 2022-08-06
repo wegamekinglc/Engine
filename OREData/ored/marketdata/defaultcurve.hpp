@@ -23,20 +23,21 @@
 
 #pragma once
 
-#include <ql/termstructures/credit/interpolatedhazardratecurve.hpp>
-#include <ql/termstructures/credit/piecewisedefaultcurve.hpp>
-#include <ored/marketdata/loader.hpp>
-#include <ored/marketdata/curvespec.hpp>
-#include <ored/marketdata/yieldcurve.hpp>
 #include <ored/configuration/conventions.hpp>
 #include <ored/configuration/curveconfigurations.hpp>
-
-using QuantLib::Date;
-using ore::data::CurveConfigurations;
-using ore::data::Conventions;
+#include <ored/marketdata/curvespec.hpp>
+#include <ored/marketdata/loader.hpp>
+#include <ql/termstructures/credit/interpolatedhazardratecurve.hpp>
+#include <ql/termstructures/credit/piecewisedefaultcurve.hpp>
+#include <qle/termstructures/creditcurve.hpp>
 
 namespace ore {
 namespace data {
+using ore::data::Conventions;
+using ore::data::CurveConfigurations;
+using QuantLib::Date;
+
+class YieldCurve;
 
 //! Wrapper class for building Swaption volatility structures
 /*!
@@ -47,21 +48,47 @@ public:
     //! \name Constructors
     //@{
     //! Default constructor
-    DefaultCurve() {}
+    DefaultCurve() : recoveryRate_(QuantLib::Null<QuantLib::Real>()) {}
+
     //! Detailed constructor
     DefaultCurve(Date asof, DefaultCurveSpec spec, const Loader& loader, const CurveConfigurations& curveConfigs,
-                 const Conventions& conventions, map<string, boost::shared_ptr<YieldCurve>>& yieldCurves);
+                 map<string, boost::shared_ptr<YieldCurve>>& yieldCurves,
+                 map<string, boost::shared_ptr<DefaultCurve>>& defaultCurves);
     //@}
     //! \name Inspectors
     //@{
     const DefaultCurveSpec& spec() const { return spec_; }
-    const boost::shared_ptr<DefaultProbabilityTermStructure>& defaultTermStructure() { return curve_; }
+    const boost::shared_ptr<QuantExt::CreditCurve>& creditCurve() const { return curve_; }
     Real recoveryRate() { return recoveryRate_; }
     //@}
 private:
     DefaultCurveSpec spec_;
-    boost::shared_ptr<DefaultProbabilityTermStructure> curve_;
+    boost::shared_ptr<QuantExt::CreditCurve> curve_;
     Real recoveryRate_;
+
+    //! Build a default curve from CDS spread quotes
+    void buildCdsCurve(const std::string& curveID, const DefaultCurveConfig::Config& config, const QuantLib::Date& asof,
+                       const DefaultCurveSpec& spec, const Loader& loader,
+                       std::map<std::string, boost::shared_ptr<YieldCurve>>& yieldCurves);
+
+    //! Build a default curve from hazard rate quotes
+    void buildHazardRateCurve(const std::string& curveID, const DefaultCurveConfig::Config& config,
+                              const QuantLib::Date& asof, const DefaultCurveSpec& spec, const Loader& loader);
+
+    //! Build a default curve implied from a spread over a benchmark curve
+    void buildBenchmarkCurve(const std::string& curveID, const DefaultCurveConfig::Config& config,
+                             const QuantLib::Date& asof, const DefaultCurveSpec& spec, const Loader& loader,
+                             std::map<std::string, boost::shared_ptr<YieldCurve>>& yieldCurves);
+
+    //! Build a multi section curve
+    void buildMultiSectionCurve(const std::string& curveID, const DefaultCurveConfig::Config& config, const Date& asof,
+                                const DefaultCurveSpec& spec, const Loader& loader,
+                                map<string, boost::shared_ptr<DefaultCurve>>& defaultCurves);
+
+    //! Build a null curve (null rate, null recovery)
+    void buildNullCurve(const std::string& curveID, const DefaultCurveConfig::Config& config, const Date& asof,
+                        const DefaultCurveSpec& spec);
 };
-}
-}
+
+} // namespace data
+} // namespace ore

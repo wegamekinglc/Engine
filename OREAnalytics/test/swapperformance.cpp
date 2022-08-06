@@ -16,29 +16,43 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <test/swapperformance.hpp>
-#include <test/testmarket.hpp>
-#include <ored/utilities/osutils.hpp>
-#include <ored/utilities/log.hpp>
-#include <orea/cube/npvcube.hpp>
+#include <boost/test/unit_test.hpp>
+#include <boost/timer/timer.hpp>
 #include <orea/cube/inmemorycube.hpp>
-#include <ored/model/lgmdata.hpp>
-#include <orea/scenario/scenariosimmarketparameters.hpp>
-#include <ored/model/crossassetmodelbuilder.hpp>
-#include <orea/scenario/scenariosimmarket.hpp>
-#include <orea/scenario/simplescenariofactory.hpp>
+#include <orea/cube/npvcube.hpp>
+#include <orea/engine/filteredsensitivitystream.hpp>
+#include <orea/engine/observationmode.hpp>
+#include <orea/engine/parametricvar.hpp>
+#include <orea/engine/riskfilter.hpp>
+#include <orea/engine/sensitivityaggregator.hpp>
+#include <orea/engine/sensitivityanalysis.hpp>
+#include <orea/engine/sensitivitycubestream.hpp>
+#include <orea/engine/sensitivityfilestream.hpp>
+#include <orea/engine/sensitivityinmemorystream.hpp>
+#include <orea/engine/sensitivityrecord.hpp>
+#include <orea/engine/sensitivitystream.hpp>
+#include <orea/engine/stresstest.hpp>
+#include <orea/engine/valuationcalculator.hpp>
+#include <orea/engine/valuationengine.hpp>
 #include <orea/scenario/crossassetmodelscenariogenerator.hpp>
-#include <qle/methods/multipathgeneratorbase.hpp>
-#include <ql/time/date.hpp>
-#include <ql/math/randomnumbers/mt19937uniformrng.hpp>
-#include <ql/time/calendars/target.hpp>
-#include <ql/time/daycounters/actualactual.hpp>
-#include <orea/engine/all.hpp>
-#include <ored/portfolio/swap.hpp>
+#include <orea/scenario/scenariosimmarket.hpp>
+#include <orea/scenario/scenariosimmarketparameters.hpp>
+#include <orea/scenario/simplescenariofactory.hpp>
+#include <ored/model/crossassetmodelbuilder.hpp>
+#include <ored/model/lgmdata.hpp>
 #include <ored/portfolio/builders/swap.hpp>
 #include <ored/portfolio/portfolio.hpp>
-#include <orea/engine/observationmode.hpp>
-#include <boost/timer.hpp>
+#include <ored/portfolio/swap.hpp>
+#include <ored/utilities/log.hpp>
+#include <ored/utilities/osutils.hpp>
+#include <oret/toplevelfixture.hpp>
+#include <ql/math/randomnumbers/mt19937uniformrng.hpp>
+#include <ql/time/calendars/target.hpp>
+#include <ql/time/date.hpp>
+#include <ql/time/daycounters/actualactual.hpp>
+#include <qle/methods/multipathgeneratorbase.hpp>
+#include <test/oreatoplevelfixture.hpp>
+#include <test/testmarket.hpp>
 
 using namespace std;
 using namespace QuantLib;
@@ -48,7 +62,11 @@ using namespace ore;
 using namespace ore::data;
 using namespace ore::analytics;
 
-namespace testsuite {
+using testsuite::TestMarket;
+
+BOOST_FIXTURE_TEST_SUITE(OREAnalyticsPerformanceTestSuite, ore::test::OreaTopLevelFixture)
+
+BOOST_AUTO_TEST_SUITE(SwapPerformaceTest, *boost::unit_test::disabled())
 
 // Returns an int in the interval [min, max]. Inclusive.
 inline unsigned long randInt(MersenneTwisterUniformRng& rng, Size min, Size max) {
@@ -71,6 +89,8 @@ boost::shared_ptr<data::Conventions> convs() {
     boost::shared_ptr<data::Convention> swapConv(
         new data::IRSwapConvention("EUR-6M-SWAP-CONVENTIONS", "TARGET", "Annual", "MF", "30/360", "EUR-EURIBOR-6M"));
     conventions->add(swapConv);
+
+    InstrumentConventions::instance().setConventions(conventions);
 
     return conventions;
 }
@@ -131,8 +151,12 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
         string index = portfolioSize == 1 ? "EUR-EURIBOR-6M" : randString(rng, indices[ccy]);
         string floatFreq = portfolioSize == 1 ? "6M" : index.substr(index.find('-', 4) + 1);
 
-        // fixed details
+        // This variable is not used and only here to ensure that the random numbers generated in
+        // subsequent blocks produce a swap portfolio, which is compatible with the archived values.
         string fixedTenor = portfolioSize == 1 ? "1Y" : randString(rng, fixedTenors);
+        fixedTenor = fixedTenor + "_";
+
+        // fixed details
         Real fixedRate = portfolioSize == 1 ? 0.02 : randInt(rng, minFixedBps, maxFixedBps) / 100.0;
         string fixFreq = portfolioSize == 1 ? "1Y" : randString(rng, fixedTenors);
 
@@ -146,13 +170,13 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
         bool isPayer = randBoolean(rng);
 
         // fixed Leg - with dummy rate
-        FixedLegData fixedLegData(vector<double>(1, fixedRate));
-        LegData fixedLeg(isPayer, ccy, fixedLegData, fixedSchedule, fixDC, notional);
+        LegData fixedLeg(boost::make_shared<FixedLegData>(vector<double>(1, fixedRate)), isPayer, ccy, fixedSchedule,
+                         fixDC, notional);
 
         // float Leg
         vector<double> spreads(1, 0);
-        FloatingLegData floatingLegData(index, days, false, spread);
-        LegData floatingLeg(!isPayer, ccy, floatingLegData, floatSchedule, floatDC, notional);
+        LegData floatingLeg(boost::make_shared<FloatingLegData>(index, days, false, spread), !isPayer, ccy,
+                            floatSchedule, floatDC, notional);
 
         boost::shared_ptr<Trade> swap(new data::Swap(env, floatingLeg, fixedLeg));
 
@@ -173,7 +197,7 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
 
     // Dump stats about portfolio
     Time maturity = 0;
-    DayCounter dc = ActualActual();
+    DayCounter dc = ActualActual(ActualActual::ISDA);
     map<string, Size> fixedFreqs;
     map<string, Size> floatFreqs;
     for (Size i = 0; i < portfolioSize; ++i) {
@@ -217,15 +241,8 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
     return portfolio;
 }
 
-struct SwapResults {
-    vector<Real> epe;
-    vector<Real> ene;
-    Time completionTime;
-    string processMemory;
-    Real nonZeroPVRatio;
-};
-
-SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
+void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZeroPVRatio, vector<Real>& epe_archived,
+                      vector<Real>& ene_archived) {
     BOOST_TEST_MESSAGE("Testing Swap Exposure Performance size=" << portfolioSize << "...");
 
     SavedSettings backup;
@@ -263,28 +280,30 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
     // build scenario sim market parameters
     boost::shared_ptr<analytics::ScenarioSimMarketParameters> parameters(new analytics::ScenarioSimMarketParameters());
     parameters->baseCcy() = "EUR";
-    parameters->ccys() = {"EUR", "GBP", "USD", "CHF", "JPY"};
-    parameters->yieldCurveTenors() = {1 * Months, 6 * Months, 1 * Years, 2 * Years, 5 * Years, 10 * Years, 20 * Years};
-    parameters->indices() = {"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"};
-    parameters->interpolation() = "LogLinear";
-    parameters->extrapolate() = true;
+    parameters->setDiscountCurveNames({"EUR", "GBP", "USD", "CHF", "JPY"});
+    parameters->setYieldCurveTenors("",
+                                    {1 * Months, 6 * Months, 1 * Years, 2 * Years, 5 * Years, 10 * Years, 20 * Years});
+    parameters->setIndices({"EUR-EURIBOR-6M", "USD-LIBOR-3M", "GBP-LIBOR-6M", "CHF-LIBOR-6M", "JPY-LIBOR-6M"});
 
-    parameters->simulateSwapVols() = false;
-    parameters->swapVolTerms() = {6 * Months, 1 * Years};
-    parameters->swapVolExpiries() = {1 * Years, 2 * Years};
-    parameters->swapVolCcys() = ccys;
+    parameters->interpolation() = "LogLinear";
+
+    parameters->setSimulateSwapVols(false);
+    parameters->setSwapVolTerms("", {6 * Months, 1 * Years});
+    parameters->setSwapVolExpiries("", {1 * Years, 2 * Years});
+    parameters->swapVolKeys() = ccys;
     parameters->swapVolDecayMode() = "ForwardVariance";
 
-    parameters->fxVolExpiries() = {1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years};
-    parameters->fxVolDecayMode() = "ConstantVariance";
-    parameters->simulateFXVols() = false;
+    parameters->setFxVolExpiries("",
+        vector<Period>{1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years});
+    parameters->setFxVolDecayMode(string("ConstantVariance"));
+    parameters->setSimulateFXVols(false);
 
-    parameters->fxVolCcyPairs() = {"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"};
-    parameters->fxCcyPairs() = {"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"};
+    parameters->setFxVolCcyPairs({"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"});
+    parameters->setFxCcyPairs({"USDEUR", "GBPEUR", "CHFEUR", "JPYEUR"});
 
-    parameters->eqVolExpiries() = {1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years};
-    parameters->eqVolDecayMode() = "ConstantVariance";
-    parameters->simulateEQVols() = false;
+    parameters->setEquityVolExpiries("", {1 * Months, 3 * Months, 6 * Months, 2 * Years, 3 * Years, 4 * Years, 5 * Years});
+    parameters->setEquityVolDecayMode("ConstantVariance");
+    parameters->setSimulateEquityVols(false);
 
     // Config
 
@@ -297,38 +316,36 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
     vector<string> swaptionStrikes(swaptionExpiries.size(), "ATM");
     vector<Time> hTimes = {};
     vector<Time> aTimes = {};
-    vector<Real> hValues = {};
-    vector<Real> aValues = {};
 
-    std::vector<boost::shared_ptr<LgmData>> irConfigs;
+    std::vector<boost::shared_ptr<IrLgmData>> irConfigs;
 
-    hValues = {0.02};
-    aValues = {0.008};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    vector<Real> hValues = {0.02};
+    vector<Real> aValues = {0.008};
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "EUR", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.03};
     aValues = {0.009};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "USD", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "GBP", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "CHF", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<LgmData>(
+    irConfigs.push_back(boost::make_shared<IrLgmData>(
         "JPY", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
@@ -336,10 +353,10 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
     vector<string> optionExpiries = {"1Y", "2Y", "3Y", "5Y", "7Y", "10Y"};
     vector<string> optionStrikes(optionExpiries.size(), "ATMF");
     vector<Time> sigmaTimes = {};
-    vector<Real> sigmaValues = {};
 
     std::vector<boost::shared_ptr<FxBsData>> fxConfigs;
-    sigmaValues = {0.15};
+
+    vector<Real> sigmaValues = {0.15};
     fxConfigs.push_back(boost::make_shared<FxBsData>("USD", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
@@ -355,15 +372,17 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
     fxConfigs.push_back(boost::make_shared<FxBsData>("JPY", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
-    std::map<std::pair<std::string, std::string>, Real> corr;
-    corr[std::make_pair("IR:EUR", "IR:USD")] = 0.6;
+    map<CorrelationKey, Handle<Quote>> corr;
+    CorrelationFactor f_1{ CrossAssetModelTypes::IR, "EUR", 0 };
+    CorrelationFactor f_2{ CrossAssetModelTypes::IR, "USD", 0 };
+    corr[make_pair(f_1, f_2)] = Handle<Quote>(boost::make_shared<SimpleQuote>(0.6));
 
     boost::shared_ptr<CrossAssetModelData> config(boost::make_shared<CrossAssetModelData>(irConfigs, fxConfigs, corr));
 
     // Model Builder & Model
     // model builder
-    boost::shared_ptr<CrossAssetModelBuilder> modelBuilder(new CrossAssetModelBuilder(initMarket));
-    boost::shared_ptr<QuantExt::CrossAssetModel> model = modelBuilder->build(config);
+    boost::shared_ptr<CrossAssetModelBuilder> modelBuilder(new CrossAssetModelBuilder(initMarket, config));
+    boost::shared_ptr<QuantExt::CrossAssetModel> model = *modelBuilder->model();
     modelBuilder = NULL;
 
     // Path generator
@@ -378,11 +397,11 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
         model, pathGen, scenarioFactory, parameters, today, dg, initMarket);
 
     // build scenario sim market
-    Conventions conventions = *convs();
-    boost::shared_ptr<analytics::SimMarket> simMarket =
-        boost::make_shared<analytics::ScenarioSimMarket>(scenarioGenerator, initMarket, parameters, conventions);
+    convs();
+    auto simMarket = boost::make_shared<analytics::ScenarioSimMarket>(initMarket, parameters);
+    simMarket->scenarioGenerator() = scenarioGenerator;
 
-    // Build Porfolio
+    // Build Portfolio
     boost::shared_ptr<EngineData> data = boost::make_shared<EngineData>();
     data->model("Swap") = "DiscountedCashflows";
     data->engine("Swap") = "DiscountingSwapEngine";
@@ -397,24 +416,25 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
     ValuationEngine valEngine(today, dg, simMarket);
 
     // Calculate Cube
-    boost::timer t;
+    boost::timer::cpu_timer t;
     boost::shared_ptr<NPVCube> cube =
         boost::make_shared<DoublePrecisionInMemoryCube>(today, portfolio->ids(), dg->dates(), samples);
     vector<boost::shared_ptr<ValuationCalculator>> calculators;
     calculators.push_back(boost::make_shared<NPVCalculator>(baseCcy));
     valEngine.buildCube(portfolio, cube, calculators);
-    double elapsed = t.elapsed();
+    t.stop();
+    double elapsed = t.elapsed().wall * 1e-9;
 
     BOOST_TEST_MESSAGE("Cube generated in " << elapsed << " seconds");
 
     Size dates = dg->dates().size();
     Size numNPVs = dates * samples * portfolioSize;
     BOOST_TEST_MESSAGE("Cube size = " << numNPVs << " elements");
-    BOOST_TEST_MESSAGE("Cube elements theortical storage " << numNPVs * sizeof(Real) / (1024 * 1024) << " MB");
+    BOOST_TEST_MESSAGE("Cube elements theoretical storage " << numNPVs * sizeof(Real) / (1024 * 1024) << " MB");
     Real pricingTimeMicroSeconds = elapsed * 1000000 / numNPVs;
     BOOST_TEST_MESSAGE("Avg Pricing time = " << pricingTimeMicroSeconds << " microseconds");
 
-    // Count the number of times we have an empty line, ie. swap exipired.
+    // Count the number of times we have an empty line, ie. swap expired.
     // cube is trades/dates/samples
     Size count = 0;
     for (Size i = 0; i < portfolioSize; ++i) {
@@ -430,7 +450,7 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
 
     // BOOST_TEST_MESSAGE(os::getSystemDetails());
 
-    // Compute portfolo EPE and ENE
+    // Compute portfolio EPE and ENE
     vector<Real> eeVec, eneVec;
     for (Size i = 0; i < dates; ++i) {
         Real epe = 0.0, ene = 0.0;
@@ -447,301 +467,101 @@ SwapResults test_performance(Size portfolioSize, ObservationMode::Mode om) {
         eeVec.push_back(epe);
         eneVec.push_back(ene);
     }
-    SwapResults res;
-    res.epe = eeVec;
-    res.ene = eneVec;
-    res.completionTime = elapsed;
-    res.processMemory = os::getMemoryUsage();
-    res.nonZeroPVRatio = nonZeroPerc;
+
     ObservationMode::instance().setMode(backupOm);
     IndexManager::instance().clearHistories();
-    return res;
+
+    // check results
+    BOOST_CHECK_CLOSE(nonZeroPVRatio, nonZeroPerc, 0.005);
+
+    for (Size i = 0; i < epe_archived.size(); ++i) {
+        BOOST_CHECK_CLOSE(eeVec[i], epe_archived[i], 0.01);
+    }
+
+    for (Size i = 0; i < ene_archived.size(); ++i) {
+        BOOST_CHECK_CLOSE(eneVec[i], ene_archived[i], 0.01);
+    }
 }
 
-void SwapPerformanceTest::testSwapPerformanceNoneObs() {
+namespace {
+vector<Real> swap_epe_archived = {
+    0,           0,           0,           0,           0,           0,           0,           0,          0,
+    0,           0,           0,           0,           0,           0,           0,           0,          0,
+    0,           0,           0,           0,           0,           0,           0,           0,          0,
+    0,           0,           0,           0,           0,           0,           0,           0,          0,
+    0,           0,           0,           0,           0,           0,           0,           0,          0,
+    0,           0,           212.058,     0,           7323.56,     31533.6,     53382.9,     36210.1,    46908.3,
+    104101,      135755,      125789,      140937,      182967,      194282,      189492,      243649,     322158,
+    399840,      369531,      439146,      551159,      675010,      635516,      683456,      965534,     1.08921e+06,
+    1.12077e+06, 1.21563e+06, 1.74652e+06, 1.91117e+06, 1.93755e+06, 2.01838e+06, 2.74905e+06, 2.98333e+06};
+vector<Real> swap_ene_archived = {
+    3.68479e+08, 3.66947e+08, 3.59697e+08, 3.67679e+08, 3.60306e+08, 3.60215e+08, 3.3379e+08,  3.33075e+08, 3.26284e+08,
+    3.25852e+08, 3.00194e+08, 2.9983e+08,  2.92797e+08, 2.93767e+08, 2.69069e+08, 2.70243e+08, 2.64709e+08, 2.66009e+08,
+    2.46285e+08, 2.45916e+08, 2.40391e+08, 2.40419e+08, 2.2e+08,     2.20437e+08, 2.13037e+08, 2.13986e+08, 1.94195e+08,
+    1.94421e+08, 1.87828e+08, 1.87927e+08, 1.69285e+08, 1.70055e+08, 1.6356e+08,  1.64559e+08, 1.47753e+08, 1.49094e+08,
+    1.4273e+08,  1.44247e+08, 1.32027e+08, 1.37083e+08, 1.30631e+08, 1.30188e+08, 1.17919e+08, 1.2013e+08,  1.13388e+08,
+    1.13037e+08, 1.00704e+08, 1.04901e+08, 9.77921e+07, 9.74493e+07, 8.64101e+07, 9.05223e+07, 8.41554e+07, 8.52514e+07,
+    7.45642e+07, 8.01076e+07, 7.34561e+07, 7.66085e+07, 6.86271e+07, 7.33344e+07, 6.48527e+07, 6.82275e+07, 6.10455e+07,
+    6.35091e+07, 5.59015e+07, 5.9265e+07,  5.24219e+07, 5.57625e+07, 4.78619e+07, 5.11772e+07, 4.44675e+07, 4.7471e+07,
+    3.98948e+07, 4.31879e+07, 3.70144e+07, 4.01379e+07, 3.26652e+07, 3.64379e+07, 3.0582e+07,  3.35157e+07};
+vector<Real> single_swap_epe_archived = {
+    8422.98, 11198.9, 15557.4, 22182,   24516.4, 22732.1, 24476.9, 30633,   32463.9, 28580.7, 29797.8, 34821.8,
+    35793,   31445.1, 31422.2, 35379.4, 36714.7, 32177,   33110.1, 36914.5, 38422.1, 33316.3, 33986.7, 37881,
+    39304,   34202.6, 34476.6, 37839.7, 38556.6, 33053.6, 34179,   37797.4, 38292.6, 33090.8, 33802.5, 37408.1,
+    37883.6, 32242.8, 32895.4, 35663.4, 36200.2, 30599.5, 31125.9, 33598.7, 33774.8, 27908.2, 28321.2, 30594.3,
+    30704.6, 24996.5, 25220.1, 27476.1, 27992.3, 22261.9, 22504.1, 24273.5, 24606.4, 19184.2, 19377.9, 21040.2,
+    21286.6, 15787.3, 15905.9, 17288.6, 17438.9, 11921.9, 12042.2, 13379.9, 13566.2, 8143.05, 8244.83, 9312.29,
+    9336.46, 4025.82, 4011.94, 4742.76, 4713.78, 387.137, 386.445, 0};
+vector<Real> single_swap_ene_archived = {
+    15211,   23792.4, 25714.7, 21833.1, 24449.6, 30276.1, 31685.9, 28404.2, 30148.2, 35386.3, 36348.7, 31486.9,
+    32452.8, 37586.7, 39033.4, 34616.2, 35485,   40388.1, 40796.5, 35500.3, 37113.1, 40726.3, 41758,   36558.1,
+    37032.1, 40501.5, 41314.7, 36470.8, 37160.9, 39548.5, 39862.6, 33665.1, 34444.8, 37206.8, 37686.3, 32158.8,
+    32323.1, 34521.5, 35197.2, 30809.5, 31219.3, 33447.7, 34164.7, 28843.5, 29113.5, 32074.7, 32535.9, 28093.2,
+    27974.4, 30230.9, 30332.1, 25129.8, 25444.3, 27196.1, 27727.5, 22541,   22624.1, 24869.2, 25036.5, 19195.8,
+    19036.7, 21082.3, 21592.8, 15735.4, 15809.9, 17752.2, 17959.4, 12408.9, 12507,   13937.8, 14004.1, 8403.95,
+    8375.73, 10190.9, 10229.5, 4311.76, 4277.57, 6773.51, 6779.33, 0};
+} // namespace
+
+BOOST_AUTO_TEST_CASE(testSwapPerformanceNoneObs) {
     BOOST_TEST_MESSAGE("Testing Swap Performance (None observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    SwapResults res = test_performance(100, om);
-    BOOST_CHECK_CLOSE(70.5875, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       2045.51,    13666.80,   16321.70,   12121.60,  23261.70,
-        54494.30,  68155.30,  68489.40,   83575.70,   118253.00,  123282.00,  118928.00,  149838.00, 218266.00,
-        276536.00, 245307.00, 278034.00,  368274.00,  447787.00,  407436.00,  449380.00,  683155.00, 760313.00,
-        764175.00, 832288.00, 1313320.00, 1383550.00, 1413170.00, 1500990.00, 2134060.00, 2323430.00};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        368484000.00, 366973000.00, 359704000.00, 367637000.00, 360213000.00, 360121000.00, 333664000.00, 333002000.00,
-        326143000.00, 325711000.00, 300047000.00, 299732000.00, 292758000.00, 293598000.00, 268908000.00, 270144000.00,
-        264655000.00, 265927000.00, 246301000.00, 245928000.00, 240306000.00, 240397000.00, 220011000.00, 220454000.00,
-        213033000.00, 214004000.00, 194180000.00, 194297000.00, 187696000.00, 187765000.00, 169167000.00, 169970000.00,
-        163421000.00, 164495000.00, 147713000.00, 149211000.00, 142856000.00, 144372000.00, 132099000.00, 137104000.00,
-        130605000.00, 130117000.00, 117862000.00, 120095000.00, 113333000.00, 112971000.00, 100684000.00, 104869000.00,
-        97805700.00,  97476100.00,  86411500.00,  90553700.00,  84189300.00,  85294200.00,  74576700.00,  80118600.00,
-        73433300.00,  76594300.00,  68622100.00,  73311100.00,  64758500.00,  68073500.00,  60952400.00,  63464700.00,
-        55889700.00,  59212900.00,  52316800.00,  55641700.00,  47762400.00,  51099800.00,  44301900.00,  47286400.00,
-        39632700.00,  42983300.00,  36719900.00,  39755700.00,  32314400.00,  36128700.00,  30183700.00,  33114200.00};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(100, ObservationMode::Mode::None, 70.5875, swap_epe_archived, swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSingleSwapPerformanceNoneObs() {
+BOOST_AUTO_TEST_CASE(testSingleSwapPerformanceNoneObs) {
     BOOST_TEST_MESSAGE("Testing Single Swap Performance (None observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::None;
-    SwapResults res = test_performance(1, om);
-    BOOST_CHECK_CLOSE(98.75, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        8422.46, 11198.2, 15556.5, 22180.9, 24515.3, 22731,   24475.8, 30631.9, 32462.8, 28579.6, 29796.7, 34820.7,
-        35792,   31444.1, 31421.2, 35378.4, 36713.7, 32176.1, 33109.1, 36913.6, 38421.2, 33315.4, 33985.7, 37880,
-        39303,   34201.6, 34475.6, 37838.7, 38555.7, 33052.7, 34178.1, 37796.7, 38291.9, 33090.1, 33801.9, 37407.6,
-        37883.1, 32242.3, 32895,   35663,   36199.8, 30599.1, 31125.5, 33598.4, 33774.4, 27907.8, 28320.8, 30594,
-        30704.2, 24996.1, 25219.7, 27475.7, 27991.9, 22261.5, 22503.8, 24273.2, 24606.1, 19183.9, 19377.6, 21039.9,
-        21286.3, 15787,   15905.7, 17288.3, 17438.7, 11921.7, 12042,   13379.8, 13566.1, 8142.94, 8244.72, 9312.21,
-        9336.38, 4025.76, 4011.88, 4742.72, 4713.73, 387.128, 386.435, 0};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        15210.5, 23791.6, 25713.8, 21832.1, 24448.6, 30275.1, 31685,   28403.2, 30147.2, 35385.4, 36347.8, 31485.9,
-        32451.9, 37585.8, 39032.5, 34615.3, 35484.1, 40387.2, 40795.7, 35499.5, 37112.2, 40725.5, 41757.1, 36557.2,
-        37031.2, 40500.6, 41313.8, 36469.9, 37160,   39547.7, 39861.8, 33664.4, 34444.1, 37206.2, 37685.7, 32158.3,
-        32322.6, 34521.1, 35196.8, 30809.1, 31218.9, 33447.3, 34164.3, 28843.1, 29113.1, 32074.3, 32535.5, 28092.8,
-        27974,   30230.6, 30331.7, 25129.4, 25443.9, 27195.7, 27727.1, 22540.7, 22623.7, 24868.9, 25036.2, 19195.5,
-        19036.4, 21082.1, 21592.6, 15735.2, 15809.7, 17752,   17959.2, 12408.7, 12506.8, 13937.7, 14004,   8403.87,
-        8375.64, 10190.8, 10229.4, 4311.72, 4277.53, 6773.5,  6779.32, 0};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(1, ObservationMode::Mode::None, 98.75, single_swap_epe_archived, single_swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSwapPerformanceDisableObs() {
+BOOST_AUTO_TEST_CASE(testSwapPerformanceDisableObs) {
     BOOST_TEST_MESSAGE("Testing Swap Performance (Disable observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    SwapResults res = test_performance(100, om);
-    BOOST_CHECK_CLOSE(70.5875, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       2045.51,    13666.80,   16321.70,   12121.60,  23261.70,
-        54494.30,  68155.30,  68489.40,   83575.70,   118253.00,  123282.00,  118928.00,  149838.00, 218266.00,
-        276536.00, 245307.00, 278034.00,  368274.00,  447787.00,  407436.00,  449380.00,  683155.00, 760313.00,
-        764175.00, 832288.00, 1313320.00, 1383550.00, 1413170.00, 1500990.00, 2134060.00, 2323430.00};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        368484000.00, 366973000.00, 359704000.00, 367637000.00, 360213000.00, 360121000.00, 333664000.00, 333002000.00,
-        326143000.00, 325711000.00, 300047000.00, 299732000.00, 292758000.00, 293598000.00, 268908000.00, 270144000.00,
-        264655000.00, 265927000.00, 246301000.00, 245928000.00, 240306000.00, 240397000.00, 220011000.00, 220454000.00,
-        213033000.00, 214004000.00, 194180000.00, 194297000.00, 187696000.00, 187765000.00, 169167000.00, 169970000.00,
-        163421000.00, 164495000.00, 147713000.00, 149211000.00, 142856000.00, 144372000.00, 132099000.00, 137104000.00,
-        130605000.00, 130117000.00, 117862000.00, 120095000.00, 113333000.00, 112971000.00, 100684000.00, 104869000.00,
-        97805700.00,  97476100.00,  86411500.00,  90553700.00,  84189300.00,  85294200.00,  74576700.00,  80118600.00,
-        73433300.00,  76594300.00,  68622100.00,  73311100.00,  64758500.00,  68073500.00,  60952400.00,  63464700.00,
-        55889700.00,  59212900.00,  52316800.00,  55641700.00,  47762400.00,  51099800.00,  44301900.00,  47286400.00,
-        39632700.00,  42983300.00,  36719900.00,  39755700.00,  32314400.00,  36128700.00,  30183700.00,  33114200.00};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(100, ObservationMode::Mode::None, 70.5875, swap_epe_archived, swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSingleSwapPerformanceDisableObs() {
+BOOST_AUTO_TEST_CASE(testSingleSwapPerformanceDisableObs) {
     BOOST_TEST_MESSAGE("Testing Single Swap Performance (Disable observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::Disable;
-    SwapResults res = test_performance(1, om);
-    BOOST_CHECK_CLOSE(98.75, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        8422.46, 11198.2, 15556.5, 22180.9, 24515.3, 22731,   24475.8, 30631.9, 32462.8, 28579.6, 29796.7, 34820.7,
-        35792,   31444.1, 31421.2, 35378.4, 36713.7, 32176.1, 33109.1, 36913.6, 38421.2, 33315.4, 33985.7, 37880,
-        39303,   34201.6, 34475.6, 37838.7, 38555.7, 33052.7, 34178.1, 37796.7, 38291.9, 33090.1, 33801.9, 37407.6,
-        37883.1, 32242.3, 32895,   35663,   36199.8, 30599.1, 31125.5, 33598.4, 33774.4, 27907.8, 28320.8, 30594,
-        30704.2, 24996.1, 25219.7, 27475.7, 27991.9, 22261.5, 22503.8, 24273.2, 24606.1, 19183.9, 19377.6, 21039.9,
-        21286.3, 15787,   15905.7, 17288.3, 17438.7, 11921.7, 12042,   13379.8, 13566.1, 8142.94, 8244.72, 9312.21,
-        9336.38, 4025.76, 4011.88, 4742.72, 4713.73, 387.128, 386.435, 0};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        15210.5, 23791.6, 25713.8, 21832.1, 24448.6, 30275.1, 31685,   28403.2, 30147.2, 35385.4, 36347.8, 31485.9,
-        32451.9, 37585.8, 39032.5, 34615.3, 35484.1, 40387.2, 40795.7, 35499.5, 37112.2, 40725.5, 41757.1, 36557.2,
-        37031.2, 40500.6, 41313.8, 36469.9, 37160,   39547.7, 39861.8, 33664.4, 34444.1, 37206.2, 37685.7, 32158.3,
-        32322.6, 34521.1, 35196.8, 30809.1, 31218.9, 33447.3, 34164.3, 28843.1, 29113.1, 32074.3, 32535.5, 28092.8,
-        27974,   30230.6, 30331.7, 25129.4, 25443.9, 27195.7, 27727.1, 22540.7, 22623.7, 24868.9, 25036.2, 19195.5,
-        19036.4, 21082.1, 21592.6, 15735.2, 15809.7, 17752,   17959.2, 12408.7, 12506.8, 13937.7, 14004,   8403.87,
-        8375.64, 10190.8, 10229.4, 4311.72, 4277.53, 6773.5,  6779.32, 0};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(1, ObservationMode::Mode::None, 98.75, single_swap_epe_archived, single_swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSwapPerformanceDeferObs() {
+BOOST_AUTO_TEST_CASE(testSwapPerformanceDeferObs) {
     BOOST_TEST_MESSAGE("Testing Swap Performance (Defer observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    SwapResults res = test_performance(100, om);
-    BOOST_CHECK_CLOSE(70.5875, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       2045.51,    13666.80,   16321.70,   12121.60,  23261.70,
-        54494.30,  68155.30,  68489.40,   83575.70,   118253.00,  123282.00,  118928.00,  149838.00, 218266.00,
-        276536.00, 245307.00, 278034.00,  368274.00,  447787.00,  407436.00,  449380.00,  683155.00, 760313.00,
-        764175.00, 832288.00, 1313320.00, 1383550.00, 1413170.00, 1500990.00, 2134060.00, 2323430.00};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        368484000.00, 366973000.00, 359704000.00, 367637000.00, 360213000.00, 360121000.00, 333664000.00, 333002000.00,
-        326143000.00, 325711000.00, 300047000.00, 299732000.00, 292758000.00, 293598000.00, 268908000.00, 270144000.00,
-        264655000.00, 265927000.00, 246301000.00, 245928000.00, 240306000.00, 240397000.00, 220011000.00, 220454000.00,
-        213033000.00, 214004000.00, 194180000.00, 194297000.00, 187696000.00, 187765000.00, 169167000.00, 169970000.00,
-        163421000.00, 164495000.00, 147713000.00, 149211000.00, 142856000.00, 144372000.00, 132099000.00, 137104000.00,
-        130605000.00, 130117000.00, 117862000.00, 120095000.00, 113333000.00, 112971000.00, 100684000.00, 104869000.00,
-        97805700.00,  97476100.00,  86411500.00,  90553700.00,  84189300.00,  85294200.00,  74576700.00,  80118600.00,
-        73433300.00,  76594300.00,  68622100.00,  73311100.00,  64758500.00,  68073500.00,  60952400.00,  63464700.00,
-        55889700.00,  59212900.00,  52316800.00,  55641700.00,  47762400.00,  51099800.00,  44301900.00,  47286400.00,
-        39632700.00,  42983300.00,  36719900.00,  39755700.00,  32314400.00,  36128700.00,  30183700.00,  33114200.00};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(100, ObservationMode::Mode::None, 70.5875, swap_epe_archived, swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSingleSwapPerformanceDeferObs() {
+BOOST_AUTO_TEST_CASE(testSingleSwapPerformanceDeferObs) {
     BOOST_TEST_MESSAGE("Testing Single Swap Performance (Defer observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::Defer;
-    SwapResults res = test_performance(1, om);
-    BOOST_CHECK_CLOSE(98.75, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        8422.46, 11198.2, 15556.5, 22180.9, 24515.3, 22731,   24475.8, 30631.9, 32462.8, 28579.6, 29796.7, 34820.7,
-        35792,   31444.1, 31421.2, 35378.4, 36713.7, 32176.1, 33109.1, 36913.6, 38421.2, 33315.4, 33985.7, 37880,
-        39303,   34201.6, 34475.6, 37838.7, 38555.7, 33052.7, 34178.1, 37796.7, 38291.9, 33090.1, 33801.9, 37407.6,
-        37883.1, 32242.3, 32895,   35663,   36199.8, 30599.1, 31125.5, 33598.4, 33774.4, 27907.8, 28320.8, 30594,
-        30704.2, 24996.1, 25219.7, 27475.7, 27991.9, 22261.5, 22503.8, 24273.2, 24606.1, 19183.9, 19377.6, 21039.9,
-        21286.3, 15787,   15905.7, 17288.3, 17438.7, 11921.7, 12042,   13379.8, 13566.1, 8142.94, 8244.72, 9312.21,
-        9336.38, 4025.76, 4011.88, 4742.72, 4713.73, 387.128, 386.435, 0};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        15210.5, 23791.6, 25713.8, 21832.1, 24448.6, 30275.1, 31685,   28403.2, 30147.2, 35385.4, 36347.8, 31485.9,
-        32451.9, 37585.8, 39032.5, 34615.3, 35484.1, 40387.2, 40795.7, 35499.5, 37112.2, 40725.5, 41757.1, 36557.2,
-        37031.2, 40500.6, 41313.8, 36469.9, 37160,   39547.7, 39861.8, 33664.4, 34444.1, 37206.2, 37685.7, 32158.3,
-        32322.6, 34521.1, 35196.8, 30809.1, 31218.9, 33447.3, 34164.3, 28843.1, 29113.1, 32074.3, 32535.5, 28092.8,
-        27974,   30230.6, 30331.7, 25129.4, 25443.9, 27195.7, 27727.1, 22540.7, 22623.7, 24868.9, 25036.2, 19195.5,
-        19036.4, 21082.1, 21592.6, 15735.2, 15809.7, 17752,   17959.2, 12408.7, 12506.8, 13937.7, 14004,   8403.87,
-        8375.64, 10190.8, 10229.4, 4311.72, 4277.53, 6773.5,  6779.32, 0};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(1, ObservationMode::Mode::None, 98.75, single_swap_epe_archived, single_swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSwapPerformanceUnregisterObs() {
+BOOST_AUTO_TEST_CASE(testSwapPerformanceUnregisterObs) {
     BOOST_TEST_MESSAGE("Testing Swap Performance (Unregister observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    SwapResults res = test_performance(100, om);
-    BOOST_CHECK_CLOSE(70.5875, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       0.00,       0.00,       0.00,       0.00,      0.00,
-        0.00,      0.00,      0.00,       0.00,       2045.51,    13666.80,   16321.70,   12121.60,  23261.70,
-        54494.30,  68155.30,  68489.40,   83575.70,   118253.00,  123282.00,  118928.00,  149838.00, 218266.00,
-        276536.00, 245307.00, 278034.00,  368274.00,  447787.00,  407436.00,  449380.00,  683155.00, 760313.00,
-        764175.00, 832288.00, 1313320.00, 1383550.00, 1413170.00, 1500990.00, 2134060.00, 2323430.00};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        368484000.00, 366973000.00, 359704000.00, 367637000.00, 360213000.00, 360121000.00, 333664000.00, 333002000.00,
-        326143000.00, 325711000.00, 300047000.00, 299732000.00, 292758000.00, 293598000.00, 268908000.00, 270144000.00,
-        264655000.00, 265927000.00, 246301000.00, 245928000.00, 240306000.00, 240397000.00, 220011000.00, 220454000.00,
-        213033000.00, 214004000.00, 194180000.00, 194297000.00, 187696000.00, 187765000.00, 169167000.00, 169970000.00,
-        163421000.00, 164495000.00, 147713000.00, 149211000.00, 142856000.00, 144372000.00, 132099000.00, 137104000.00,
-        130605000.00, 130117000.00, 117862000.00, 120095000.00, 113333000.00, 112971000.00, 100684000.00, 104869000.00,
-        97805700.00,  97476100.00,  86411500.00,  90553700.00,  84189300.00,  85294200.00,  74576700.00,  80118600.00,
-        73433300.00,  76594300.00,  68622100.00,  73311100.00,  64758500.00,  68073500.00,  60952400.00,  63464700.00,
-        55889700.00,  59212900.00,  52316800.00,  55641700.00,  47762400.00,  51099800.00,  44301900.00,  47286400.00,
-        39632700.00,  42983300.00,  36719900.00,  39755700.00,  32314400.00,  36128700.00,  30183700.00,  33114200.00};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(100, ObservationMode::Mode::None, 70.5875, swap_epe_archived, swap_ene_archived);
 }
 
-void SwapPerformanceTest::testSingleSwapPerformanceUnregisterObs() {
+BOOST_AUTO_TEST_CASE(testSingleSwapPerformanceUnregisterObs) {
     BOOST_TEST_MESSAGE("Testing Single Swap Performance (Unregister observation mode)");
-    // Set the Observation mode here
-    ObservationMode::Mode om = ObservationMode::Mode::Unregister;
-    SwapResults res = test_performance(1, om);
-    BOOST_CHECK_CLOSE(98.75, res.nonZeroPVRatio, 0.005);
-    vector<Real> epe_archived = {
-        8422.46, 11198.2, 15556.5, 22180.9, 24515.3, 22731,   24475.8, 30631.9, 32462.8, 28579.6, 29796.7, 34820.7,
-        35792,   31444.1, 31421.2, 35378.4, 36713.7, 32176.1, 33109.1, 36913.6, 38421.2, 33315.4, 33985.7, 37880,
-        39303,   34201.6, 34475.6, 37838.7, 38555.7, 33052.7, 34178.1, 37796.7, 38291.9, 33090.1, 33801.9, 37407.6,
-        37883.1, 32242.3, 32895,   35663,   36199.8, 30599.1, 31125.5, 33598.4, 33774.4, 27907.8, 28320.8, 30594,
-        30704.2, 24996.1, 25219.7, 27475.7, 27991.9, 22261.5, 22503.8, 24273.2, 24606.1, 19183.9, 19377.6, 21039.9,
-        21286.3, 15787,   15905.7, 17288.3, 17438.7, 11921.7, 12042,   13379.8, 13566.1, 8142.94, 8244.72, 9312.21,
-        9336.38, 4025.76, 4011.88, 4742.72, 4713.73, 387.128, 386.435, 0};
-    for (Size i = 0; i < epe_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.epe[i], epe_archived[i], 0.01);
-    }
-    vector<Real> ene_archived = {
-        15210.5, 23791.6, 25713.8, 21832.1, 24448.6, 30275.1, 31685,   28403.2, 30147.2, 35385.4, 36347.8, 31485.9,
-        32451.9, 37585.8, 39032.5, 34615.3, 35484.1, 40387.2, 40795.7, 35499.5, 37112.2, 40725.5, 41757.1, 36557.2,
-        37031.2, 40500.6, 41313.8, 36469.9, 37160,   39547.7, 39861.8, 33664.4, 34444.1, 37206.2, 37685.7, 32158.3,
-        32322.6, 34521.1, 35196.8, 30809.1, 31218.9, 33447.3, 34164.3, 28843.1, 29113.1, 32074.3, 32535.5, 28092.8,
-        27974,   30230.6, 30331.7, 25129.4, 25443.9, 27195.7, 27727.1, 22540.7, 22623.7, 24868.9, 25036.2, 19195.5,
-        19036.4, 21082.1, 21592.6, 15735.2, 15809.7, 17752,   17959.2, 12408.7, 12506.8, 13937.7, 14004,   8403.87,
-        8375.64, 10190.8, 10229.4, 4311.72, 4277.53, 6773.5,  6779.32, 0};
-    for (Size i = 0; i < ene_archived.size(); ++i) {
-        BOOST_CHECK_CLOSE(res.ene[i], ene_archived[i], 0.01);
-    }
+    test_performance(1, ObservationMode::Mode::None, 98.75, single_swap_epe_archived, single_swap_ene_archived);
 }
 
-test_suite* SwapPerformanceTest::suite() {
-    // Uncomment the below to get detailed output TODO: custom logger that uses BOOST_MESSAGE
-    /*
-      boost::shared_ptr<ore::data::FileLogger> logger
-          = boost::make_shared<ore::data::FileLogger>("swapperformace_test.log");
-      ore::data::Log::instance().removeAllLoggers();
-      ore::data::Log::instance().registerLogger(logger);
-      ore::data::Log::instance().switchOn();
-      ore::data::Log::instance().setMask(255);
-    */
-    test_suite* suite = BOOST_TEST_SUITE("SwapPerformanceTest");
-    // (2017-03-28) The single swap performance tests should each complete within 20-25 seconds
-    // The portfolio swap performance tests should completed within 400-700 seconds
-    // Unregister and Disable should be faster than None and Defer
-    // The actual run-times are not checked with any unit test assertions
-    // This is because the actual run-times may vary depending upon the machine specs and other competing processes
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSingleSwapPerformanceNoneObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSingleSwapPerformanceDisableObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSingleSwapPerformanceDeferObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSingleSwapPerformanceUnregisterObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSwapPerformanceNoneObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSwapPerformanceDisableObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSwapPerformanceDeferObs));
-    suite->add(BOOST_TEST_CASE(&SwapPerformanceTest::testSwapPerformanceUnregisterObs));
-    return suite;
-}
-}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE_END()

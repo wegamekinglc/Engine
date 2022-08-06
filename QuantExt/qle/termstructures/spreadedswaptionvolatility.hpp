@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016 Quaternion Risk Management Ltd
+ Copyright (C) 2020 Quaternion Risk Management Ltd
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -14,43 +14,82 @@
  contribution to risk analytics and model standardisation, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
- */
+*/
 
-/*! \file qle/termstructures/spreadedswaptionvolatility.hpp
-    \brief Adds floor to QuantLib::SpreadedSwaptionVolatility
+/*! \file spreadedswaptionvolatility.hpp
+    \brief swaption cube defined via atm vol spreads over another cube
     \ingroup termstructures
 */
 
-#ifndef quantlib_spreaded_swaption_volatility_h
-#define quantlib_spreaded_swaption_volatility_h
+#pragma once
 
-#include <ql/termstructures/volatility/swaption/spreadedswaptionvol.hpp>
+#include <ql/indexes/swapindex.hpp>
+#include <ql/math/interpolations/interpolation2d.hpp>
+#include <ql/quote.hpp>
+#include <ql/termstructures/volatility/smilesection.hpp>
+#include <ql/termstructures/volatility/swaption/swaptionvoldiscrete.hpp>
 
-using QuantLib::Date;
-using QuantLib::Handle;
-using QuantLib::Period;
-using QuantLib::Quote;
-using QuantLib::Rate;
-using QuantLib::Real;
-using QuantLib::SmileSection;
-using QuantLib::Time;
-using QuantLib::Volatility;
+#include <boost/shared_ptr.hpp>
 
 namespace QuantExt {
+using namespace QuantLib;
 
-class SpreadedSwaptionVolatility : public QuantLib::SpreadedSwaptionVolatility {
+class SpreadedSwaptionVolatility : public SwaptionVolatilityDiscrete {
 public:
-    SpreadedSwaptionVolatility(const Handle<SwaptionVolatilityStructure>&, const Handle<Quote>& spread);
+    /* - The base vol is required to provide smile sections with atm levels, if there is more than one strike spread
+         given. Alternatively, baseSwapIndexBase and baseShortSwapIndexBase can be provided to compute these ATM levels.
+       - If stickyAbsMoney is true, the simulatedSwapIndexBase and simulatedShortSwapIndexBase must be provided and
+         represent an ATM level reacting to changes in rate levels. The ATM levels implied by base vol,
+         baseSwapIndexBase, baseShortSwapIndexBase must not react to changes in the rate levels on the other hand.
+    */
+    SpreadedSwaptionVolatility(const Handle<SwaptionVolatilityStructure>& base, const std::vector<Period>& optionTenors,
+                               const std::vector<Period>& swapTenors, const std::vector<Real>& strikeSpreads,
+                               const std::vector<std::vector<Handle<Quote>>>& volSpreads,
+                               const boost::shared_ptr<SwapIndex>& baseSwapIndexBase = nullptr,
+                               const boost::shared_ptr<SwapIndex>& baseShortSwapIndexBase = nullptr,
+                               const boost::shared_ptr<SwapIndex>& simulatedSwapIndexBase = nullptr,
+                               const boost::shared_ptr<SwapIndex>& simulatedShortSwapIndexBase = nullptr,
+                               const bool stickyAbsMoney = false);
 
-protected:
+    //! \name TermStructure interface
+    //@{
+    DayCounter dayCounter() const override;
+    Date maxDate() const override;
+    Time maxTime() const override;
+    const Date& referenceDate() const override;
+    Calendar calendar() const override;
+    Natural settlementDays() const override;
+    //! \name VolatilityTermStructure interface
+    //@{
+    Rate minStrike() const override;
+    Rate maxStrike() const override;
+    //@}
     //! \name SwaptionVolatilityStructure interface
     //@{
-    boost::shared_ptr<SmileSection> smileSectionImpl(const Date& optionDate, const Period& swapTenor) const;
-    boost::shared_ptr<SmileSection> smileSectionImpl(Time optionTime, Time swapLength) const;
-    Volatility volatilityImpl(const Date& optionDate, const Period& swapTenor, Rate strike) const;
-    Volatility volatilityImpl(Time optionTime, Time swapLength, Rate strike) const;
+    const Period& maxSwapTenor() const override;
+    VolatilityType volatilityType() const override;
     //@}
-};
-}
+    //! \name Observer interface
+    //@{
+    void deepUpdate() override;
+    //@}
+    const Handle<SwaptionVolatilityStructure>& baseVol();
 
-#endif
+private:
+    boost::shared_ptr<SmileSection> smileSectionImpl(Time optionTime, Time swapLength) const override;
+    Volatility volatilityImpl(Time optionTime, Time swapLength, Rate strike) const override;
+    void performCalculations() const override;
+    Real getAtmLevel(const Real optionTime, const Real swapLength, const boost::shared_ptr<SwapIndex> swapIndexBase,
+                     const boost::shared_ptr<SwapIndex> shortSwapIndexBase) const;
+
+    Handle<SwaptionVolatilityStructure> base_;
+    std::vector<Real> strikeSpreads_;
+    std::vector<std::vector<Handle<Quote>>> volSpreads_;
+    boost::shared_ptr<SwapIndex> baseSwapIndexBase_, baseShortSwapIndexBase_;
+    boost::shared_ptr<SwapIndex> simulatedSwapIndexBase_, simulatedShortSwapIndexBase_;
+    bool stickyAbsMoney_;
+    mutable std::vector<Matrix> volSpreadValues_;
+    mutable std::vector<Interpolation2D> volSpreadInterpolation_;
+};
+
+} // namespace QuantExt

@@ -24,8 +24,8 @@
 #ifndef quantlib_oiccbasisswap_helper_hpp
 #define quantlib_oiccbasisswap_helper_hpp
 
-#include <ql/termstructures/yield/ratehelpers.hpp>
 #include <ql/instruments/overnightindexedswap.hpp>
+#include <ql/termstructures/yield/ratehelpers.hpp>
 #include <qle/instruments/oiccbasisswap.hpp>
 
 namespace QuantExt {
@@ -46,8 +46,8 @@ public:
                  bool spreadQuoteOnPayLeg, bool fixedDiscountOnPayLeg);
     //! \name RateHelper interface
     //@{
-    Real impliedQuote() const;
-    void setTermStructure(YieldTermStructure*);
+    Real impliedQuote() const override;
+    void setTermStructure(YieldTermStructure*) override;
     //@}
     //! \name inspectors
     //@{
@@ -55,10 +55,10 @@ public:
     //@}
     //! \name Visitability
     //@{
-    void accept(AcyclicVisitor&);
+    void accept(AcyclicVisitor&) override;
     //@}
 protected:
-    void initializeDates();
+    void initializeDates() override;
 
     Natural settlementDays_;
     Period term_;
@@ -73,6 +73,6 @@ protected:
     boost::shared_ptr<OvernightIndexedCrossCcyBasisSwap> swap_;
     RelinkableHandle<YieldTermStructure> termStructureHandle_;
 };
-}
+} // namespace QuantExt
 
 #endif

@@ -18,14 +18,14 @@
 
 /*! \file portfolio/swaption.hpp
     \brief Swaption data model and serialization
-    \ingroup portfolio
+    \ingroup tradedata
 */
 
 #pragma once
 
-#include <ored/portfolio/trade.hpp>
-#include <ored/portfolio/legdata.hpp>
 #include <ored/portfolio/optiondata.hpp>
+#include <ored/portfolio/swap.hpp>
+#include <ored/portfolio/trade.hpp>
 
 #include <ql/instruments/nonstandardswap.hpp>
 
@@ -38,38 +38,49 @@ namespace data {
 */
 class Swaption : public Trade {
 public:
-    //! Default constructor
     Swaption() : Trade("Swaption") {}
-    //! Constructor
-    Swaption(Envelope& env, OptionData& option, vector<LegData>& swap)
-        : Trade("Swaption", env), option_(option), swap_(swap) {}
+    Swaption(const Envelope& env, const OptionData& optionData, const vector<LegData>& legData)
+        : Trade("Swaption", env), optionData_(optionData), legData_(legData) {}
 
-    //! Build QuantLib/QuantExt instrument, link pricing engine
-    void build(const boost::shared_ptr<EngineFactory>&);
+    void build(const boost::shared_ptr<EngineFactory>&) override;
 
     //! \name Inspectors
     //@{
-    const OptionData& option() { return option_; }
-    const vector<LegData>& swap() { return swap_; }
+    const OptionData& optionData() { return optionData_; }
+    const vector<LegData>& legData() { return legData_; }
     //@}
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
-private:
-    OptionData option_;
-    vector<LegData> swap_;
 
-    boost::shared_ptr<VanillaSwap> buildVanillaSwap(const boost::shared_ptr<EngineFactory>&,
-                                                    const Date& firstExerciseDate = Null<Date>());
-    boost::shared_ptr<NonstandardSwap> buildNonStandardSwap(const boost::shared_ptr<EngineFactory>&);
+    QuantLib::Real notional() const override;
+    const std::map<std::string, boost::any>& additionalData() const override;
+    bool hasCashflows() const override { return false; }
+
+private:
+    OptionData optionData_;
+    vector<LegData> legData_;
+
+    //! build European Vanilla Swaption
     void buildEuropean(const boost::shared_ptr<EngineFactory>&);
+    boost::shared_ptr<VanillaSwap> buildVanillaSwap(const boost::shared_ptr<EngineFactory>&);
+
+    //! build all other types of Swaptions
     void buildBermudan(const boost::shared_ptr<EngineFactory>&);
+
+    //! build underlying swaps for exposure simulation
     std::vector<boost::shared_ptr<Instrument>> buildUnderlyingSwaps(const boost::shared_ptr<PricingEngine>&,
-                                                                    const boost::shared_ptr<Swap>&,
                                                                     const std::vector<Date>&);
+
+    boost::shared_ptr<ore::data::Swap> underlying_;
+    boost::shared_ptr<ExerciseBuilder> exerciseBuilder_;
+    Position::Type positionType_;
+    Exercise::Type exerciseType_;
+    Settlement::Type settlementType_;
+    Settlement::Method settlementMethod_;
 };
-}
-}
+} // namespace data
+} // namespace ore

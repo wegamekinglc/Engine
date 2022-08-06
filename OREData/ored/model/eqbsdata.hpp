@@ -25,20 +25,19 @@
 
 #include <vector>
 
-#include <ql/types.hpp>
 #include <ql/time/daycounters/actualactual.hpp>
+#include <ql/types.hpp>
 
 #include <qle/models/crossassetmodel.hpp>
 
-#include <ored/marketdata/market.hpp>
 #include <ored/configuration/conventions.hpp>
-#include <ored/utilities/xmlutils.hpp>
+#include <ored/marketdata/market.hpp>
 #include <ored/model/lgmdata.hpp>
-
-using namespace QuantLib;
+#include <ored/utilities/xmlutils.hpp>
 
 namespace ore {
 namespace data {
+using namespace QuantLib;
 
 //! EQ Model Parameters
 /*!
@@ -98,5 +97,5 @@ private:
     std::vector<std::string> optionExpiries_;
     std::vector<std::string> optionStrikes_;
 };
-}
-}
+} // namespace data
+} // namespace ore

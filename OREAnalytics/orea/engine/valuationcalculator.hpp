@@ -24,17 +24,16 @@
 #pragma once
 
 #include <orea/cube/npvcube.hpp>
-#include <orea/simulation/dategrid.hpp>
 #include <orea/simulation/simmarket.hpp>
 #include <ored/portfolio/trade.hpp>
-
-using ore::data::Trade;
-using QuantLib::Date;
-using QuantLib::Size;
-using QuantLib::Real;
+#include <ored/utilities/dategrid.hpp>
 
 namespace ore {
 namespace analytics {
+using ore::data::Trade;
+using QuantLib::Date;
+using QuantLib::Real;
+using QuantLib::Size;
 
 //! ValuationCalculator interface
 class ValuationCalculator {
@@ -48,14 +47,18 @@ public:
         Size tradeIndex,
         //! The market
         const boost::shared_ptr<SimMarket>& simMarket,
-        //! The cube
+        //! The cube for data on trade level
         boost::shared_ptr<NPVCube>& outputCube,
+        //! The cube for data on netting set level
+        boost::shared_ptr<NPVCube>& outputCubeNettingSet,
         //! The date
         const Date& date,
         //! Date index
         Size dateIndex,
         //! Sample
-        Size sample) = 0;
+        Size sample,
+        //! isCloseOut
+        bool isCloseOut = false) = 0;
 
     virtual void calculateT0(
         //! The trade
@@ -65,7 +68,9 @@ public:
         //! The market
         const boost::shared_ptr<SimMarket>& simMarket,
         //! The cube
-        boost::shared_ptr<NPVCube>& outputCube) = 0;
+        boost::shared_ptr<NPVCube>& outputCube,
+        //! The cube
+        boost::shared_ptr<NPVCube>& outputCubeNettingSet) = 0;
 };
 
 //! NPVCalculator
@@ -80,14 +85,16 @@ public:
 
     virtual void calculate(const boost::shared_ptr<Trade>& trade, Size tradeIndex,
                            const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube,
-                           const Date& date, Size dateIndex, Size sample);
+                           boost::shared_ptr<NPVCube>& outputCubeNettingSet, const Date& date, Size dateIndex,
+                           Size sample, bool isCloseOut = false) override;
 
     virtual void calculateT0(const boost::shared_ptr<Trade>& trade, Size tradeIndex,
-                             const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube);
+                             const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube,
+                             boost::shared_ptr<NPVCube>& outputCubeNettingSet) override;
 
-private:
-    Real npv(const boost::shared_ptr<Trade>& trade, const boost::shared_ptr<SimMarket>& simMarket);
+    virtual Real npv(const boost::shared_ptr<Trade>& trade, const boost::shared_ptr<SimMarket>& simMarket);
 
+protected:
     std::string baseCcyCode_;
     Size index_;
 };
@@ -106,10 +113,12 @@ public:
 
     virtual void calculate(const boost::shared_ptr<Trade>& trade, Size tradeIndex,
                            const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube,
-                           const Date& date, Size dateIndex, Size sample);
+                           boost::shared_ptr<NPVCube>& outputCubeNettingSet, const Date& date, Size dateIndex,
+                           Size sample, bool isCloseOut = false) override;
 
     virtual void calculateT0(const boost::shared_ptr<Trade>& trade, Size tradeIndex,
-                             const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube) {}
+                             const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube,
+                             boost::shared_ptr<NPVCube>& outputCubeNettingSet) override {}
 
 private:
     std::string baseCcyCode_;
@@ -120,11 +129,11 @@ private:
 
 //! NPVCalculatorFXT0
 /*! Calculate the NPV of the given trade, convert to base currency USING T0 RATES and divide by the numeraire
-*  This can sometimes be useful for finite difference ("bump-revalue") sensitivities
-*    (for FX spot sensis, if we wish to bump the spot in the pricing model, but still convert to base using static FX)
-*  If the NPV() call throws, we log an exception and write 0 to the cube
-*
-*/
+ *  This can sometimes be useful for finite difference ("bump-revalue") sensitivities
+ *    (for FX spot sensis, if we wish to bump the spot in the pricing model, but still convert to base using static FX)
+ *  If the NPV() call throws, we log an exception and write 0 to the cube
+ *
+ */
 class NPVCalculatorFXT0 : public ValuationCalculator {
 public:
     //! base ccy and index to write to
@@ -133,17 +142,19 @@ public:
 
     virtual void calculate(const boost::shared_ptr<Trade>& trade, Size tradeIndex,
                            const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube,
-                           const Date& date, Size dateIndex, Size sample);
+                           boost::shared_ptr<NPVCube>& outputCubeNettingSet, const Date& date, Size dateIndex,
+                           Size sample, bool isCloseOut = false) override;
 
     virtual void calculateT0(const boost::shared_ptr<Trade>& trade, Size tradeIndex,
-                             const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube);
+                             const boost::shared_ptr<SimMarket>& simMarket, boost::shared_ptr<NPVCube>& outputCube,
+                             boost::shared_ptr<NPVCube>& outputCubeNettingSet) override;
 
-private:
     Real npv(const boost::shared_ptr<Trade>& trade, const boost::shared_ptr<SimMarket>& simMarket);
 
+private:
     std::string baseCcyCode_;
     boost::shared_ptr<Market> t0Market_;
     Size index_;
 };
-}
-}
+} // namespace analytics
+} // namespace ore

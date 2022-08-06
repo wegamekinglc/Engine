@@ -18,13 +18,13 @@
 
 /*! \file portfolio/swap.hpp
     \brief Swap trade data model and serialization
-    \ingroup portfolio
+    \ingroup tradedata
 */
 
 #pragma once
 
-#include <ored/portfolio/trade.hpp>
 #include <ored/portfolio/legdata.hpp>
+#include <ored/portfolio/trade.hpp>
 
 namespace ore {
 namespace data {
@@ -35,30 +35,53 @@ namespace data {
 */
 class Swap : public Trade {
 public:
-    //! Deault constructor
-    Swap() : Trade("Swap") {}
+    //! Default constructor
+    Swap(const string swapType = "Swap") : Trade(swapType) {}
 
     //! Constructor with vector of LegData
-    Swap(Envelope env, vector<LegData>& legData) : Trade("Swap", env), legData_(legData) {}
+    Swap(const Envelope& env, const vector<LegData>& legData, const string swapType = "Swap",
+         const std::string settlement = "Physical")
+        : Trade(swapType, env), legData_(legData), settlement_(settlement) {}
 
     //! Constructor with two legs
-    Swap(Envelope env, LegData leg0, LegData leg1) : Trade("Swap", env), legData_({leg0, leg1}) {}
+    Swap(const Envelope& env, const LegData& leg0, const LegData& leg1, const string swapType = "Swap",
+         const std::string settlement = "Physical")
+        : Trade(swapType, env), legData_({leg0, leg1}), settlement_(settlement) {}
 
     //! Build QuantLib/QuantExt instrument, link pricing engine
-    virtual void build(const boost::shared_ptr<EngineFactory>&);
+    virtual void build(const boost::shared_ptr<EngineFactory>&) override;
+    QuantLib::Real notional() const override;
+    std::string notionalCurrency() const override;
+
+    //! Add underlying index names
+    std::map<AssetClass, std::set<std::string>>
+    underlyingIndices(const boost::shared_ptr<ReferenceDataManager>& referenceDataManager = nullptr) const override;
+
+    //! Settlement Type can be set to "Cash" for NDF. Default value is "Physical"
+    const string& settlement() const { return settlement_; }
 
     //! \name Serialisation
     //@{
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
     //@}
 
     //! \name Inspectors
     //@{
-    const vector<LegData>& legData() { return legData_; }
+    const vector<LegData>& legData() const { return legData_; }
     //@}
-private:
+
+    const std::map<std::string,boost::any>& additionalData() const override;
+
+protected:
+    virtual boost::shared_ptr<LegData> createLegData() const;
     vector<LegData> legData_;
+
+private:
+    string settlement_;
+    bool isXCCY_;
+    bool isResetting_;
+    Size notionalTakenFromLeg_;
 };
-}
-}
+} // namespace data
+} // namespace ore

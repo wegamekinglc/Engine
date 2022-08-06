@@ -27,16 +27,15 @@
 
 #include <boost/make_shared.hpp>
 
-#include <ql/time/schedule.hpp>
-#include <ql/time/daycounter.hpp>
-#include <ql/instruments/swap.hpp>
 #include <ql/indexes/iborindex.hpp>
+#include <ql/instruments/swap.hpp>
+#include <ql/time/daycounter.hpp>
+#include <ql/time/schedule.hpp>
 
 #include <qle/cashflows/averageonindexedcouponpricer.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Average overnight index swap
 /*! Swap with first leg fixed and the second
@@ -57,7 +56,8 @@ public:
                const Calendar& onPaymentCalendar, Natural rateCutoff = 0, Spread onSpread = 0.0, Real onGearing = 1.0,
                const DayCounter& onDayCounter = DayCounter(),
                const boost::shared_ptr<AverageONIndexedCouponPricer>& onCouponPricer =
-                   boost::shared_ptr<AverageONIndexedCouponPricer>());
+                   boost::shared_ptr<AverageONIndexedCouponPricer>(),
+               const bool telescopicValueDates = false);
 
     /*! Arithmetic average ON leg vs. fixed leg constructor, allowing for
         varying nominals, fixed rates, ON leg spreads and ON leg gearings.
@@ -70,7 +70,8 @@ public:
                std::vector<Spread> onSpreads = std::vector<Spread>(1, 0.0),
                std::vector<Real> onGearings = std::vector<Real>(1, 1.0), const DayCounter& onDayCounter = DayCounter(),
                const boost::shared_ptr<AverageONIndexedCouponPricer>& onCouponPricer =
-                   boost::shared_ptr<AverageONIndexedCouponPricer>());
+                   boost::shared_ptr<AverageONIndexedCouponPricer>(),
+               const bool telescopicValueDates = false);
 
     //! \name Inspectors
     //@{
@@ -127,7 +128,8 @@ private:
     std::vector<Real> onGearings_;
     DayCounter onDayCounter_;
     boost::shared_ptr<AverageONIndexedCouponPricer> onCouponPricer_;
+    bool telescopicValueDates_;
 };
-}
+} // namespace QuantExt
 
 #endif

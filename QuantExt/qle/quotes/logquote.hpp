@@ -26,9 +26,8 @@
 
 #include <ql/quote.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Class for storing logs of quotes for log-linear interpolation.
 /*! \test the correctness of the returned values is tested by
@@ -48,17 +47,17 @@ public:
     //@}
     //! \name Quote interface
     //@{
-    Real value() const;
-    bool isValid() const;
+    Real value() const override;
+    bool isValid() const override;
     //@}
     //! \name Observer interface
     //@{
-    void update();
+    void update() override;
     //@}
 protected:
     Handle<Quote> q_;
     Real logValue_;
 };
-}
+} // namespace QuantExt
 
 #endif

@@ -28,21 +28,23 @@
 
 #include <ored/utilities/xmlutils.hpp>
 
+namespace ore {
+namespace analytics {
 using namespace ore::data;
 using std::map;
 using std::string;
 
-namespace ore {
-namespace analytics {
-
+//! Provides the input data and references to input files used in OREApp
+/*! \ingroup app
+ */
 class Parameters : public XMLSerializable {
 public:
     Parameters() {}
 
     void clear();
     void fromFile(const string&);
-    virtual void fromXML(XMLNode* node);
-    virtual XMLNode* toXML(XMLDocument& doc);
+    virtual void fromXML(XMLNode* node) override;
+    virtual XMLNode* toXML(XMLDocument& doc) override;
 
     bool hasGroup(const string& groupName) const;
     bool has(const string& groupName, const string& paramName) const;
@@ -53,5 +55,5 @@ public:
 private:
     map<string, map<string, string>> data_;
 };
-}
-}
+} // namespace analytics
+} // namespace ore

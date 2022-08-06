@@ -16,8 +16,8 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-/*! \file lgmimpliedyieldtermstructure.hpp
-    \brief yield term structure implied by a LGM model
+/*! \file staticallycorrectedyieldtermstructure.hpp
+    \brief Statically corrected yield term structure
     \ingroup termstructures
 */
 
@@ -30,9 +30,8 @@
 
 #include <boost/unordered_map.hpp>
 
-using namespace QuantLib;
-
 namespace QuantExt {
+using namespace QuantLib;
 
 //! Statically Corrected Yield Term Structure
 /*! This termstructure takes a floating reference date term structure
@@ -41,7 +40,10 @@ namespace QuantExt {
     Usually the floating term structure will coincide with
     the first fixed at construction time. Also, the two fixed
     termstructures should have the same reference date and all three
-    termstructures should have the same day counter. */
+    termstructures should have the same day counter.
+
+    \ingroup termstructures
+ */
 class StaticallyCorrectedYieldTermStructure : public YieldTermStructure {
 public:
     StaticallyCorrectedYieldTermStructure(const Handle<YieldTermStructure>& floatingTermStructure,
@@ -55,17 +57,17 @@ public:
         registerWith(fixedTargetTermStructure);
     }
 
-    Date maxDate() const { return x_->maxDate(); }
-    void update() {}
-    const Date& referenceDate() const { return x_->referenceDate(); }
+    Date maxDate() const override { return x_->maxDate(); }
+    void update() override {}
+    const Date& referenceDate() const override { return x_->referenceDate(); }
 
-    Calendar calendar() const { return x_->calendar(); }
-    Natural settlementDays() const { return x_->settlementDays(); }
+    Calendar calendar() const override { return x_->calendar(); }
+    Natural settlementDays() const override { return x_->settlementDays(); }
 
     void flushCache() { cache_c_.clear(); }
 
 protected:
-    Real discountImpl(Time t) const;
+    Real discountImpl(Time t) const override;
 
 private:
     // FIXME: remove cache
@@ -119,6 +121,6 @@ inline Real StaticallyCorrectedYieldTermStructure::discountImpl(Time t) const {
     return x_->discount(t) * c;
 }
 
-} // namesapce QuantExt
+} // namespace QuantExt
 
 #endif

@@ -18,6 +18,7 @@
 
 /*! \file analyticlgmcdsoptionengine.hpp
     \brief analytic lgm cds option engine
+ \ingroup engines
 */
 
 #ifndef quantext_lgm_cdsoptionengine_hpp
@@ -27,14 +28,15 @@
 #include <qle/models/crossassetmodel.hpp>
 
 namespace QuantExt {
-
+//! analytic lgm cds option engine
+//! \ingroup engines
 /*! Reference: Modern Derivatives Pricing and Credit Exposure Analysis by Lichters, Stamm and Gallagher, 15.1 */
 class AnalyticLgmCdsOptionEngine : public QuantExt::CdsOption::engine {
 public:
     AnalyticLgmCdsOptionEngine(const boost::shared_ptr<CrossAssetModel>& model, const Size index, const Size ccy,
                                const Real recoveryRate,
                                const Handle<YieldTermStructure>& termStructure = Handle<YieldTermStructure>());
-    void calculate() const;
+    void calculate() const override;
 
 private:
     Real Ei(const Real w, const Real strike, const Size i) const;

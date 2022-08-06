@@ -30,18 +30,18 @@ namespace analytics {
 
 //! Factory class for cloning scenario objects
 /*! \ingroup scenario
-*/
+ */
 class CloneScenarioFactory : public ScenarioFactory {
 public:
     //! Constructor
     CloneScenarioFactory(const boost::shared_ptr<Scenario>& baseScenario);
     //! returns a new scenario, using the base scenario as a starting point
     const boost::shared_ptr<Scenario> buildScenario(Date asof, const std::string& label = "",
-                                                    Real numeraire = 0.0) const;
+                                                    Real numeraire = 0.0) const override;
 
 private:
     boost::shared_ptr<Scenario> baseScenario_;
 };
 
-} // namesapce scenario
+} // namespace analytics
 } // namespace ore

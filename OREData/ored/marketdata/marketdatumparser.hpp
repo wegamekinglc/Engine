@@ -23,21 +23,45 @@
 
 #pragma once
 
-#include <string>
-#include <ql/types.hpp>
-#include <ql/time/date.hpp>
 #include <ored/marketdata/marketdatum.hpp>
-
-using std::string;
-using QuantLib::Real;
-using QuantLib::Date;
+#include <ql/time/calendar.hpp>
+#include <ql/time/calendars/weekendsonly.hpp>
+#include <ql/time/date.hpp>
+#include <ql/types.hpp>
+#include <string>
 
 namespace ore {
 namespace data {
+using QuantLib::Date;
+using QuantLib::Real;
+using std::string;
 
 //! Function to parse a market datum
 /*! \ingroup marketdata
-*/
+ */
 boost::shared_ptr<MarketDatum> parseMarketDatum(const Date&, const string&, const Real&);
-}
-}
+
+//! Get a date from a date string or period
+/*! \ingroup marketdata
+ */
+Date getDateFromDateOrPeriod(const string& token, Date asof, QuantLib::Calendar cal = QuantLib::WeekendsOnly(), 
+    QuantLib::BusinessDayConvention bdc = QuantLib::BusinessDayConvention::Following);
+
+//! Convert text to QuantLib::Period of Fx forward string
+/*!
+  \ingroup marketdata
+ */
+boost::variant<QuantLib::Period, FXForwardQuote::FxFwdString> parseFxPeriod(const string& s);
+
+
+QuantLib::Period fxFwdQuoteTenor(const boost::variant<QuantLib::Period, FXForwardQuote::FxFwdString>& term);
+
+
+QuantLib::Period fxFwdQuoteStartTenor(const boost::variant<QuantLib::Period, FXForwardQuote::FxFwdString>& term,
+                                      const boost::shared_ptr<FXConvention>& fxConvention = nullptr);
+
+bool matchFxFwdStringTerm(const boost::variant<QuantLib::Period, FXForwardQuote::FxFwdString>& term,
+                          const FXForwardQuote::FxFwdString& fxfwdString);
+
+} // namespace data
+} // namespace ore

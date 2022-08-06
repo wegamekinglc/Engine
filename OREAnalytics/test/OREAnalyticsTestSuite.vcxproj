@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug (static runtime)|Win32">
@@ -35,16 +35,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="aggregationscenariodata.hpp" />
-    <ClInclude Include="cube.hpp" />
-    <ClInclude Include="observationmode.hpp" />
-    <ClInclude Include="scenariogenerator.hpp" />
-    <ClInclude Include="scenariosimmarket.hpp" />
-    <ClInclude Include="sensitivityanalysis.hpp" />
-    <ClInclude Include="sensitivityanalysis2.hpp" />
-    <ClInclude Include="sensitivityperformance.hpp" />
-    <ClInclude Include="stresstest.hpp" />
-    <ClInclude Include="swapperformance.hpp" />
+    <ClInclude Include="oreatoplevelfixture.hpp" />
     <ClInclude Include="testmarket.hpp" />
     <ClInclude Include="testportfolio.hpp" />
   </ItemGroup>
@@ -54,19 +45,17 @@
     <ClCompile Include="observationmode.cpp" />
     <ClCompile Include="scenariogenerator.cpp" />
     <ClCompile Include="scenariosimmarket.cpp" />
+    <ClCompile Include="sensitivityaggregator.cpp" />
     <ClCompile Include="sensitivityanalysis.cpp" />
-    <ClCompile Include="sensitivityanalysis2.cpp" />
+    <ClCompile Include="sensitivityanalysisanalytic.cpp" />
     <ClCompile Include="sensitivityperformance.cpp" />
+    <ClCompile Include="shiftscenariogenerator.cpp" />
+    <ClCompile Include="simulationmeasures.cpp" />
     <ClCompile Include="stresstest.cpp" />
     <ClCompile Include="swapperformance.cpp" />
     <ClCompile Include="testmarket.cpp" />
     <ClCompile Include="testportfolio.cpp" />
     <ClCompile Include="testsuite.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\OREAnalytics.vcxproj">
-      <Project>{69b19b76-a089-4f8e-a10b-58f607a96214}</Project>
-    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectName>OREAnalyticsTestSuite</ProjectName>
@@ -75,7 +64,7 @@
     <VCTargetsPath Condition="'$(VCTargetsPath11)' != '' and '$(VSVersion)' == '' and $(VisualStudioVersion) == ''">$(VCTargetsPath11)</VCTargetsPath>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <Import Project="..\OREAnalytics.props" />
+  <Import Project="..\..\ore.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
@@ -121,35 +110,43 @@
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.Win32.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.x64.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.Win32.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.x64.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.Win32.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.x64.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.Win32.user.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\MSVC\ore.x64.user.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">bin\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">true</GenerateManifest>
@@ -160,8 +157,8 @@
     <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">false</PostBuildEventUseInBuild>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">bin\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">false</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">true</GenerateManifest>
@@ -172,8 +169,8 @@
     <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">false</PostBuildEventUseInBuild>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">bin\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</GenerateManifest>
@@ -184,8 +181,8 @@
     <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</PostBuildEventUseInBuild>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">bin\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</GenerateManifest>
@@ -194,25 +191,25 @@
     <EmbedManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</EmbedManifest>
     <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</PostBuildEventUseInBuild>
     <PostBuildEventUseInBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</PostBuildEventUseInBuild>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">OREAnalytics-test-suite-$(qlCompilerTag)-mt</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">OREAnalytics-test-suite-$(qlCompilerTag)-x64-mt</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">OREAnalytics-test-suite-$(qlCompilerTag)-mt-s</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">OREAnalytics-test-suite-$(qlCompilerTag)-x64-mt-s</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">OREAnalytics-test-suite-$(qlCompilerTag)-mt-gd</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">OREAnalytics-test-suite-$(qlCompilerTag)-x64-mt-gd</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">OREAnalytics-test-suite-$(qlCompilerTag)-mt-sgd</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">OREAnalytics-test-suite-$(qlCompilerTag)-x64-mt-sgd</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">OREAnalytics-test-suite-mt</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">OREAnalytics-test-suite-x64-mt</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">OREAnalytics-test-suite-mt-s</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">OREAnalytics-test-suite-x64-mt-s</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">OREAnalytics-test-suite-mt-gd</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">OREAnalytics-test-suite-x64-mt-gd</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">OREAnalytics-test-suite-mt-sgd</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">OREAnalytics-test-suite-x64-mt-sgd</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|Win32'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -221,13 +218,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
@@ -263,14 +260,14 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug (static runtime)|x64'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -279,13 +276,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -319,7 +316,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|Win32'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -328,7 +325,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -338,13 +335,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <CompileAs>Default</CompileAs>
@@ -378,7 +375,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release (static runtime)|x64'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -387,7 +384,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -397,13 +394,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <CompileAs>Default</CompileAs>
@@ -436,14 +433,14 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
@@ -452,13 +449,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
@@ -492,14 +489,14 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <IntrinsicFunctions>false</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
@@ -508,13 +505,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -546,7 +543,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -555,7 +552,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -565,13 +562,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <CompileAs>Default</CompileAs>
@@ -605,7 +602,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Midl>
-      <TypeLibraryName>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
+      <TypeLibraryName>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.tlb</TypeLibraryName>
       <HeaderFileName>
       </HeaderFileName>
     </Midl>
@@ -614,7 +611,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>..;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;..\..\ORETest;..\..\OREData;..\..\QuantExt;..\..\QuantLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;WIN32;_CONSOLE;_SCL_SECURE_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -624,13 +621,13 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <PrecompiledHeaderOutputFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\testsuite.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)\%(RelativeDir)</ObjectFileName>
       <ProgramDataBaseFileName>$(IntDir)\%(RelativeDir)</ProgramDataBaseFileName>
       <BrowseInformation>
       </BrowseInformation>
-      <BrowseInformationFile>.\build\$(qlCompilerTag)\$(Platform)\$(Configuration)\</BrowseInformationFile>
+      <BrowseInformationFile>.\build\$(PlatformToolset)\$(Platform)\$(Configuration)\</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <CompileAs>Default</CompileAs>

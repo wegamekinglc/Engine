@@ -26,28 +26,30 @@
 
 #include <ql/instruments/capfloor.hpp>
 #include <ql/quotes/simplequote.hpp>
-#include <ql/termstructures/volatility/optionlet/optionletstripper.hpp>
+#include <qle/termstructures/optionletstripper.hpp>
 
 #include <boost/optional.hpp>
 
+namespace QuantExt {
 using namespace QuantLib;
 using boost::optional;
 
-namespace QuantExt {
-
-typedef std::vector<std::vector<boost::shared_ptr<CapFloor> > > CapFloorMatrix;
+typedef std::vector<std::vector<boost::shared_ptr<QuantLib::CapFloor> > > CapFloorMatrix;
 
 /*! Helper class to strip optionlet (i.e. caplet/floorlet) volatilities
     (a.k.a. forward-forward volatilities) from the (cap/floor) term
     volatilities of a CapFloorTermVolSurface.
+    \ingroup termstructures
 */
-class OptionletStripper1 : public OptionletStripper {
+class OptionletStripper1 : public QuantExt::OptionletStripper {
 public:
-    OptionletStripper1(const boost::shared_ptr<CapFloorTermVolSurface>&, const boost::shared_ptr<IborIndex>& index,
-                       Rate switchStrikes = Null<Rate>(), Real accuracy = 1.0e-6, Natural maxIter = 100,
+    // If dontThrow is set to true than any vols that would throw are set to dontThrowMinVol (default is 0.0)
+    OptionletStripper1(const boost::shared_ptr<QuantExt::CapFloorTermVolSurface>&,
+                       const boost::shared_ptr<IborIndex>& index, Rate switchStrikes = Null<Rate>(),
+                       Real accuracy = 1.0e-6, Natural maxIter = 100,
                        const Handle<YieldTermStructure>& discount = Handle<YieldTermStructure>(),
                        const VolatilityType type = ShiftedLognormal, const Real displacement = 0.0,
-                       bool dontThrow = false, const optional<VolatilityType> targetVolatilityType = boost::none,
+                       const optional<VolatilityType> targetVolatilityType = boost::none,
                        const optional<Real> targetDisplacement = boost::none);
 
     const Matrix& capFloorPrices() const;
@@ -59,9 +61,11 @@ public:
 
     //! \name LazyObject interface
     //@{
-    void performCalculations() const;
+    void performCalculations() const override;
     //@}
 private:
+    bool stripOptionlets(std::vector<Real>&, CapFloor::Type, Size, const Handle<YieldTermStructure>&, Real) const;
+
     mutable Matrix capFloorPrices_, optionletPrices_;
     mutable Matrix capFloorVols_;
     mutable Matrix optionletStDevs_, capletVols_;
@@ -74,10 +78,9 @@ private:
     mutable Rate switchStrike_;
     Real accuracy_;
     Natural maxIter_;
-    bool dontThrow_;
     const VolatilityType inputVolatilityType_;
     const Real inputDisplacement_;
 };
-}
+} // namespace QuantExt
 
 #endif
