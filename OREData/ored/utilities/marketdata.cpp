@@ -38,13 +38,13 @@ const string xccyCurveNamePrefix = "__XCCY__";
 
 string xccyCurveName(const string& ccyCode) { return xccyCurveNamePrefix + "-" + ccyCode; }
 
-Handle<YieldTermStructure> xccyYieldCurve(const boost::shared_ptr<Market>& market, const string& ccyCode,
+Handle<YieldTermStructure> xccyYieldCurve(const QuantLib::ext::shared_ptr<Market>& market, const string& ccyCode,
                                           const string& configuration) {
     bool dummy;
     return xccyYieldCurve(market, ccyCode, dummy, configuration);
 }
 
-Handle<YieldTermStructure> xccyYieldCurve(const boost::shared_ptr<Market>& market, const string& ccyCode,
+Handle<YieldTermStructure> xccyYieldCurve(const QuantLib::ext::shared_ptr<Market>& market, const string& ccyCode,
                                           bool& outXccyExists, const string& configuration) {
 
     Handle<YieldTermStructure> curve;
@@ -60,6 +60,20 @@ Handle<YieldTermStructure> xccyYieldCurve(const boost::shared_ptr<Market>& marke
     }
 
     return curve;
+}
+
+Handle<YieldTermStructure> indexOrYieldCurve(const QuantLib::ext::shared_ptr<Market>& market, const std::string& name,
+                                             const std::string& configuration) {
+    try {
+        return market->iborIndex(name, configuration)->forwardingTermStructure();
+    } catch (...) {
+    }
+    try {
+        return market->yieldCurve(name, configuration);
+    } catch (...) {
+    }
+    QL_FAIL("Could not find index or yield curve with name '" << name << "' under configuration '" << configuration
+                                                              << "' or default configuration.");
 }
 
 std::string securitySpecificCreditCurveName(const std::string& securityId, const std::string& creditCurveId) {
@@ -81,7 +95,7 @@ std::string creditCurveNameFromSecuritySpecificCreditCurveName(const std::string
     return name;
 }
 
-QuantLib::Handle<QuantExt::CreditCurve> securitySpecificCreditCurve(const boost::shared_ptr<Market>& market,
+QuantLib::Handle<QuantExt::CreditCurve> securitySpecificCreditCurve(const QuantLib::ext::shared_ptr<Market>& market,
                                                                     const std::string& securityId,
                                                                     const std::string& creditCurveId,
                                                                     const std::string& configuration) {
@@ -120,76 +134,98 @@ std::string prettyPrintInternalCurveName(std::string name) {
     return name;
 }
 
-boost::shared_ptr<QuantExt::FxIndex> buildFxIndex(const string& fxIndex, const string& domestic, const string& foreign,
-                                                  const boost::shared_ptr<Market>& market, const string& configuration,
+QuantLib::ext::shared_ptr<QuantExt::FxIndex> buildFxIndex(const string& fxIndex, const string& domestic, const string& foreign,
+                                                  const QuantLib::ext::shared_ptr<Market>& market, const string& configuration,
                                                   bool useXbsCurves) {
 
-    // get the base index from the market for the currency pair
-    Handle<QuantExt::FxIndex> fxInd = market->fxIndex(fxIndex);
+    auto fxInd = parseFxIndex(fxIndex);
 
-    // check if we need to invert the index
     string source = fxInd->sourceCurrency().code();
     string target = fxInd->targetCurrency().code();
-    bool invertFxIndex = false;
-    if (!domestic.empty() && !foreign.empty()) {
-        if (domestic == target && foreign == source) {
-            invertFxIndex = false;
-        } else if (domestic == source && foreign == target) {
-            invertFxIndex = true;
-        } else {
-            QL_FAIL("Cannot combine FX Index " << fxIndex << " with reset ccy " << domestic
-                                               << " and reset foreignCurrency " << foreign);
-        }
-    }
+    string family = fxInd->familyName();
 
-    Handle<YieldTermStructure> sorTS, tarTS;
-    if (useXbsCurves) {
-        sorTS = xccyYieldCurve(market, source, configuration);
-        tarTS = xccyYieldCurve(market, target, configuration);
-    }
-    if (invertFxIndex || useXbsCurves)
-        return fxInd->clone(Handle<Quote>(), sorTS, tarTS, fxInd->familyName(), invertFxIndex);
-    else
-        return fxInd.currentLink();
+    fxInd = *market->fxIndex("FX-" + family + "-" + foreign + "-" + domestic);
+
+    QL_REQUIRE((domestic == target && foreign == source) || (domestic == source && foreign == target),
+               "buildFxIndex(): index '" << fxIndex << "' does not match given currencies " << domestic << ", "
+                                         << foreign);
+
+    if (!useXbsCurves)
+        return fxInd;
+
+    return fxInd->clone(Handle<Quote>(), xccyYieldCurve(market, foreign, configuration),
+                        xccyYieldCurve(market, domestic, configuration));
 }
 
-void getFxIndexConventions(const string& index, Natural& fixingDays, Calendar& fixingCalendar) {
+std::tuple<Natural, Calendar, BusinessDayConvention> getFxIndexConventions(const string& index) {
     // can take an fx index or ccy pair e.g. EURUSD
     string ccy1, ccy2;
+    string fixingSource;
     if (isFxIndex(index)) {
         auto ind = parseFxIndex(index);
         ccy1 = ind->sourceCurrency().code();
         ccy2 = ind->targetCurrency().code();
+        fixingSource = ind->familyName();
     } else {
         QL_REQUIRE(index.size() == 6, "getFxIndexConventions: index must be an FXIndex of form FX-ECB-EUR-USD, "
-                                          << "or a currency pair e.g. EURUSD.");
+                                          << "or a currency pair e.g. EURUSD, got '" + index + "'");
         ccy1 = index.substr(0, 3);
         ccy2 = index.substr(3);
+        fixingSource = "GENERIC";
     }
 
+    if (ccy1 == ccy2)
+        return std::make_tuple(0, NullCalendar(), Unadjusted);
+
+    const QuantLib::ext::shared_ptr<Conventions>& conventions = InstrumentConventions::instance().conventions();
+    QuantLib::ext::shared_ptr<Convention> con;
+    // first look for the index and inverse index directly
     try {
-        const boost::shared_ptr<Conventions>& conventions = InstrumentConventions::instance().conventions();
-        boost::shared_ptr<Convention> con;
-        try {
-            // first look for the index directly
-            con = conventions->get(index);
-        } catch (...) {
-            // then by currency pair
-            con = conventions->getFxConvention(ccy1, ccy2);
-        }
-        if (auto fxCon = boost::dynamic_pointer_cast<FXConvention>(con)) {
-            fixingDays = fxCon->spotDays();
-            fixingCalendar = fxCon->advanceCalendar();
-        }
+        con = conventions->get("FX-" + fixingSource + "-" + ccy1 + "-" + ccy2);
     } catch (...) {
-        fixingDays = 2;
-	// default calendar for pseudo currencies is USD
-	if(isPseudoCurrency(ccy1))
-	    ccy1 = "USD";
-	if(isPseudoCurrency(ccy2))
-            ccy2 = "USD";
-        fixingCalendar = parseCalendar(ccy1 + "," + ccy2);
     }
+    if (con == nullptr) {
+        try {
+            con = conventions->get("FX-" + fixingSource + "-" + ccy2 + "-" + ccy1);
+        } catch (...) {
+        }
+    }
+    // then by currency pair and inverse currency pair (getFxConvention() handles both)
+    if (con == nullptr) {
+        try {
+            con = conventions->getFxConvention(ccy1, ccy2);
+        } catch (...) {
+        }
+    }
+    if (auto fxCon = QuantLib::ext::dynamic_pointer_cast<FXConvention>(con)) {
+        TLOG("getFxIndexConvention(" << index << "): " << fxCon->spotDays() << " / " << fxCon->advanceCalendar().name()
+                                     << " from convention.");
+        return std::make_tuple(fxCon->spotDays(), fxCon->advanceCalendar(), fxCon->convention());
+    } else if (auto comCon = QuantLib::ext::dynamic_pointer_cast<CommodityForwardConvention>(con); comCon !=nullptr
+               && (isPseudoCurrency(ccy1) || isPseudoCurrency(ccy2))) {
+        TLOG("getFxIndexConvention(" << index << "): " << fxCon->spotDays() << " / " << fxCon->advanceCalendar().name()
+                                     << " from convention.");
+        return std::make_tuple(0, comCon->advanceCalendar(), comCon->bdc());
+    }
+
+    // default calendar for pseudo currencies is USD
+    if (isPseudoCurrency(ccy1))
+        ccy1 = "USD";
+    if (isPseudoCurrency(ccy2))
+        ccy2 = "USD";
+
+    try {
+	Calendar cal = parseCalendar(ccy1 + "," + ccy2);
+        TLOG("getFxIndexConvention(" << index << "): 2 (default) / " << cal.name()
+                                     << " (from ccys), no convention found.");
+        return std::make_tuple(2, cal, Following);
+    } catch (const std::exception& e) {
+        ALOG("could not get fx index convention for '" << index << "': " << e.what() << ", continue with 'USD'");
+    }
+    TLOG("getFxIndexConvention(" << index
+                                 << "): 2 (default) / USD (default), no convention found, could not parse calendar '"
+                                 << (ccy1 + "," + ccy2) << "'");
+    return std::make_tuple(2, parseCalendar("USD"), Following);
 }
 
 std::pair<std::string, QuantLib::Period> splitCurveIdWithTenor(const std::string& creditCurveId) {
@@ -204,7 +240,7 @@ std::pair<std::string, QuantLib::Period> splitCurveIdWithTenor(const std::string
     return make_pair(creditCurveId, 0 * Days);
 }
 
-QuantLib::Handle<QuantExt::CreditCurve> indexCdsDefaultCurve(const boost::shared_ptr<Market>& market,
+QuantLib::Handle<QuantExt::CreditCurve> indexCdsDefaultCurve(const QuantLib::ext::shared_ptr<Market>& market,
                                                              const std::string& creditCurveId,
                                                              const std::string& config) {
     try {

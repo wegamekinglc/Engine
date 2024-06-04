@@ -30,15 +30,18 @@
 #include <ored/portfolio/enginefactory.hpp>
 #include <ored/portfolio/fixingdates.hpp>
 #include <ored/portfolio/portfolio.hpp>
+#include <ored/portfolio/trade.hpp>
 #include <ored/utilities/csvfilereader.hpp>
 #include <ored/utilities/indexparser.hpp>
 #include <ored/utilities/to_string.hpp>
+#include <qle/indexes/dividendmanager.hpp>
 #include <oret/datapaths.hpp>
 #include <oret/toplevelfixture.hpp>
 #include <ql/time/calendars/weekendsonly.hpp>
 #include <tuple>
 
 using namespace QuantLib;
+using namespace QuantExt;
 using namespace boost::unit_test_framework;
 using namespace std;
 using namespace ore::data;
@@ -104,16 +107,16 @@ map<tuple<string, Date>, Fixing> dummyFixings() {
 }
 
 // Load the requested fixings
-void loadFixings(const map<string, set<Date>>& requestedFixings) {
+void loadFixings(const map<string, RequiredFixings::FixingDates>& requestedFixings) {
 
     // Get the dummy fixings that we have provided in the input directory
     auto fixingValues = dummyFixings();
 
     // Fetch the relevant fixings using the requestedFixings argument
-    vector<Fixing> relevantFixings;
-    for (const auto& kv : requestedFixings) {
-        for (const auto& d : kv.second) {
-            relevantFixings.push_back(fixingValues.at(make_pair(kv.first, d)));
+    set<Fixing> relevantFixings;
+    for (const auto& [indexName, fixingDates] : requestedFixings) {
+        for (const auto& [d, mandatory] : fixingDates) {
+            relevantFixings.insert(fixingValues.at(make_pair(indexName, d)));
         }
     }
 
@@ -128,8 +131,8 @@ void loadFixings(const map<string, set<Date>>& requestedFixings) {
 class F : public TopLevelFixture {
 public:
     Date today;
-    boost::shared_ptr<Conventions> conventions = boost::make_shared<Conventions>();
-    boost::shared_ptr<EngineFactory> engineFactory;
+    QuantLib::ext::shared_ptr<Conventions> conventions = QuantLib::ext::make_shared<Conventions>();
+    QuantLib::ext::shared_ptr<EngineFactory> engineFactory;
 
     F() {
         today = Date(12, Feb, 2019);
@@ -138,25 +141,25 @@ public:
         conventions->fromFile(TEST_INPUT_FILE("market/conventions.xml"));
         InstrumentConventions::instance().setConventions(conventions);
         
-        auto todaysMarketParams = boost::make_shared<TodaysMarketParameters>();
+        auto todaysMarketParams = QuantLib::ext::make_shared<TodaysMarketParameters>();
         todaysMarketParams->fromFile(TEST_INPUT_FILE("market/todaysmarket.xml"));
 
-        auto curveConfigs = boost::make_shared<CurveConfigurations>();
+        auto curveConfigs = QuantLib::ext::make_shared<CurveConfigurations>();
         curveConfigs->fromFile(TEST_INPUT_FILE("market/curveconfig.xml"));
 
         string marketFile = TEST_INPUT_FILE("market/market.txt");
         string fixingsFile = TEST_INPUT_FILE("market/fixings_for_bootstrap.txt");
         string dividendsFile = TEST_INPUT_FILE("market/dividends.txt");
-        auto loader = boost::make_shared<CSVLoader>(marketFile, fixingsFile, dividendsFile, false);
+        auto loader = QuantLib::ext::make_shared<CSVLoader>(marketFile, fixingsFile, dividendsFile, false);
 
         bool continueOnError = false;
-        boost::shared_ptr<TodaysMarket> market = boost::make_shared<TodaysMarket>(
+        QuantLib::ext::shared_ptr<TodaysMarket> market = QuantLib::ext::make_shared<TodaysMarket>(
             today, todaysMarketParams, loader, curveConfigs, continueOnError);
 
-        boost::shared_ptr<EngineData> engineData = boost::make_shared<EngineData>();
+        QuantLib::ext::shared_ptr<EngineData> engineData = QuantLib::ext::make_shared<EngineData>();
         engineData->fromFile(TEST_INPUT_FILE("market/pricingengine.xml"));
 
-        engineFactory = boost::make_shared<EngineFactory>(engineData, market);
+        engineFactory = QuantLib::ext::make_shared<EngineFactory>(engineData, market);
     }
 
     ~F() {}
@@ -197,7 +200,7 @@ BOOST_DATA_TEST_CASE_F(F, testTradeTypes,
     // Read in the trade
     Portfolio p;
     string portfolioFile = "trades/" + tradeType + "/" + tradeCase + ".xml";
-    p.load(TEST_INPUT_FILE(portfolioFile));
+    p.fromFile(TEST_INPUT_FILE(portfolioFile));
     BOOST_REQUIRE_MESSAGE(p.size() == 1, "Expected portfolio to contain a single trade");
 
     // Ask for fixings before trades are built should return empty set
@@ -220,57 +223,72 @@ BOOST_DATA_TEST_CASE_F(F, testTradeTypes,
                                            << "] but got a map containing " << m.size() << " indices");
 
         // Trade should not throw if we ask for NPV
-        BOOST_CHECK_NO_THROW(p.trades()[0]->instrument()->NPV());
+        BOOST_CHECK_NO_THROW(p.trades().begin()->second->instrument()->NPV());
 
     } else {
         // Check the retrieved fixings against the expected fixings
         auto expMap = exp.at(key);
         BOOST_CHECK_EQUAL(expMap.size(), m.size());
-        for (const auto& kv : expMap) {
-            BOOST_CHECK_MESSAGE(m.count(kv.first), "Could not find index " << kv.first << " in retrieved fixings");
-            BOOST_CHECK_EQUAL_COLLECTIONS(kv.second.begin(), kv.second.end(), m.at(kv.first).begin(),
-                                          m.at(kv.first).end());
+        for (const auto& [indexName, expectedDates] : expMap) {
+            BOOST_CHECK_MESSAGE(m.count(indexName), "Could not find index " <<indexName << " in retrieved fixings");
+            std::set<QuantLib::Date> actualDates;
+            for (const auto& [d, _] : m.at(indexName)) {
+                actualDates.insert(d);
+            }
+            BOOST_CHECK_EQUAL_COLLECTIONS(expectedDates.begin(), expectedDates.end(), actualDates.begin(),
+                                          actualDates.end());
         }
 
         // Trade should throw if we ask for NPV and have not added the fixings
         // If it is the zciis trade, it won't throw because the fixings were added for the bootstrap
         if (tradeType != "zciis_with_interp" && tradeType != "cpi_swap_with_interp") {
-            BOOST_CHECK_THROW(p.trades()[0]->instrument()->NPV(), Error);
+            BOOST_CHECK_THROW(p.trades().begin()->second->instrument()->NPV(), Error);
         }
 
         // Add the fixings
         loadFixings(m);
 
         // Trade should now not throw when we try to price it
-        BOOST_CHECK_NO_THROW(p.trades()[0]->instrument()->NPV());
+        BOOST_CHECK_NO_THROW(p.trades().begin()->second->instrument()->NPV());
     }
 }
 
 BOOST_AUTO_TEST_CASE(testModifyInflationFixings) {
 
     // Original fixings
-    map<string, set<Date>> fixings = {
-        {"EUHICP", {Date(1, Jan, 2019), Date(1, Dec, 2018), Date(1, Nov, 2018)}},
-        {"USCPI",
-         {Date(1, Dec, 2018), Date(1, Nov, 2018), Date(22, Oct, 2018), Date(1, Feb, 2018), Date(1, Feb, 2016)}},
-        {"EUR-EURIBOR-3M", {Date(18, Dec, 2018), Date(13, Feb, 2019)}}};
+    map<string, RequiredFixings::FixingDates> fixings = {
+        {"EUHICP", RequiredFixings::FixingDates({Date(1, Jan, 2019), Date(1, Dec, 2018), Date(1, Nov, 2018)}, true)},
+        {"USCPI", RequiredFixings::FixingDates({Date(1, Dec, 2018), Date(1, Nov, 2018), Date(22, Oct, 2018),
+                                                Date(1, Feb, 2018), Date(1, Feb, 2016)},
+                                               true)},
+        {"EUR-EURIBOR-3M", RequiredFixings::FixingDates({Date(18, Dec, 2018), Date(13, Feb, 2019)}, true)}};
 
     // Expected fixings after inflation modification
-    map<string, set<Date>> expectedFixings = {
-        {"EUHICP", {Date(31, Jan, 2019), Date(31, Dec, 2018), Date(30, Nov, 2018)}},
-        {"USCPI",
-         {Date(31, Dec, 2018), Date(30, Nov, 2018), Date(22, Oct, 2018), Date(28, Feb, 2018), Date(29, Feb, 2016)}},
-        {"EUR-EURIBOR-3M", {Date(18, Dec, 2018), Date(13, Feb, 2019)}}};
+    map<string, RequiredFixings::FixingDates> expectedFixings = {
+        {"EUHICP", RequiredFixings::FixingDates({Date(31, Jan, 2019), Date(31, Dec, 2018), Date(30, Nov, 2018)}, true)},
+        {"USCPI", RequiredFixings::FixingDates({Date(31, Dec, 2018), Date(30, Nov, 2018), Date(22, Oct, 2018),
+                                                Date(28, Feb, 2018), Date(29, Feb, 2016)},
+                                               true)},
+        {"EUR-EURIBOR-3M", RequiredFixings::FixingDates({Date(18, Dec, 2018), Date(13, Feb, 2019)}, true)}};
 
     // Amend the inflation portion of the fixings
     amendInflationFixingDates(fixings);
 
     // Compare contents of the output files
     BOOST_CHECK_EQUAL(expectedFixings.size(), fixings.size());
-    for (const auto& kv : expectedFixings) {
-        BOOST_CHECK_MESSAGE(fixings.count(kv.first), "Could not find index " << kv.first << " in retrieved fixings");
-        BOOST_CHECK_EQUAL_COLLECTIONS(kv.second.begin(), kv.second.end(), fixings.at(kv.first).begin(),
-                                      fixings.at(kv.first).end());
+    for (const auto& [indexname, expectedFixingDates] : expectedFixings) {
+        BOOST_CHECK_MESSAGE(fixings.count(indexname), "Could not find index " << indexname << " in retrieved fixings");
+        std::set<QuantLib::Date> expectedDates;
+        for (const auto& [d, _] : expectedFixingDates) {
+            expectedDates.insert(d);
+        }
+
+        std::set<QuantLib::Date> actualDates;
+        for (const auto& [d, _] : fixings[indexname]) {
+            actualDates.insert(d);
+        }
+        BOOST_CHECK_EQUAL_COLLECTIONS(expectedDates.begin(), expectedDates.end(), actualDates.begin(),
+                                      actualDates.end());
     }
 }
 
@@ -284,7 +302,7 @@ BOOST_AUTO_TEST_CASE(testAddMarketFixings) {
     TodaysMarketParameters mktParams;
     mktParams.addConfiguration(Market::defaultConfiguration, MarketConfiguration());
 
-    // Add discount curves. Will not influence the result bu should not cause a problem
+    // Add discount curves, we expect market fixings for EUR-EONIA
     map<string, string> m = {{"EUR", "Yield/EUR/EUR-EONIA"}, {"USD", "Yield/USD/USD-IN-EUR"}};
     mktParams.addMarketObject(MarketObject::DiscountCurve, Market::defaultConfiguration, m);
 
@@ -320,20 +338,34 @@ BOOST_AUTO_TEST_CASE(testAddMarketFixings) {
         oisDate = cal.advance(oisDate, 1 * Days);
     }
 
-    map<string, set<Date>> expectedFixings = {{"EUHICPXT", inflationDates}, {"USCPI", inflationDates},
-                                              {"UKRPI", inflationDates},    {"EUR-EURIBOR-3M", iborDates},
-                                              {"USD-FedFunds", oisDates},   {"USD-LIBOR-3M", iborDates}};
+    map<string, RequiredFixings::FixingDates> expectedFixings = {
+        {"EUHICPXT", RequiredFixings::FixingDates(inflationDates, false)},
+        {"USCPI", RequiredFixings::FixingDates(inflationDates, false)},
+        {"UKRPI", RequiredFixings::FixingDates(inflationDates, false)},
+        {"EUR-EURIBOR-3M", RequiredFixings::FixingDates(iborDates, false)},
+        {"USD-FedFunds", RequiredFixings::FixingDates(oisDates, false)},
+        {"USD-LIBOR-3M", RequiredFixings::FixingDates(iborDates, false)},
+        {"EUR-EONIA", RequiredFixings::FixingDates(oisDates, false)}};
 
     // Populate empty fixings map using the function to be tested
-    map<string, set<Date>> fixings;
-    addMarketFixingDates(fixings, mktParams);
+    map<string, RequiredFixings::FixingDates> fixings;
+    addMarketFixingDates(asof, fixings, mktParams);
 
     // Check the results
     BOOST_CHECK_EQUAL(expectedFixings.size(), fixings.size());
-    for (const auto& kv : expectedFixings) {
-        BOOST_CHECK_MESSAGE(fixings.count(kv.first), "Could not find index " << kv.first << " in retrieved fixings");
-        BOOST_CHECK_EQUAL_COLLECTIONS(kv.second.begin(), kv.second.end(), fixings.at(kv.first).begin(),
-                                      fixings.at(kv.first).end());
+    for (const auto& [indexName, expectedFixingDates] : expectedFixings) {
+        BOOST_CHECK_MESSAGE(fixings.count(indexName), "Could not find index " << indexName << " in retrieved fixings");
+        std::set<QuantLib::Date> expectedDates;
+        for (const auto& [d, _] : expectedFixingDates) {
+            expectedDates.insert(d);
+        }
+
+        std::set<QuantLib::Date> actualDates;
+        for (const auto& [d, _] : fixings[indexName]) {
+            actualDates.insert(d);
+        }
+        BOOST_CHECK_EQUAL_COLLECTIONS(expectedDates.begin(), expectedDates.end(), actualDates.begin(),
+                                      actualDates.end());
     }
 }
 
@@ -348,7 +380,7 @@ BOOST_FIXTURE_TEST_CASE(testFxNotionalResettingSwapFirstCoupon, F) {
     // Read in the trade
     Portfolio p;
     string portfolioFile = "trades/xccy_resetting_swap/simple_case_in_first_coupon.xml";
-    p.load(TEST_INPUT_FILE(portfolioFile));
+    p.fromFile(TEST_INPUT_FILE(portfolioFile));
     BOOST_REQUIRE_MESSAGE(p.size() == 1, "Expected portfolio to contain a single trade");
 
     // Ask for fixings before trades are built should return empty set
@@ -368,18 +400,18 @@ BOOST_FIXTURE_TEST_CASE(testFxNotionalResettingSwapFirstCoupon, F) {
         BOOST_CHECK_MESSAGE(m.count(kv.first) == 1, "Could not find index " << kv.first << " in retrieved fixings");
         if (m.count(kv.first) == 1) {
             BOOST_CHECK_EQUAL(m.at(kv.first).size(), 1);
-            BOOST_CHECK_EQUAL(kv.second, *m.at(kv.first).begin());
+            BOOST_CHECK_EQUAL(kv.second, m.at(kv.first).begin()->first);
         }
     }
 
     // Trade should throw if we ask for NPV and have not added the fixings
-    BOOST_CHECK_THROW(p.trades()[0]->instrument()->NPV(), Error);
+    BOOST_CHECK_THROW(p.trades().begin()->second->instrument()->NPV(), Error);
 
     // Add the fixings
     loadFixings(m);
 
     // Trade should now not throw when we try to price it
-    BOOST_CHECK_NO_THROW(p.trades()[0]->instrument()->NPV());
+    BOOST_CHECK_NO_THROW(p.trades().begin()->second->instrument()->NPV());
 }
 
 BOOST_FIXTURE_TEST_CASE(testDividends, F) {
@@ -389,16 +421,19 @@ BOOST_FIXTURE_TEST_CASE(testDividends, F) {
     auto eq = parseEquityIndex("EQ-" + equityName);
     BOOST_REQUIRE_MESSAGE(eq, "Could not parse equity index EQ-" + equityName);
 
-    BOOST_REQUIRE_MESSAGE(IndexManager::instance().hasHistory(eq->dividendName()),
-                          "Could not find index " << eq->dividendName() << " in IndexManager");
-    const TimeSeries<Real>& dividends = eq->dividendFixings();
+    BOOST_REQUIRE_MESSAGE(DividendManager::instance().hasHistory(eq->name()),
+                          "Could not find index " << eq->name() << " in DividendManager");
+    map<Date, QuantExt::Dividend> divMap;
+    const set<QuantExt::Dividend>& dividends = eq->dividendFixings();
+    for (const auto& d : dividends)
+        divMap[d.exDate] = d;
 
     // Expected results
     map<Date, Real> exp = {{Date(1, Nov, 2018), 25.313}, {Date(1, Dec, 2018), 15.957}};
 
     BOOST_CHECK_EQUAL(dividends.size(), exp.size());
     for (const auto& kv : exp) {
-        BOOST_CHECK_EQUAL(dividends[kv.first], kv.second);
+        BOOST_CHECK_EQUAL(divMap[kv.first].rate, kv.second);
     }
 }
 

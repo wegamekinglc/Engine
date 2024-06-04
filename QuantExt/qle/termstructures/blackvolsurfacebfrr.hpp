@@ -60,6 +60,7 @@ public:
 
     const std::vector<QuantLib::Date>& dates() const { return dates_; }
     const std::vector<Real>& deltas() const { return deltas_; }
+    const std::vector<Real>& currentDeltas() const { return currentDeltas_; }
     const std::vector<std::vector<Real>>& bfQuotes() const { return bfQuotes_; }
     const std::vector<std::vector<Real>>& rrQuotes() const { return rrQuotes_; }
     const std::vector<Real>& atmQuotes() const { return atmQuotes_; }
@@ -82,6 +83,7 @@ private:
     Volatility blackVolImpl(Time t, Real strike) const override;
     void update() override;
     void performCalculations() const override;
+    void clearCaches() const;
 
     std::vector<Date> dates_;
     std::vector<Real> deltas_;
@@ -105,9 +107,10 @@ private:
     mutable Real switchTime_, settlDomDisc_, settlForDisc_, settlLag_;
     mutable std::vector<Real> expiryTimes_;
     mutable std::vector<Date> settlementDates_;
+    mutable std::vector<Real> currentDeltas_;
 
-    mutable std::vector<boost::shared_ptr<detail::SimpleDeltaInterpolatedSmile>> smiles_;
-    mutable std::map<Real, boost::shared_ptr<detail::SimpleDeltaInterpolatedSmile>> cachedInterpolatedSmiles_;
+    mutable std::vector<QuantLib::ext::shared_ptr<detail::SimpleDeltaInterpolatedSmile>> smiles_;
+    mutable std::map<Real, QuantLib::ext::shared_ptr<detail::SimpleDeltaInterpolatedSmile>> cachedInterpolatedSmiles_;
     mutable std::vector<bool> smileHasError_;
     mutable std::vector<std::string> smileErrorMessage_;
 };
@@ -142,10 +145,10 @@ private:
 
     Real forward_;
     std::vector<Real> x_, y_;
-    boost::shared_ptr<Interpolation> interpolation_;
+    QuantLib::ext::shared_ptr<Interpolation> interpolation_;
 };
 
-boost::shared_ptr<SimpleDeltaInterpolatedSmile>
+QuantLib::ext::shared_ptr<SimpleDeltaInterpolatedSmile>
 createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real expiryTime,
             const std::vector<Real>& deltas, const std::vector<Real>& bfQuotes, const std::vector<Real>& rrQuotes,
             const Real atmVol, const DeltaVolQuote::DeltaType dt, const DeltaVolQuote::AtmType at,

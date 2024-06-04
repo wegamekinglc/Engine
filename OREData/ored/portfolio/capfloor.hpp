@@ -26,6 +26,7 @@
 
 #include <ored/portfolio/legdata.hpp>
 #include <ored/portfolio/trade.hpp>
+#include <ored/portfolio/tradefactory.hpp>
 
 namespace ore {
 namespace data {
@@ -41,7 +42,7 @@ public:
         : Trade("CapFloor", env), longShort_(longShort), legData_(leg), caps_(caps), floors_(floors),
           premiumData_(premiumData) {}
 
-    virtual void build(const boost::shared_ptr<EngineFactory>&) override;
+    virtual void build(const QuantLib::ext::shared_ptr<EngineFactory>&) override;
 
     //! Inspectors
     //@{
@@ -52,7 +53,7 @@ public:
     //@}
 
     virtual void fromXML(XMLNode* node) override;
-    virtual XMLNode* toXML(XMLDocument& doc) override;
+    virtual XMLNode* toXML(XMLDocument& doc) const override;
 
     //! \name Trade
     //@{

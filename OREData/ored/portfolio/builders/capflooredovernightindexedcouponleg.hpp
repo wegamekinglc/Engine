@@ -32,18 +32,20 @@ namespace ore {
 namespace data {
 
 //! CouponPricer Builder for CapFlooredOvernightIndexedCouponLeg
-/*! The coupon pricers are cached by currency
+/*! The coupon pricers are cached by index / rate comp period
  \ingroup builders
  */
-class CapFlooredOvernightIndexedCouponLegEngineBuilder : public CachingCouponPricerBuilder<string, const std::string&> {
+class CapFlooredOvernightIndexedCouponLegEngineBuilder
+    : public CachingCouponPricerBuilder<string, const std::string&, const QuantLib::Period&> {
 public:
     CapFlooredOvernightIndexedCouponLegEngineBuilder()
         : CachingEngineBuilder("BlackOrBachelier", "BlackOvernightIndexedCouponPricer",
                                {"CapFlooredOvernightIndexedCouponLeg"}) {}
 
 protected:
-    virtual string keyImpl(const string& index) override { return index; }
-    virtual boost::shared_ptr<FloatingRateCouponPricer> engineImpl(const string& index) override;
+    string keyImpl(const string& index, const QuantLib::Period& rateComputationPeriod) override;
+    QuantLib::ext::shared_ptr<FloatingRateCouponPricer> engineImpl(const string& index,
+                                                           const QuantLib::Period& rateComputationPeriod) override;
 };
 } // namespace data
 } // namespace ore

@@ -17,11 +17,10 @@
 */
 
 #include <orea/app/parameters.hpp>
-#include <orea/orea.hpp>
-#include <ored/ored.hpp>
-#include <ostream>
+
+#include <ored/utilities/log.hpp>
+
 #include <ql/errors.hpp>
-#include <stdio.h>
 
 using QuantLib::Date;
 using std::string;
@@ -38,10 +37,29 @@ bool Parameters::has(const string& groupName, const string& paramName) const {
     return (it->second.find(paramName) != it->second.end());
 }
 
-string Parameters::get(const string& groupName, const string& paramName) const {
-    QL_REQUIRE(has(groupName, paramName), "parameter " << paramName << " not found in param group " << groupName);
+string Parameters::get(const string& groupName, const string& paramName, bool fail) const {
+    if (fail) {    
+        QL_REQUIRE(has(groupName, paramName), "parameter " << paramName << " not found in param group " << groupName);
+        auto it = data_.find(groupName);
+        return it->second.find(paramName)->second;
+    } else {
+        if (!hasGroup(groupName) || !has(groupName,paramName))
+            return "";
+        else {
+            auto it = data_.find(groupName);
+            return it->second.find(paramName)->second;
+        }
+    }
+}
+
+const map<string, string>& Parameters::data(const string& groupName) const {
     auto it = data_.find(groupName);
-    return it->second.find(paramName)->second;
+    QL_REQUIRE(it != data_.end(), "param group '" << groupName << "' not found");
+    return it->second;
+}
+    
+const map<string, string>& Parameters::markets() const {
+    return data("markets");
 }
 
 void Parameters::fromFile(const string& fileName) {
@@ -66,6 +84,17 @@ void Parameters::fromXML(XMLNode* node) {
         setupMap[key] = value;
     }
     data_["setup"] = setupMap;
+
+    XMLNode* loggingNode = XMLUtils::getChildNode(node, "Logging");
+    if (loggingNode) {
+        map<string, string> loggingMap;
+        for (XMLNode* child = XMLUtils::getChildNode(loggingNode); child; child = XMLUtils::getNextSibling(child)) {
+            string key = XMLUtils::getAttribute(child, "name");
+            string value = XMLUtils::getNodeValue(child);
+            loggingMap[key] = value;
+        }
+        data_["logging"] = loggingMap;
+    }
 
     XMLNode* marketsNode = XMLUtils::getChildNode(node, "Markets");
     if (marketsNode) {
@@ -94,7 +123,7 @@ void Parameters::fromXML(XMLNode* node) {
     }
 }
 
-XMLNode* Parameters::toXML(XMLDocument& doc) {
+XMLNode* Parameters::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode("ORE");
     QL_FAIL("Parameters::toXML not implemented yet");
     return node;

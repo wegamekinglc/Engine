@@ -75,12 +75,12 @@ public:
     void fromXMLString(const string& xmlString);
 
     //! save the XML Document to the given file.
-    void toFile(const string& filename);
+    void toFile(const string& filename) const;
 
     //! return the XML Document as a string.
-    std::string toString();
+    std::string toString() const;
 
-    XMLNode* getFirstNode(const string& name);
+    XMLNode* getFirstNode(const string& name) const;
     void appendNode(XMLNode*);
 
     // TODO: take these inside cpp, not exposed to clients
@@ -102,15 +102,15 @@ class XMLSerializable {
 public:
     virtual ~XMLSerializable() {}
     virtual void fromXML(XMLNode* node) = 0;
-    virtual XMLNode* toXML(XMLDocument& doc) = 0;
+    virtual XMLNode* toXML(XMLDocument& doc) const = 0;
 
     void fromFile(const std::string& filename);
-    void toFile(const std::string& filename);
+    void toFile(const std::string& filename) const;
 
     //! Parse from XML string
     void fromXMLString(const std::string& xml);
     //! Parse from XML string
-    std::string toXMLString();
+    std::string toXMLString() const;
 };
 
 //! XML Utilities Class
@@ -125,6 +125,8 @@ public:
     static void addChildAsCdata(XMLDocument& doc, XMLNode* n, const string& name, const string& value);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const string& value, const string& attrName,
                          const string& attr);
+    static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const string& value,
+                         const vector<string>& attrNames, const vector<string>& attrs);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, const char* value);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, Real value);
     static void addChild(XMLDocument& doc, XMLNode* n, const string& name, int value);
@@ -235,8 +237,16 @@ public:
     static string getAttribute(XMLNode* node, const string& attrName);
 
     //! Returns all the children with a given name
-    // To get all children, set name equal to Null or ""
+    // To get all children, set name equal to ""
     static vector<XMLNode*> getChildrenNodes(XMLNode* node, const string& name);
+
+    static vector<XMLNode*> getChildrenNodesWithAttributes(XMLNode* node, const string& names, const string& name,
+                                                           const string& attrName, vector<string>& attrs,
+                                                           bool mandatory = false);
+    static vector<XMLNode*> getChildrenNodesWithAttributes(XMLNode* node, const string& names, const string& name,
+                                                           const vector<string>& attrNames,
+                                                           const vector<std::reference_wrapper<vector<string>>>& attrs,
+                                                           bool mandatory = false);
 
     //! Get and set a node's name
     static string getNodeName(XMLNode* n);
@@ -250,6 +260,16 @@ public:
 
     //! Get a node's compact values as vector of doubles
     static vector<Real> getNodeValueAsDoublesCompact(XMLNode* node);
+
+    //! Write a node out as a string
+    static string toString(XMLNode* node);
+
+    // helper routine to convert a value of an arbitrary type to string
+    static string convertToString(const Real value);
+
+	template <class T> static string convertToString(const T& value);
+
 };
+
 } // namespace data
 } // namespace ore

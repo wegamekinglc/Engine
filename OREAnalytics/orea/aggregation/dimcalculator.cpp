@@ -19,10 +19,10 @@
 #include <orea/aggregation/dimcalculator.hpp>
 #include <ored/utilities/log.hpp>
 #include <ored/utilities/vectorutils.hpp>
+#include <ored/portfolio/trade.hpp>
+
 #include <ql/errors.hpp>
 #include <ql/time/calendars/weekendsonly.hpp>
-#include <ql/version.hpp>
-
 #include <ql/math/distributions/normaldistribution.hpp>
 #include <ql/math/generallinearleastsquares.hpp>
 #include <ql/math/kernelfunctions.hpp>
@@ -46,11 +46,12 @@ namespace ore {
 namespace analytics {
 
 DynamicInitialMarginCalculator::DynamicInitialMarginCalculator(
-    const boost::shared_ptr<Portfolio>& portfolio, const boost::shared_ptr<NPVCube>& cube,
-    const boost::shared_ptr<CubeInterpretation>& cubeInterpretation,
-    const boost::shared_ptr<AggregationScenarioData>& scenarioData, Real quantile, Size horizonCalendarDays,
+    const QuantLib::ext::shared_ptr<InputParameters>& inputs,
+    const QuantLib::ext::shared_ptr<Portfolio>& portfolio, const QuantLib::ext::shared_ptr<NPVCube>& cube,
+    const QuantLib::ext::shared_ptr<CubeInterpretation>& cubeInterpretation,
+    const QuantLib::ext::shared_ptr<AggregationScenarioData>& scenarioData, Real quantile, Size horizonCalendarDays,
     const std::map<std::string, Real>& currentIM)
-    : portfolio_(portfolio), cube_(cube), cubeInterpretation_(cubeInterpretation), scenarioData_(scenarioData),
+    : inputs_(inputs), portfolio_(portfolio), cube_(cube), cubeInterpretation_(cubeInterpretation), scenarioData_(scenarioData),
       quantile_(quantile), horizonCalendarDays_(horizonCalendarDays), currentIM_(currentIM) {
 
     QL_REQUIRE(portfolio_, "portfolio is null");
@@ -58,23 +59,23 @@ DynamicInitialMarginCalculator::DynamicInitialMarginCalculator(
     QL_REQUIRE(cubeInterpretation_, "cube interpretation is null");
     QL_REQUIRE(scenarioData_, "aggregation scenario data is null");
 
-    boost::shared_ptr<RegularCubeInterpretation> regCubeInt =
-        boost::dynamic_pointer_cast<RegularCubeInterpretation>(cubeInterpretation_);
-    cubeIsRegular_ = (regCubeInt != NULL);
+    cubeIsRegular_ = !cubeInterpretation_->withCloseOutLag();
     datesLoopSize_ = cubeIsRegular_ ? cube_->dates().size() - 1 : cube_->dates().size();
 
     Size dates = cube_->dates().size();
     Size samples = cube_->samples();
 
-    if (!cubeInterpretation_->hasMporFlows(cube_)) {
+    if (!cubeInterpretation_->storeFlows()) {
         WLOG("cube holds no mpor flows, will assume no flows in the dim calculation");
     }
 
     // initialise aggregate NPV and Flow by date and scenario
     set<string> nettingSets;
-    for (Size i = 0; i < portfolio_->size(); ++i) {
-        string tradeId = portfolio_->trades()[i]->id();
-        string nettingSetId = portfolio_->trades()[i]->envelope().nettingSetId();
+    size_t i = 0;
+    for (auto tradeIt = portfolio_->trades().begin(); tradeIt != portfolio_->trades().end(); ++tradeIt, ++i) {
+        auto trade = tradeIt->second;
+        string tradeId = tradeIt->first;
+        string nettingSetId = trade->envelope().nettingSetId();
         if (nettingSets.find(nettingSetId) == nettingSets.end()) {
             nettingSets.insert(nettingSetId);
             nettingSetNPV_[nettingSetId] = vector<vector<Real>>(dates, vector<Real>(samples, 0.0));
@@ -89,7 +90,7 @@ DynamicInitialMarginCalculator::DynamicInitialMarginCalculator(
                 Real defaultNpv = cubeInterpretation_->getDefaultNpv(cube_, i, j, k);
                 Real closeOutNpv = cubeInterpretation_->getCloseOutNpv(cube_, i, j, k);
                 Real mporFlow =
-                    cubeInterpretation_->hasMporFlows(cube_) ? cubeInterpretation_->getMporFlows(cube_, i, j, k) : 0.0;
+                    cubeInterpretation_->storeFlows() ? cubeInterpretation_->getMporFlows(cube_, i, j, k) : 0.0;
                 nettingSetNPV_[nettingSetId][j][k] += defaultNpv;
                 nettingSetCloseOutNPV_[nettingSetId][j][k] += closeOutNpv;
                 nettingSetFLOW_[nettingSetId][j][k] += mporFlow;
@@ -97,10 +98,10 @@ DynamicInitialMarginCalculator::DynamicInitialMarginCalculator(
         }
     }
 
-    for (auto n : nettingSets)
-        nettingSetIds_.push_back(n);
+    
+    nettingSetIds_ = std::move(nettingSets);
 
-    dimCube_ = boost::make_shared<SinglePrecisionInMemoryCube>(cube_->asof(), nettingSetIds_, cube_->dates(),
+    dimCube_ = QuantLib::ext::make_shared<SinglePrecisionInMemoryCube>(cube_->asof(), nettingSetIds_, cube_->dates(),
                                                                cube_->samples());
 }
 
@@ -125,7 +126,7 @@ const vector<vector<Real>>& DynamicInitialMarginCalculator::cashFlow(const std::
         QL_FAIL("netting set " << nettingSet << " not found in DIM results");
 }
 
-void DynamicInitialMarginCalculator::exportDimEvolution(ore::data::Report& dimEvolutionReport) {
+void DynamicInitialMarginCalculator::exportDimEvolution(ore::data::Report& dimEvolutionReport) const {
 
     Size samples = dimCube_->samples();
     Size stopDatesLoop = datesLoopSize_;
@@ -139,13 +140,13 @@ void DynamicInitialMarginCalculator::exportDimEvolution(ore::data::Report& dimEv
         .addColumn("NettingSet", string())
         .addColumn("Time", Real(), 6);
 
-    for (auto nettingSet : dimCube_->ids()) {
+    for (auto [nettingSet, _] : dimCube_->idsAndIndexes()) {
 
         LOG("Export DIM evolution for netting set " << nettingSet);
         for (Size i = 0; i < stopDatesLoop; ++i) {
             Real expectedFlow = 0.0;
             for (Size j = 0; j < samples; ++j) {
-                expectedFlow += nettingSetFLOW_[nettingSet][i][j] / samples;
+                expectedFlow += nettingSetFLOW_.find(nettingSet)->second[i][j] / samples;
             }
 
             Date defaultDate = dimCube_->dates()[i];
@@ -155,7 +156,7 @@ void DynamicInitialMarginCalculator::exportDimEvolution(ore::data::Report& dimEv
                 .add(i)
                 .add(defaultDate)
                 .add(days)
-                .add(nettingSetExpectedDIM_[nettingSet][i])
+                .add(nettingSetExpectedDIM_.find(nettingSet)->second[i])
                 .add(expectedFlow)
                 .add(nettingSet)
 	        .add(t);

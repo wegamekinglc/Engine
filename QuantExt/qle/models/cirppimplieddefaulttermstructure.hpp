@@ -44,7 +44,7 @@ using namespace QuantLib;
 
 class CirppImpliedDefaultTermStructure : public SurvivalProbabilityStructure {
 public:
-    CirppImpliedDefaultTermStructure(const boost::shared_ptr<CrCirpp>& model, const Size index,
+    CirppImpliedDefaultTermStructure(const QuantLib::ext::shared_ptr<CrCirpp>& model, const Size index,
                                      const DayCounter& dc = DayCounter(), const bool purelyTimeBased = false);
 
     Date maxDate() const override;
@@ -61,10 +61,9 @@ public:
     void update() override;
 
 protected:
-    Rate hazardRateImpl(Time) const;
     Probability survivalProbabilityImpl(Time) const override;
 
-    const boost::shared_ptr<CrCirpp> model_;
+    const QuantLib::ext::shared_ptr<CrCirpp> model_;
     const Size index_;
     const bool purelyTimeBased_;
     Date referenceDate_;

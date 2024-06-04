@@ -72,6 +72,7 @@ public:
 
         // Read curve configurations from file
         curveConfigs.fromFile(TEST_INPUT_FILE("curve_config.xml"));
+        curveConfigs.parseAll();
     }
 
     ~F() {}
@@ -125,6 +126,7 @@ BOOST_AUTO_TEST_CASE(testFromToXml) {
     // Read curve configurations from output file
     CurveConfigurations curveConfigsNew;
     curveConfigsNew.fromFile(outputFile_1);
+    curveConfigsNew.parseAll();
 
     // Write curve configurations to file again
     string outputFile_2 = TEST_OUTPUT_FILE("curve_config_out_2.xml");
@@ -154,7 +156,7 @@ BOOST_DATA_TEST_CASE(testCurveConfigQuotesSimpleTodaysMarket, bdata::make(files)
     BOOST_TEST_MESSAGE("Testing with todaysmarket file: " << filePair.first);
 
     // Read the simple, single default configuration, TodaysMarketParameters instance from file
-    boost::shared_ptr<TodaysMarketParameters> tmp = boost::make_shared<TodaysMarketParameters>();
+    QuantLib::ext::shared_ptr<TodaysMarketParameters> tmp = QuantLib::ext::make_shared<TodaysMarketParameters>();
     tmp->fromFile(TEST_INPUT_FILE(filePair.first));
 
     // Ask the curve configurations object for its quotes, restricted by the TodaysMarketParameters instance
@@ -172,7 +174,7 @@ BOOST_DATA_TEST_CASE(testCurveConfigQuotesSimpleTodaysMarket, bdata::make(files)
 BOOST_AUTO_TEST_CASE(testCurveConfigQuotesTodaysMarketMultipleConfigs) {
 
     // Read the TodaysMarketParameters instance, containing multiple configurations, from file
-    boost::shared_ptr<TodaysMarketParameters> tmp = boost::make_shared<TodaysMarketParameters>();
+    QuantLib::ext::shared_ptr<TodaysMarketParameters> tmp = QuantLib::ext::make_shared<TodaysMarketParameters>();
     tmp->fromFile(TEST_INPUT_FILE("todays_market_multiple_configs.xml"));
 
     BOOST_REQUIRE_EQUAL(tmp->configurations().size(), 4);

@@ -30,6 +30,7 @@
 #include <ql/handle.hpp>
 #include <ql/math/integrals/integral.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
+#include <map>
 
 namespace QuantExt {
 
@@ -52,7 +53,7 @@ public:
     const Handle<TS> termStructure() const;
 
     /*! \f[ \int_0^t alpha^2(u) H^n(u) du \f]*/
-    Real zetan(const Size n, const Time t, const boost::shared_ptr<Integrator>& integrator);
+    Real zetan(const Size n, const Time t, const QuantLib::ext::shared_ptr<Integrator>& integrator);
 
     /*! allows to apply a shift to H (model invariance 1) */
     Real& shift();
@@ -111,7 +112,7 @@ template <class TS> inline Real& Lgm1fParametrization<TS>::scaling() { return sc
 
 template <class TS>
 inline Real Lgm1fParametrization<TS>::zetan(const Size n, const Time t,
-                                            const boost::shared_ptr<Integrator>& integrator) {
+                                            const QuantLib::ext::shared_ptr<Integrator>& integrator) {
     auto z = zetan_cached_.find(std::make_pair(n, t));
     if (z == zetan_cached_.end()) {
         std::vector<Real> times;

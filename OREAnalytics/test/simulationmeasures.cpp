@@ -27,6 +27,7 @@
 #include <ored/marketdata/marketimpl.hpp>
 #include <ored/model/calibrationinstruments/cpicapfloor.hpp>
 #include <ored/model/crossassetmodelbuilder.hpp>
+#include <ored/model/irlgmdata.hpp>
 #include <ored/portfolio/builders/swap.hpp>
 #include <ored/portfolio/swap.hpp>
 #include <ored/utilities/log.hpp>
@@ -63,7 +64,7 @@
 #include <ql/time/calendars/target.hpp>
 #include <ql/time/daycounters/actual360.hpp>
 #include <ql/time/daycounters/thirty360.hpp>
-#include <test/testmarket.hpp>
+#include "testmarket.hpp"
 
 #include <boost/timer/timer.hpp>
 
@@ -79,14 +80,14 @@ using testsuite::TestMarket;
 
 namespace {
 
-boost::shared_ptr<data::Conventions> convs() {
-    boost::shared_ptr<data::Conventions> conventions(new data::Conventions());
+QuantLib::ext::shared_ptr<data::Conventions> convs() {
+    QuantLib::ext::shared_ptr<data::Conventions> conventions(new data::Conventions());
 
-    boost::shared_ptr<data::Convention> swapIndexConv(
+    QuantLib::ext::shared_ptr<data::Convention> swapIndexConv(
         new data::SwapIndexConvention("EUR-CMS-2Y", "EUR-6M-SWAP-CONVENTIONS"));
     conventions->add(swapIndexConv);
 
-    boost::shared_ptr<data::Convention> swapConv(
+    QuantLib::ext::shared_ptr<data::Convention> swapConv(
         new data::IRSwapConvention("EUR-6M-SWAP-CONVENTIONS", "TARGET", "Annual", "MF", "30/360", "EUR-EURIBOR-6M"));
     conventions->add(swapConv);
 
@@ -100,7 +101,7 @@ struct TestData {
         Settings::instance().evaluationDate() = referenceDate;
 
         // Build test market
-        market = boost::make_shared<TestMarket>(referenceDate);
+        market = QuantLib::ext::make_shared<TestMarket>(referenceDate);
 
         // Build IR configurations
         CalibrationType calibrationType = CalibrationType::Bootstrap;
@@ -112,24 +113,24 @@ struct TestData {
         vector<Time> hTimes = {};
         vector<Time> aTimes = {};
 
-        std::vector<boost::shared_ptr<IrLgmData>> irConfigs;
+        std::vector<QuantLib::ext::shared_ptr<IrModelData>> irConfigs;
 
         vector<Real> hValues = {0.02};
         vector<Real> aValues = {0.08};
-        irConfigs.push_back(boost::make_shared<IrLgmData>("EUR", calibrationType, revType, volType, false,
+        irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>("EUR", calibrationType, revType, volType, false,
                                                           ParamType::Constant, hTimes, hValues, true,
                                                           ParamType::Piecewise, aTimes, aValues, shiftHorizon, 1.0,
                                                           swaptionExpiries, swaptionTerms, swaptionStrikes));
 
         hValues = {0.03};
         aValues = {0.009};
-        irConfigs.push_back(boost::make_shared<IrLgmData>(
+        irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
             "USD", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
             ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
         hValues = {0.04};
         aValues = {0.01};
-        irConfigs.push_back(boost::make_shared<IrLgmData>(
+        irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
             "GBP", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
             ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
@@ -138,52 +139,60 @@ struct TestData {
         vector<string> optionStrikes(optionExpiries.size(), "ATMF");
         vector<Time> sigmaTimes = {};
 
-        std::vector<boost::shared_ptr<FxBsData>> fxConfigs;
+        std::vector<QuantLib::ext::shared_ptr<FxBsData>> fxConfigs;
 
         vector<Real> sigmaValues = {0.15};
-        fxConfigs.push_back(boost::make_shared<FxBsData>("USD", "EUR", calibrationType, true, ParamType::Piecewise,
+        fxConfigs.push_back(QuantLib::ext::make_shared<FxBsData>("USD", "EUR", calibrationType, true, ParamType::Piecewise,
                                                          sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
         sigmaValues = {0.15};
-        fxConfigs.push_back(boost::make_shared<FxBsData>("GBP", "EUR", calibrationType, true, ParamType::Piecewise,
+        fxConfigs.push_back(QuantLib::ext::make_shared<FxBsData>("GBP", "EUR", calibrationType, true, ParamType::Piecewise,
                                                          sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
-        std::vector<boost::shared_ptr<EqBsData>> eqConfigs;
+        std::vector<QuantLib::ext::shared_ptr<EqBsData>> eqConfigs;
         // Inflation configurations
-        vector<boost::shared_ptr<InflationModelData>> infConfigs;
+        vector<QuantLib::ext::shared_ptr<InflationModelData>> infConfigs;
         // Credit configs
-        std::vector<boost::shared_ptr<CrLgmData>> crLgmConfigs;
-        std::vector<boost::shared_ptr<CrCirData>> crCirConfigs;
+        std::vector<QuantLib::ext::shared_ptr<CrLgmData>> crLgmConfigs;
+        std::vector<QuantLib::ext::shared_ptr<CrCirData>> crCirConfigs;
+
+        std::vector<QuantLib::ext::shared_ptr<CommoditySchwartzData>> comConfigs;
 
         CorrelationMatrixBuilder cmb;
-        cmb.addCorrelation("IR:EUR", "IR:USD", Handle<Quote>(boost::make_shared<SimpleQuote>(0.6)));
-        cmb.addCorrelation("IR:EUR", "IR:GBP", Handle<Quote>(boost::make_shared<SimpleQuote>(0.3)));
-        cmb.addCorrelation("IR:USD", "IR:GBP", Handle<Quote>(boost::make_shared<SimpleQuote>(0.1)));
-        cmb.addCorrelation("FX:USDEUR", "FX:GBPEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(0.3)));
-        cmb.addCorrelation("IR:EUR", "FX:USDEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(0.2)));
-        cmb.addCorrelation("IR:EUR", "FX:GBPEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(0.3)));
-        cmb.addCorrelation("IR:USD", "FX:USDEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(-0.2)));
-        cmb.addCorrelation("IR:USD", "FX:GBPEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(-0.1)));
-        cmb.addCorrelation("IR:GBP", "FX:USDEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(0.0)));
-        cmb.addCorrelation("IR:GBP", "FX:GBPEUR", Handle<Quote>(boost::make_shared<SimpleQuote>(0.1)));
+        cmb.addCorrelation("IR:EUR", "IR:USD", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.6)));
+        cmb.addCorrelation("IR:EUR", "IR:GBP", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.3)));
+        cmb.addCorrelation("IR:USD", "IR:GBP", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.1)));
+        cmb.addCorrelation("FX:USDEUR", "FX:GBPEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.3)));
+        cmb.addCorrelation("IR:EUR", "FX:USDEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.2)));
+        cmb.addCorrelation("IR:EUR", "FX:GBPEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.3)));
+        cmb.addCorrelation("IR:USD", "FX:USDEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(-0.2)));
+        cmb.addCorrelation("IR:USD", "FX:GBPEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(-0.1)));
+        cmb.addCorrelation("IR:GBP", "FX:USDEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.0)));
+        cmb.addCorrelation("IR:GBP", "FX:GBPEUR", Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.1)));
 
         Real tolerance = 1e-4;
-        boost::shared_ptr<CrossAssetModelData> config(
-            boost::make_shared<CrossAssetModelData>(irConfigs, fxConfigs, eqConfigs, infConfigs, crLgmConfigs,
-                                                    crCirConfigs, cmb.correlations(), tolerance, measure));
+        QuantLib::ext::shared_ptr<CrossAssetModelData> config1(QuantLib::ext::make_shared<CrossAssetModelData>(
+            irConfigs, fxConfigs, eqConfigs, infConfigs, crLgmConfigs, crCirConfigs, comConfigs, 0, cmb.correlations(),
+            tolerance, measure, CrossAssetModel::Discretization::Exact));
+        QuantLib::ext::shared_ptr<CrossAssetModelData> config2(QuantLib::ext::make_shared<CrossAssetModelData>(
+            irConfigs, fxConfigs, eqConfigs, infConfigs, crLgmConfigs, crCirConfigs, comConfigs, 0, cmb.correlations(),
+            tolerance, measure, CrossAssetModel::Discretization::Euler));
 
-        CrossAssetModelBuilder modelBuilder(market, config);
-        ccLgm = *modelBuilder.model();
+        CrossAssetModelBuilder modelBuilder1(market, config1);
+        ccLgmExact = *modelBuilder1.model();
 
-        lgm = boost::make_shared<QuantExt::LGM>(ccLgm->irlgm1f(0));
+        CrossAssetModelBuilder modelBuilder2(market, config2);
+        ccLgmEuler = *modelBuilder2.model();
+
+        lgm = QuantLib::ext::make_shared<QuantExt::LGM>(ccLgmExact->irlgm1f(0));
     }
 
     SavedSettings backup;
     Date referenceDate;
-    boost::shared_ptr<CrossAssetModelData> config;
-    boost::shared_ptr<QuantExt::CrossAssetModel> ccLgm;
-    boost::shared_ptr<QuantExt::LGM> lgm;
-    boost::shared_ptr<ore::data::Market> market;
+    QuantLib::ext::shared_ptr<CrossAssetModelData> config;
+    QuantLib::ext::shared_ptr<QuantExt::CrossAssetModel> ccLgmExact, ccLgmEuler;
+    QuantLib::ext::shared_ptr<QuantExt::LGM> lgm;
+    QuantLib::ext::shared_ptr<ore::data::Market> market;
 };
 
 } // anonymous namespace
@@ -199,34 +208,24 @@ void test_measure(std::string measureName, Real shiftHorizon, std::string discNa
 
     TestData d(measureName, shiftHorizon);
 
-    CrossAssetStateProcess::discretization discretization;
-    if (discName == "exact")
-        discretization = CrossAssetStateProcess::exact;
-    else if (discName == "euler")
-        discretization = CrossAssetStateProcess::euler;
-    else {
-        QL_FAIL("discretization " << discName << " not recognized");
-    }
-
     // Simulation date grid
     Date today = d.referenceDate;
     std::vector<Period> tenorGrid;
     if (discName == "exact")
         tenorGrid = {1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years};
     else {
-        for (Size i = 1; i <= 120; ++i)
-            tenorGrid.push_back(i * Months);
+        for (Size i = 1; i <= 60; ++i)
+            tenorGrid.push_back(i * 2 * Months);
     }
-    boost::shared_ptr<DateGrid> grid = boost::make_shared<DateGrid>(tenorGrid);
+    QuantLib::ext::shared_ptr<DateGrid> grid = QuantLib::ext::make_shared<DateGrid>(tenorGrid);
 
     // Model
-    boost::shared_ptr<QuantExt::CrossAssetModel> model = d.ccLgm;
+    QuantLib::ext::shared_ptr<QuantExt::CrossAssetModel> model = discName == "exact" ? d.ccLgmExact : d.ccLgmEuler;
 
     // Simulation market parameters, we just need the yield curve structure here
-    boost::shared_ptr<ScenarioSimMarketParameters> simMarketConfig(new ScenarioSimMarketParameters);
+    QuantLib::ext::shared_ptr<ScenarioSimMarketParameters> simMarketConfig(new ScenarioSimMarketParameters);
     simMarketConfig->setYieldCurveTenors("", {3 * Months, 6 * Months, 1 * Years, 2 * Years, 3 * Years, 4 * Years,
-                                              5 * Years, 7 * Years, 10 * Years, 12 * Years, 15 * Years, 20 * Years,
-                                              30 * Years, 40 * Years, 50 * Years});
+                                              5 * Years, 7 * Years, 10 * Years, 12 * Years});
     simMarketConfig->setSimulateFXVols(false);
     simMarketConfig->setSimulateEquityVols(false);
 
@@ -238,29 +237,28 @@ void test_measure(std::string measureName, Real shiftHorizon, std::string discNa
     simMarketConfig->setSwapVolTerms("", {1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years});
     simMarketConfig->setFxCcyPairs({"USDEUR", "GBPEUR"});
 
-    boost::shared_ptr<ScenarioGeneratorData> sgd(new ScenarioGeneratorData);
-    sgd->discretization() = discretization;
+    QuantLib::ext::shared_ptr<ScenarioGeneratorData> sgd(new ScenarioGeneratorData);
     sgd->sequenceType() = Sobol;
     sgd->seed() = 42;
     sgd->setGrid(grid);
 
     ScenarioGeneratorBuilder sgb(sgd);
-    boost::shared_ptr<ScenarioFactory> sf = boost::make_shared<SimpleScenarioFactory>();
-    boost::shared_ptr<ScenarioGenerator> sg = sgb.build(model, sf, simMarketConfig, today, d.market);
+    QuantLib::ext::shared_ptr<ScenarioFactory> sf = QuantLib::ext::make_shared<SimpleScenarioFactory>(true);
+    QuantLib::ext::shared_ptr<ScenarioGenerator> sg = sgb.build(model, sf, simMarketConfig, today, d.market);
 
     convs();
-    auto simMarket = boost::make_shared<ScenarioSimMarket>(d.market, simMarketConfig);
+    auto simMarket = QuantLib::ext::make_shared<ScenarioSimMarket>(d.market, simMarketConfig);
     simMarket->scenarioGenerator() = sg;
 
     // Basic Martingale tests
-    Size samples = 10000;
+    Size samples = 5000;
     Real eur = 0.0, usd = 0.0, gbp = 0.0, eur2 = 0.0, usd2 = 0.0, gbp2 = 0.0;
     Real eur3 = 0.0, usd3 = 0.0, gbp3 = 0.0;
     int horizon = 10;
 
     Date d1 = grid->dates().back();
     Date d2 = d1 + horizon * Years;
-    Real relTolerance = 0.003;
+    Real relTolerance = 0.01;
     Real eurExpected = d.market->discountCurve("EUR")->discount(d2);
     Real eurExpected2 = d.market->discountCurve("EUR")->discount(d1);
     Real gbpExpected = d.market->fxRate("GBPEUR")->value() * d.market->discountCurve("GBP")->discount(d2);

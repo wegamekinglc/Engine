@@ -1,6 +1,19 @@
 /*
-  Copyright (C) 2019 Quaternion Risk Management Ltd
-  All rights reserved.
+ Copyright (C) 2019 Quaternion Risk Management Ltd
+ All rights reserved.
+
+ This file is part of ORE, a free-software/open-source library
+ for transparent pricing and risk analysis - http://opensourcerisk.org
+
+ ORE is free software: you can redistribute it and/or modify it
+ under the terms of the Modified BSD License.  You should have received a
+ copy of the license along with this program.
+ The license is also available online at <http://opensourcerisk.org>
+
+ This program is distributed on the basis that it will form a useful
+ contribution to risk analytics and model standardisation, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
 #include <ored/portfolio/bondutils.hpp>
@@ -10,14 +23,20 @@
 namespace ore {
 namespace data {
 
-void populateFromBondReferenceData(std::string& issuerId, std::string& settlementDays, std::string& calendar,
-                                   std::string& issueDate, std::string& creditCurveId, std::string& creditGroup,
-                                   std::string& referenceCurveId, std::string& incomeCurveId,
-                                   std::string& volatilityCurveId, std::vector<LegData>& coupons,
-                                   const std::string& name, const boost::shared_ptr<BondReferenceDatum>& bondRefData,
-				   const std::string& startDate, const std::string& endDate) {
+void populateFromBondReferenceData(std::string& subType,
+                                   std::string& issuerId, std::string& settlementDays, std::string& calendar,
+                                   std::string& issueDate, std::string& priceQuoteMethod, string& priceQuoteBaseValue,
+                                   std::string& creditCurveId, std::string& creditGroup, std::string& referenceCurveId,
+                                   std::string& incomeCurveId, std::string& volatilityCurveId,
+                                   std::vector<LegData>& coupons, const std::string& name,
+                                   const QuantLib::ext::shared_ptr<BondReferenceDatum>& bondRefData,
+                                   const std::string& startDate, const std::string& endDate) {
     DLOG("populating data bond from reference data");
     QL_REQUIRE(bondRefData, "populateFromBondReferenceData(): empty bond reference datum given");
+    if (subType.empty()) {
+        subType = bondRefData->bondData().subType;
+        TLOG("overwrite subType with '" << subType << "'");
+    }
     if (issuerId.empty()) {
         issuerId = bondRefData->bondData().issuerId;
         TLOG("overwrite issuerId with '" << issuerId << "'");
@@ -33,6 +52,14 @@ void populateFromBondReferenceData(std::string& issuerId, std::string& settlemen
     if (issueDate.empty()) {
         issueDate = bondRefData->bondData().issueDate;
         TLOG("overwrite issueDate with '" << issueDate << "'");
+    }
+    if (priceQuoteMethod.empty()) {
+        priceQuoteMethod = bondRefData->bondData().priceQuoteMethod;
+        TLOG("overwrite priceQuoteMethod with '" << priceQuoteMethod << "'");
+    }
+    if (priceQuoteBaseValue.empty()) {
+        priceQuoteBaseValue = bondRefData->bondData().priceQuoteBaseValue;
+        TLOG("overwrite priceQuoteBaseValue with '" << priceQuoteBaseValue << "'");
     }
     if (creditCurveId.empty()) {
         creditCurveId = bondRefData->bondData().creditCurveId;
@@ -66,8 +93,9 @@ void populateFromBondReferenceData(std::string& issuerId, std::string& settlemen
 	    DLOG("Modified start date " << oldStart << " -> " << newStart);
 	}
 	else {
-	  ALOG(StructuredTradeErrorMessage(bondRefData->bondData().issuerId, "Bond-linked", "update reference data",
-					   "modifified start date cannot be applied to multiple legs/schedules"));
+	  StructuredTradeErrorMessage(bondRefData->bondData().issuerId, "Bond-linked", "update reference data",
+                                        "modifified start date cannot be applied to multiple legs/schedules")
+                .log();
 	}
     }
     if (!endDate.empty()) {
@@ -78,8 +106,9 @@ void populateFromBondReferenceData(std::string& issuerId, std::string& settlemen
 	    DLOG("Modified end date " << oldEnd << " -> " << newEnd);
 	}
 	else {
-	  ALOG(StructuredTradeErrorMessage(bondRefData->bondData().issuerId, "Bond-linked", "update reference data",
-					   "modifified end date cannot be applied to multiple legs/schedules"));
+	  StructuredTradeErrorMessage(bondRefData->bondData().issuerId, "Bond-linked", "update reference data",
+                                        "modifified end date cannot be applied to multiple legs/schedules")
+                .log();
 	}
     }
       

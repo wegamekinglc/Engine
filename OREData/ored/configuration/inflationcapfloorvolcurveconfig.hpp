@@ -51,21 +51,19 @@ public:
     enum class QuoteType { Price, Volatility };
 
     InflationCapFloorVolatilityCurveConfig() {}
-    InflationCapFloorVolatilityCurveConfig(const string& curveID, const string& curveDescription, const Type type,
-                                           const QuoteType& quoteType, const VolatilityType& volatilityType,
-                                           const bool extrapolate, const vector<string>& tenors,
-                                           const vector<string>& capStrikes, const vector<string>& floorStrikes,
-                                           const vector<string>& strikes, const DayCounter& dayCounter,
-                                           Natural settleDays, const Calendar& calendar,
-                                           const BusinessDayConvention& businessDayConvention, const string& index,
-                                           const string& indexCurve, const string& yieldTermStructure,
-                                           const Period& observationLag, const std::string& quoteIndex = "",
-					   const std::string& smileDynamics = "");
+    InflationCapFloorVolatilityCurveConfig(
+        const string& curveID, const string& curveDescription, const Type type, const QuoteType& quoteType,
+        const VolatilityType& volatilityType, const bool extrapolate, const vector<string>& tenors,
+        const vector<string>& capStrikes, const vector<string>& floorStrikes, const vector<string>& strikes,
+        const DayCounter& dayCounter, Natural settleDays, const Calendar& calendar,
+        const BusinessDayConvention& businessDayConvention, const string& index, const string& indexCurve,
+        const string& yieldTermStructure, const Period& observationLag, const std::string& quoteIndex = "",
+        const std::string& conventions = "", const bool useLastAvailableFixingDate = false);
 
     //! \name XMLSerializable interface
     //@{
     void fromXML(XMLNode* node) override;
-    XMLNode* toXML(XMLDocument& doc) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 
     //! \name Inspectors
@@ -88,7 +86,8 @@ public:
     const vector<string>& quotes() override;
     const Period& observationLag() const { return observationLag_; }
     const std::string& quoteIndex() const { return quoteIndex_; }
-    const std::string& smileDynamics() const { return smileDynamics_; }
+    const std::string& conventions() const { return conventions_; }
+    const bool& useLastAvailableFixingDate() const { return useLastAvailableFixingDate_; }
     //@}
 
     //! \name Setters
@@ -109,7 +108,8 @@ public:
     string& yieldTermStructure() { return yieldTermStructure_; }
     Period& observationLag() { return observationLag_; }
     std::string& quoteIndex() { return quoteIndex_; }
-    std::string& smileDynamics() { return smileDynamics_; }
+    std::string& conventions() { return conventions_; }
+    bool& useLastAvailableFixingDate() { return useLastAvailableFixingDate_; }
     //@}
 
 private:
@@ -133,7 +133,8 @@ private:
     Period observationLag_;
     // Can be different from the index_ string to allow the surface to be configured against another index's quotes.
     std::string quoteIndex_;
-    std::string smileDynamics_;
+    std::string conventions_;
+    bool useLastAvailableFixingDate_;
 };
 
 std::ostream& operator<<(std::ostream& out, InflationCapFloorVolatilityCurveConfig::VolatilityType t);

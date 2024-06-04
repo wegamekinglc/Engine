@@ -40,19 +40,22 @@ namespace {
 
 class TestMarket : public MarketImpl {
 public:
-    TestMarket() {
+    TestMarket() : MarketImpl(false) {
         asof_ = Date(3, Feb, 2015);
 
-        boost::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
+        QuantLib::ext::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
 
         // add conventions
-        boost::shared_ptr<ore::data::Convention> usdChfConv(
+        QuantLib::ext::shared_ptr<ore::data::Convention> usdChfConv(
             new ore::data::FXConvention("USD-CHF-FX", "0", "USD", "CHF", "10000", "USD,CHF"));
-        boost::shared_ptr<ore::data::Convention> usdGbpConv(
+        QuantLib::ext::shared_ptr<ore::data::Convention> usdGbpConv(
             new ore::data::FXConvention("USD-GBP-FX", "0", "USD", "GBP", "10000", "USD,GBP"));
+        QuantLib::ext::shared_ptr<ore::data::Convention> usdEurConv(
+            new ore::data::FXConvention("USD-EUR-FX", "0", "USD", "EUR", "10000", "USD,EUR"));
 
         conventions->add(usdChfConv);
         conventions->add(usdGbpConv);
+        conventions->add(usdEurConv);
         InstrumentConventions::instance().setConventions(conventions);
 
         // build discount
@@ -62,9 +65,11 @@ public:
         yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "GBP")] = flatRateYts(0.05);
 
         // add fx rates
-        fxIndices_[Market::defaultConfiguration].addIndex("EURUSD", makeFxIndex("EURUSD", 1.2));
-        fxIndices_[Market::defaultConfiguration].addIndex("EURGBP", makeFxIndex("EURGBP", 1.4));
-        fxIndices_[Market::defaultConfiguration].addIndex("EURCHF", makeFxIndex("EURCHF", 1.3));
+	std::map<std::string, Handle<Quote>> quotes;
+	quotes["EURUSD"] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(1.2));
+	quotes["EURGBP"] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(1.4));
+	quotes["EURCHF"] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(1.3));
+	fx_ = QuantLib::ext::make_shared<FXTriangulation>(quotes);
 
         // build fx vols
         fxVols_[make_pair(Market::defaultConfiguration, "EURUSD")] = flatRateFxv(0.10);
@@ -74,21 +79,12 @@ public:
 
 private:
     Handle<YieldTermStructure> flatRateYts(Real forward) {
-        boost::shared_ptr<YieldTermStructure> yts(new FlatForward(4, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
+        QuantLib::ext::shared_ptr<YieldTermStructure> yts(new FlatForward(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
         return Handle<YieldTermStructure>(yts);
     }
     Handle<BlackVolTermStructure> flatRateFxv(Volatility forward) {
-        boost::shared_ptr<BlackVolTermStructure> fxv(new BlackConstantVol(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
+        QuantLib::ext::shared_ptr<BlackVolTermStructure> fxv(new BlackConstantVol(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
         return Handle<BlackVolTermStructure>(fxv);
-    }
-    Handle<QuantExt::FxIndex> makeFxIndex(string index, Real spot) {
-        string ccy1 = index.substr(0, 3);
-        string ccy2 = index.substr(3);
-
-        return Handle<QuantExt::FxIndex>(boost::make_shared<QuantExt::FxIndex>(
-            Settings::instance().evaluationDate(), index, 0, parseCurrency(ccy1), parseCurrency(ccy2),
-            parseCalendar(ccy1 + "," + ccy2), Handle<Quote>(boost::make_shared<SimpleQuote>(spot)), discountCurve(ccy1),
-            discountCurve(ccy2), false));
     }
 };
 } // namespace
@@ -96,7 +92,7 @@ private:
 namespace {
 
 void test(string nearDate, string farDate, string nearBoughtCurrency, double nearBoughtAmount, string nearSoldCurrency,
-          double nearSoldAmount, double farBoughtAmount, double farSoldAmount, const boost::shared_ptr<Market>& market) {
+          double nearSoldAmount, double farBoughtAmount, double farSoldAmount, const QuantLib::ext::shared_ptr<Market>& market) {
 
     // build market
     Settings::instance().evaluationDate() = market->asofDate();
@@ -104,10 +100,10 @@ void test(string nearDate, string farDate, string nearBoughtCurrency, double nea
     // build first fxforward
     Envelope env1("FxForward1");
 
-    boost::shared_ptr<EngineData> engineData = boost::make_shared<EngineData>();
+    QuantLib::ext::shared_ptr<EngineData> engineData = QuantLib::ext::make_shared<EngineData>();
     engineData->model("FxForward") = "DiscountedCashflows";
     engineData->engine("FxForward") = "DiscountingFxForwardEngine";
-    boost::shared_ptr<EngineFactory> engineFactory = boost::make_shared<EngineFactory>(engineData, market);
+    QuantLib::ext::shared_ptr<EngineFactory> engineFactory = QuantLib::ext::make_shared<EngineFactory>(engineData, market);
     // this trade has buyer and seller switched so that it returns it's npv in the same currency as the second forward
     // fxswap_npv= - fxfor1_npv + fxfor2_npv
     FxForward fxFor1(env1, nearDate, nearSoldCurrency, nearSoldAmount, nearBoughtCurrency, nearBoughtAmount);
@@ -144,7 +140,7 @@ BOOST_AUTO_TEST_CASE(testFXSwap) {
 
     BOOST_TEST_MESSAGE("Testing FXSwap...");
 
-    boost::shared_ptr<Market> market = boost::make_shared<TestMarket>();
+    QuantLib::ext::shared_ptr<Market> market = QuantLib::ext::make_shared<TestMarket>();
 
     string nearDate = "2015-10-27";
     string farDate = "2015-11-03";

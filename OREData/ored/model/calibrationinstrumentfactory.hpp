@@ -46,7 +46,7 @@ namespace data {
     \ingroup models
 */
 template <class T>
-boost::shared_ptr<CalibrationInstrument> createCalibrationInstrument() { return boost::make_shared<T>(); }
+QuantLib::ext::shared_ptr<CalibrationInstrument> createCalibrationInstrument() { return QuantLib::ext::make_shared<T>(); }
 
 /*! Calibration instrument factory class
 
@@ -73,7 +73,7 @@ public:
     /*! The container type used to store the calibration instrument type key and the function that will be used to
         build a default instance of that calibration instrument type.
     */
-    typedef std::map<std::string, std::function<boost::shared_ptr<CalibrationInstrument>()>> map_type;
+    typedef std::map<std::string, std::function<QuantLib::ext::shared_ptr<CalibrationInstrument>()>> map_type;
 
     /*! A call to \c build should return an instance of \c CalibrationInstrument corresponding to the required
         \p instrumentType. For example, a call to <code>build("CpiCapFloor")</code> should return a \c CpiCapFloor
@@ -82,49 +82,17 @@ public:
         \warning If the \p instrumentType has not been added to the factory then a call to this method for that
                  \p instrumentType will return a \c nullptr
     */
-    boost::shared_ptr<CalibrationInstrument> build(const std::string& instrumentType);
+    QuantLib::ext::shared_ptr<CalibrationInstrument> build(const std::string& instrumentType);
 
     /*! Add a builder function \p builder for a given \p instrumentType
      */
     void addBuilder(const std::string& instrumentType,
-                    std::function<boost::shared_ptr<CalibrationInstrument>()> builder);
+                    std::function<QuantLib::ext::shared_ptr<CalibrationInstrument>()> builder,
+                    const bool allowOverwrite = false);
 
 private:
     boost::shared_mutex mutex_;
     map_type map_;
-};
-
-/*! Calibration instrument registration class
-
-    This class is used in any class derived from \c CalibrationInstrument to register itself with the 
-    \c CalibrationInstrumentFactory so that it can be built via a call to 
-    <code>CalibrationInstrumentFactory::instance().build(const std::string& instrumentType)</code>.
-
-    As a concrete example, a \c CpiCapFloor class derived from \c CalibrationInstrument should have the following form
-    in order to register it with the \c CalibrationInstrumentFactory:
-
-    In cpicapfloor.hpp
-    \code{.cpp}
-    class CpiCapFloor : public CalibrationInstrument {
-    public:
-    private:
-        static CalibrationInstrumentRegister<CpiCapFloor> reg_;
-    }
-    \endcode
-
-    In cpicapfloor.cpp
-    \code{.cpp}
-    CalibrationInstrumentRegister<CpiCapFloor> CpiCapFloor::reg_("CpiCapFloor");
-    \endcode
-
-    \ingroup models
-*/
-template <class T> struct CalibrationInstrumentRegister {
-public:
-    CalibrationInstrumentRegister(const std::string& instrumentType) {
-        CalibrationInstrumentFactory::instance().addBuilder(
-            instrumentType, &createCalibrationInstrument<T>);
-    }
 };
 
 }

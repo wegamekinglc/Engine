@@ -1,5 +1,6 @@
 /*
  Copyright (C) 2016 Quaternion Risk Management Ltd
+ Copyright (C) 2024 Skandinaviska Enskilda Banken AB (publ)
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -52,7 +53,7 @@ public:
      *  as per  Castagna& Mercurio(2006), to use. The second approximation is more accurate
      *  but can ask for the square root of a negative number under unusual circumstances.
      */
-    enum class Dimension { ATM, SmileVannaVolga, SmileDelta, SmileBFRR, ATMTriangulated };
+    enum class Dimension { ATM, SmileVannaVolga, SmileDelta, SmileBFRR, SmileAbsolute, ATMTriangulated };
     enum class SmileInterpolation {
         VannaVolga1,
         VannaVolga2,
@@ -73,19 +74,18 @@ public:
                             const Calendar& calendar = QuantLib::TARGET(),
                             const SmileInterpolation& interp = SmileInterpolation::VannaVolga2,
                             const string& conventionsID = "", const std::vector<Size>& smileDelta = {25},
-			    const std::string& smileDynamics = "");
+                            const string& smileExtrapolation = "Flat");
 
     FXVolatilityCurveConfig(const string& curveID, const string& curveDescription, const Dimension& dimension,
                             const string& baseVolatility1, const string& baseVolatility2,
-                            const string& fxIndexTag = "GENERIC",
-			    const std::string& smileDynamics = "");
+                            const string& fxIndexTag = "GENERIC");
 
     //@}
 
     //! \name Serialisation
     //@{
     void fromXML(XMLNode* node) override;
-    XMLNode* toXML(XMLDocument& doc) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 
     //! \name Inspectors
@@ -100,13 +100,13 @@ public:
     const string& fxForeignYieldCurveID() const { return fxForeignYieldCurveID_; }
     const string& fxDomesticYieldCurveID() const { return fxDomesticYieldCurveID_; }
     const SmileInterpolation& smileInterpolation() const { return smileInterpolation_; }
+    const std::string& smileExtrapolation() const { return smileExtrapolation_; }
     const string& conventionsID() const { return conventionsID_; }
     const std::vector<Size>& smileDelta() const { return smileDelta_; }
     const vector<string>& quotes() override;
     const string& baseVolatility1() const { return baseVolatility1_; }
     const string& baseVolatility2() const { return baseVolatility2_; }
     const string& fxIndexTag() const { return fxIndexTag_; }
-    const std::string& smileDynamics() const { return smileDynamics_; }
     const ReportConfig& reportConfig() const { return reportConfig_; }
     //@}
 
@@ -114,6 +114,7 @@ public:
     //@{
     Dimension& dimension() { return dimension_; }
     SmileInterpolation& smileInterpolation() { return smileInterpolation_; }
+    string& smileExtrapolation() { return smileExtrapolation_; }
     vector<string>& deltas() { return deltas_; }
     DayCounter& dayCounter() { return dayCounter_; }
     Calendar& calendar() { return calendar_; }
@@ -126,8 +127,8 @@ public:
     string& baseVolatility1() { return baseVolatility1_; }
     string& baseVolatility2() { return baseVolatility2_; }
     string& fxIndexTag() { return fxIndexTag_; }
-    string& smileDynamics() { return smileDynamics_; }
     //@}
+
 private:
     void populateRequiredCurveIds();
 
@@ -143,10 +144,10 @@ private:
     std::vector<Size> smileDelta_;
     std::set<string> requiredYieldCurveIDs_;
     SmileInterpolation smileInterpolation_;
+    string smileExtrapolation_;
     string baseVolatility1_;
     string baseVolatility2_;
     string fxIndexTag_;
-    std::string smileDynamics_;
     ReportConfig reportConfig_;
 };
 } // namespace data

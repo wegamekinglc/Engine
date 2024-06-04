@@ -41,19 +41,7 @@ void ScenarioGeneratorData::clear() {
         grid_->truncate(0);
 }
 
-CrossAssetStateProcess::discretization parseDiscretization(const string& s) {
-    static map<string, QuantExt::CrossAssetStateProcess::discretization> m = {
-        {"Exact", QuantExt::CrossAssetStateProcess::exact}, {"Euler", QuantExt::CrossAssetStateProcess::euler}};
-
-    auto it = m.find(s);
-    if (it != m.end()) {
-        return it->second;
-    } else {
-        QL_FAIL("Cannot convert \"" << s << "\" to QuantExt::CrossAssetStateProcess::discretization");
-    }
-}
-
-void ScenarioGeneratorData::setGrid(boost::shared_ptr<DateGrid> grid) { 
+void ScenarioGeneratorData::setGrid(QuantLib::ext::shared_ptr<DateGrid> grid) { 
     grid_ = grid;
     
     std::ostringstream oss;
@@ -74,10 +62,6 @@ void ScenarioGeneratorData::fromXML(XMLNode* root) {
     XMLNode* node = XMLUtils::getChildNode(sim, "Parameters");
     XMLUtils::checkNode(node, "Parameters");
 
-    std::string discString = XMLUtils::getChildValue(node, "Discretization", true); // mandatory
-    discretization_ = parseDiscretization(discString);
-    LOG("ScenarioGeneratorData discretization = " << discString);
-
     std::string calString = XMLUtils::getChildValue(node, "Calendar", true);
     Calendar cal = parseCalendar(calString);
 
@@ -88,10 +72,10 @@ void ScenarioGeneratorData::fromXML(XMLNode* root) {
     std::vector<std::string> tokens;
     boost::split(tokens, gridString_, boost::is_any_of(","));
     if (tokens.size() <= 2) {
-        grid_ = boost::make_shared<DateGrid>(gridString_, cal, dc);
+        grid_ = QuantLib::ext::make_shared<DateGrid>(gridString_, cal, dc);
     } else {
         std::vector<Period> gridTenors = XMLUtils::getChildrenValuesAsPeriods(node, "Grid", true);
-        grid_ = boost::make_shared<DateGrid>(gridTenors, cal, dc);
+        grid_ = QuantLib::ext::make_shared<DateGrid>(gridTenors, cal, dc);
     }
     LOG("ScenarioGeneratorData grid points size = " << grid_->size());
 
@@ -107,8 +91,13 @@ void ScenarioGeneratorData::fromXML(XMLNode* root) {
 
     // overwrite samples with environment variable OVERWRITE_SCENARIOGENERATOR_SAMPLES
     if (auto c = getenv("OVERWRITE_SCENARIOGENERATOR_SAMPLES")) {
-        samples_ = std::stol(c);
-        LOG("Overwrite samples with " << samples_ << " from environment variable OVERWRITE_SCENARIOGENERATOR_SAMPLES");
+        try {
+            samples_ = std::stol(c);
+        } catch (const std::exception& e) {
+            WLOG("enviroment variable OVERWRITE_SCENARIOGENERATOR_SAMPLES is set ("
+                 << c << ") but can not be parsed to a number - ignoring.");
+        }
+        LOG("Overwrite samples with " << samples_ << " from environment variable OVERWRITE_SCENARIOGENERATOR_SAMPLES")
     }
 
     if (auto n = XMLUtils::getChildNode(node, "Ordering"))
@@ -145,11 +134,9 @@ void ScenarioGeneratorData::fromXML(XMLNode* root) {
     LOG("ScenarioGeneratorData done.");
 }
 
-XMLNode* ScenarioGeneratorData::toXML(XMLDocument& doc) {
+XMLNode* ScenarioGeneratorData::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode("Simulation");
     XMLNode* pNode = XMLUtils::addChild(doc, node, "Parameters");
-
-    XMLUtils::addChild(doc, pNode, "Discretization", ore::data::to_string((QuantExt::CrossAssetStateProcess::discretization) discretization_));
 
     if (grid_) {
         XMLUtils::addChild(doc, pNode, "Calendar", grid_->calendar().name());
@@ -161,7 +148,6 @@ XMLNode* ScenarioGeneratorData::toXML(XMLDocument& doc) {
         }
     }
 
-    
     XMLUtils::addChild(doc, pNode, "Sequence", ore::data::to_string( sequenceType_));
     XMLUtils::addChild(doc, pNode, "Seed", to_string(seed_));
     XMLUtils::addChild(doc, pNode, "Samples", to_string(samples_));
@@ -180,5 +166,6 @@ XMLNode* ScenarioGeneratorData::toXML(XMLDocument& doc) {
 
     return node;
 }
+
 } // namespace analytics
 } // namespace ore

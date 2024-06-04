@@ -19,34 +19,34 @@
 #include <ql/cashflows/cashflows.hpp>
 #include <ql/instruments/makeois.hpp>
 #include <ql/pricingengines/swap/discountingswapengine.hpp>
+#include <ql/utilities/null_deleter.hpp>
 
 #include <qle/termstructures/oisratehelper.hpp>
 
 namespace QuantExt {
 
-namespace {
-void no_deletion(YieldTermStructure*) {}
-} // namespace
-
 OISRateHelper::OISRateHelper(Natural settlementDays, const Period& swapTenor, const Handle<Quote>& fixedRate,
-                             const boost::shared_ptr<OvernightIndex>& overnightIndex, const DayCounter& fixedDayCounter,
-                             Natural paymentLag, bool endOfMonth, Frequency paymentFrequency,
-                             BusinessDayConvention fixedConvention, BusinessDayConvention paymentAdjustment,
-                             DateGeneration::Rule rule, const Handle<YieldTermStructure>& discountingCurve,
-                             bool telescopicValueDates)
+                             const QuantLib::ext::shared_ptr<OvernightIndex>& overnightIndex, const DayCounter& fixedDayCounter,
+                             const Calendar& fixedCalendar, Natural paymentLag, bool endOfMonth,
+                             Frequency paymentFrequency, BusinessDayConvention fixedConvention,
+                             BusinessDayConvention paymentAdjustment, DateGeneration::Rule rule,
+                             const Handle<YieldTermStructure>& discountingCurve, bool telescopicValueDates,
+                             Pillar::Choice pillar, Date customPillarDate)
     : RelativeDateRateHelper(fixedRate), settlementDays_(settlementDays), swapTenor_(swapTenor),
-      overnightIndex_(overnightIndex), fixedDayCounter_(fixedDayCounter), paymentLag_(paymentLag),
-      endOfMonth_(endOfMonth), paymentFrequency_(paymentFrequency), fixedConvention_(fixedConvention),
-      paymentAdjustment_(paymentAdjustment), rule_(rule), discountHandle_(discountingCurve),
-      telescopicValueDates_(telescopicValueDates) {
+      overnightIndex_(overnightIndex), fixedDayCounter_(fixedDayCounter), fixedCalendar_(fixedCalendar),
+      paymentLag_(paymentLag), endOfMonth_(endOfMonth), paymentFrequency_(paymentFrequency),
+      fixedConvention_(fixedConvention), paymentAdjustment_(paymentAdjustment), rule_(rule),
+      discountHandle_(discountingCurve), telescopicValueDates_(telescopicValueDates), pillarChoice_(pillar) {
+
+    pillarDate_ = customPillarDate;
 
     bool onIndexHasCurve = !overnightIndex_->forwardingTermStructure().empty();
     bool haveDiscountCurve = !discountHandle_.empty();
     QL_REQUIRE(!(onIndexHasCurve && haveDiscountCurve), "Have both curves nothing to solve for.");
 
     if (!onIndexHasCurve) {
-        boost::shared_ptr<IborIndex> clonedIborIndex(overnightIndex_->clone(termStructureHandle_));
-        overnightIndex_ = boost::dynamic_pointer_cast<OvernightIndex>(clonedIborIndex);
+        QuantLib::ext::shared_ptr<IborIndex> clonedIborIndex(overnightIndex_->clone(termStructureHandle_));
+        overnightIndex_ = QuantLib::ext::dynamic_pointer_cast<OvernightIndex>(clonedIborIndex);
         overnightIndex_->unregisterWith(termStructureHandle_);
     }
 
@@ -72,16 +72,39 @@ void OISRateHelper::initializeDates() {
                 .withTelescopicValueDates(telescopicValueDates_);
     // TODO: patch QL?
     //.withFixedAccrualConvention(fixedConvention_)
+    //..withFixedCalendar(fixedCalendar_)
 
     earliestDate_ = swap_->startDate();
-    latestDate_ = swap_->maturityDate();
+    maturityDate_ = swap_->maturityDate();
 
-    // Latest Date may need to be updated due to payment lag.
-    Date date;
-    if (paymentLag_ != 0) {
-        date = paymentCalendar_.advance(latestDate_, paymentLag_, Days, paymentAdjustment_, false);
-        latestDate_ = std::max(date, latestDate_);
+    Date lastPaymentDate = std::max(swap_->overnightLeg().back()->date(), swap_->fixedLeg().back()->date());
+    latestRelevantDate_ = std::max(maturityDate_, lastPaymentDate);
+
+    switch (pillarChoice_) {
+    case Pillar::MaturityDate:
+        pillarDate_ = maturityDate_;
+        break;
+    case Pillar::LastRelevantDate:
+        pillarDate_ = latestRelevantDate_;
+        break;
+    case Pillar::CustomDate:
+        // pillarDate_ already assigned at construction time
+        QL_REQUIRE(pillarDate_ >= earliestDate_, "pillar date (" << pillarDate_
+                                                                 << ") must be later "
+                                                                    "than or equal to the instrument's earliest date ("
+                                                                 << earliestDate_ << ")");
+        QL_REQUIRE(pillarDate_ <= latestRelevantDate_, "pillar date ("
+                                                           << pillarDate_
+                                                           << ") must be before "
+                                                              "or equal to the instrument's latest relevant date ("
+                                                           << latestRelevantDate_ << ")");
+        break;
+    default:
+        QL_FAIL("unknown Pillar::Choice(" << Integer(pillarChoice_) << ")");
     }
+
+    // for backwards compatibility
+    latestDate_ = pillarDate_;
 }
 
 void OISRateHelper::setTermStructure(YieldTermStructure* t) {
@@ -89,7 +112,7 @@ void OISRateHelper::setTermStructure(YieldTermStructure* t) {
     // force recalculation when needed
     bool observer = false;
 
-    boost::shared_ptr<YieldTermStructure> temp(t, no_deletion);
+    QuantLib::ext::shared_ptr<YieldTermStructure> temp(t, null_deleter());
     termStructureHandle_.linkTo(temp, observer);
 
     if (discountHandle_.empty())
@@ -116,23 +139,26 @@ void OISRateHelper::accept(AcyclicVisitor& v) {
 }
 
 DatedOISRateHelper::DatedOISRateHelper(const Date& startDate, const Date& endDate, const Handle<Quote>& fixedRate,
-                                       const boost::shared_ptr<OvernightIndex>& overnightIndex,
-                                       const DayCounter& fixedDayCounter, Natural paymentLag,
-                                       Frequency paymentFrequency, BusinessDayConvention fixedConvention,
-                                       BusinessDayConvention paymentAdjustment, DateGeneration::Rule rule,
-                                       const Handle<YieldTermStructure>& discountingCurve, bool telescopicValueDates)
+                                       const QuantLib::ext::shared_ptr<OvernightIndex>& overnightIndex,
+                                       const DayCounter& fixedDayCounter, const Calendar& fixedCalendar,
+                                       Natural paymentLag, Frequency paymentFrequency,
+                                       BusinessDayConvention fixedConvention, BusinessDayConvention paymentAdjustment,
+                                       DateGeneration::Rule rule, const Handle<YieldTermStructure>& discountingCurve,
+                                       bool telescopicValueDates, Pillar::Choice pillar, Date customPillarDate)
     : RateHelper(fixedRate), overnightIndex_(overnightIndex), fixedDayCounter_(fixedDayCounter),
-      paymentLag_(paymentLag), paymentFrequency_(paymentFrequency), fixedConvention_(fixedConvention),
-      paymentAdjustment_(paymentAdjustment), rule_(rule), discountHandle_(discountingCurve),
-      telescopicValueDates_(telescopicValueDates) {
+      fixedCalendar_(fixedCalendar), paymentLag_(paymentLag), paymentFrequency_(paymentFrequency),
+      fixedConvention_(fixedConvention), paymentAdjustment_(paymentAdjustment), rule_(rule),
+      discountHandle_(discountingCurve), telescopicValueDates_(telescopicValueDates), pillarChoice_(pillar) {
+
+    pillarDate_ = customPillarDate;
 
     bool onIndexHasCurve = !overnightIndex_->forwardingTermStructure().empty();
     bool haveDiscountCurve = !discountHandle_.empty();
     QL_REQUIRE(!(onIndexHasCurve && haveDiscountCurve), "Have both curves nothing to solve for.");
 
     if (!onIndexHasCurve) {
-        boost::shared_ptr<IborIndex> clonedIborIndex(overnightIndex_->clone(termStructureHandle_));
-        overnightIndex_ = boost::dynamic_pointer_cast<OvernightIndex>(clonedIborIndex);
+        QuantLib::ext::shared_ptr<IborIndex> clonedIborIndex(overnightIndex_->clone(termStructureHandle_));
+        overnightIndex_ = QuantLib::ext::dynamic_pointer_cast<OvernightIndex>(clonedIborIndex);
         overnightIndex_->unregisterWith(termStructureHandle_);
     }
 
@@ -147,6 +173,7 @@ DatedOISRateHelper::DatedOISRateHelper(const Date& startDate, const Date& endDat
                 .withRule(rule_)
                 // TODO: patch QL
                 //.withFixedAccrualConvention(fixedConvention_)
+                // .withFixedCalendar(fixedCalendar_)
                 .withPaymentCalendar(overnightIndex_->fixingCalendar())
                 .withPaymentAdjustment(paymentAdjustment_)
                 .withPaymentLag(paymentLag_)
@@ -154,7 +181,36 @@ DatedOISRateHelper::DatedOISRateHelper(const Date& startDate, const Date& endDat
                 .withTelescopicValueDates(telescopicValueDates_);
 
     earliestDate_ = swap_->startDate();
-    latestDate_ = swap_->maturityDate();
+    maturityDate_ = swap_->maturityDate();
+
+    Date lastPaymentDate = std::max(swap_->overnightLeg().back()->date(), swap_->fixedLeg().back()->date());
+    latestRelevantDate_ = std::max(maturityDate_, lastPaymentDate);
+
+    switch (pillarChoice_) {
+    case Pillar::MaturityDate:
+        pillarDate_ = maturityDate_;
+        break;
+    case Pillar::LastRelevantDate:
+        pillarDate_ = latestRelevantDate_;
+        break;
+    case Pillar::CustomDate:
+        // pillarDate_ already assigned at construction time
+        QL_REQUIRE(pillarDate_ >= earliestDate_, "pillar date (" << pillarDate_
+                                                                 << ") must be later "
+                                                                    "than or equal to the instrument's earliest date ("
+                                                                 << earliestDate_ << ")");
+        QL_REQUIRE(pillarDate_ <= latestRelevantDate_, "pillar date ("
+                                                           << pillarDate_
+                                                           << ") must be before "
+                                                              "or equal to the instrument's latest relevant date ("
+                                                           << latestRelevantDate_ << ")");
+        break;
+    default:
+        QL_FAIL("unknown Pillar::Choice(" << Integer(pillarChoice_) << ")");
+    }
+
+    // for backwards compatibility
+    latestDate_ = pillarDate_;
 }
 
 void DatedOISRateHelper::setTermStructure(YieldTermStructure* t) {
@@ -162,7 +218,7 @@ void DatedOISRateHelper::setTermStructure(YieldTermStructure* t) {
     // force recalculation when needed
     bool observer = false;
 
-    boost::shared_ptr<YieldTermStructure> temp(t, no_deletion);
+    QuantLib::ext::shared_ptr<YieldTermStructure> temp(t, null_deleter());
     termStructureHandle_.linkTo(temp, observer);
 
     if (discountHandle_.empty())

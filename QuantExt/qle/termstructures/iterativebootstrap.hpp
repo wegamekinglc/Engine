@@ -44,22 +44,20 @@ QuantLib::Real dontThrowFallback(const QuantLib::BootstrapError<Curve>& error, Q
 
     QL_REQUIRE(xMin < xMax, "Expected xMin to be less than xMax");
 
-    // Set the initial value of the result to xMin and store the absolute bootstrap error at xMin
     QuantLib::Real result = xMin;
-    QuantLib::Real absError = std::abs(error(xMin));
-    QuantLib::Real minError = absError;
-
-    // Step out to xMax
+    QuantLib::Real minError = QL_MAX_REAL;
     QuantLib::Real stepSize = (xMax - xMin) / steps;
-    for (QuantLib::Size i = 0; i < steps; i++) {
 
-        // Get absolute bootstrap error at updated x value
-        xMin += stepSize;
-        absError = std::abs(error(xMin));
+    for (QuantLib::Size i = 0; i <= steps; ++i) {
+        QuantLib::Real x = xMin + stepSize * static_cast<double>(i);
+        QuantLib::Real absError = QL_MAX_REAL;
+        try {
+            absError = std::abs(error(x));
+        } catch (...) {
+        }
 
-        // If this absolute bootstrap error is less than the minimum, update result and minError
         if (absError < minError) {
-            result = xMin;
+            result = x;
             minError = absError;
         }
     }
@@ -111,7 +109,7 @@ private:
     mutable bool initialized_, validCurve_, loopRequired_;
     mutable QuantLib::Size firstAliveHelper_, alive_;
     mutable std::vector<QuantLib::Real> previousData_;
-    mutable std::vector<boost::shared_ptr<QuantLib::BootstrapError<Curve> > > errors_;
+    mutable std::vector<QuantLib::ext::shared_ptr<QuantLib::BootstrapError<Curve> > > errors_;
     QuantLib::Real accuracy_;
     QuantLib::Real globalAccuracy_;
     bool dontThrow_;
@@ -168,7 +166,7 @@ template <class Curve> void IterativeBootstrap<Curve>::initialize() const {
     // helper counter: j
     for (QuantLib::Size i = 1, j = firstAliveHelper_; j < n_; ++i, ++j) {
 
-        const boost::shared_ptr<typename Traits::helper>& helper = ts_->instruments_[j];
+        const QuantLib::ext::shared_ptr<typename Traits::helper>& helper = ts_->instruments_[j];
         dates[i] = helper->pillarDate();
         times[i] = ts_->timeFromReference(dates[i]);
 
@@ -178,7 +176,7 @@ template <class Curve> void IterativeBootstrap<Curve>::initialize() const {
         latestRelevantDate = helper->latestRelevantDate();
         // check that the helper is really extending the curve, i.e. that
         // pillar-sorted helpers are also sorted by latestRelevantDate
-        QL_REQUIRE(latestRelevantDate > maxDate, io::ordinal(j + 1)
+        QL_REQUIRE(latestRelevantDate > maxDate, QuantLib::io::ordinal(j + 1)
                                                      << " instrument (pillar: " << dates[i]
                                                      << ") has latestRelevantDate (" << latestRelevantDate
                                                      << ") before or equal to "
@@ -191,7 +189,7 @@ template <class Curve> void IterativeBootstrap<Curve>::initialize() const {
         if (dates[i] != latestRelevantDate)
             loopRequired_ = true;
 
-        errors_[i] = boost::make_shared<QuantLib::BootstrapError<Curve> >(ts_, helper, i);
+        errors_[i] = QuantLib::ext::make_shared<QuantLib::BootstrapError<Curve> >(ts_, helper, i);
     }
     ts_->maxDate_ = maxDate;
 
@@ -218,10 +216,10 @@ template <class Curve> void IterativeBootstrap<Curve>::calculate() const {
 
     // setup helpers
     for (QuantLib::Size j = firstAliveHelper_; j < n_; ++j) {
-        const boost::shared_ptr<typename Traits::helper>& helper = ts_->instruments_[j];
+        const QuantLib::ext::shared_ptr<typename Traits::helper>& helper = ts_->instruments_[j];
 
         // check for valid quote
-        QL_REQUIRE(helper->quote()->isValid(), io::ordinal(j + 1)
+        QL_REQUIRE(helper->quote()->isValid(), QuantLib::io::ordinal(j + 1)
                                                    << " instrument (maturity: " << helper->maturityDate()
                                                    << ", pillar: " << helper->pillarDate() << ") has an invalid quote");
 

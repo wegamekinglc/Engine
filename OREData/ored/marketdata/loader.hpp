@@ -19,15 +19,23 @@
 /*! \file ored/marketdata/loader.hpp
     \brief Market Datum Loader Interface
     \ingroup marketdata
+    \invariant Concrete instantiations of this virtual base class guarantee
+    that all of the MarketDatum objects that they store are unique, e.g. by
+    discarding any duplicates during initialization.
 */
 
 #pragma once
 
-#include <boost/shared_ptr.hpp>
 #include <ored/marketdata/fixings.hpp>
 #include <ored/marketdata/marketdatum.hpp>
 #include <ored/utilities/log.hpp>
+#include <ored/utilities/wildcard.hpp>
+
+#include <qle/indexes/dividendmanager.hpp>
 #include <ql/time/date.hpp>
+
+#include <ql/shared_ptr.hpp>
+
 #include <vector>
 
 namespace ore {
@@ -42,56 +50,62 @@ public:
 
     //! \name Interface
     //@{
-    virtual const std::vector<boost::shared_ptr<MarketDatum>>& loadQuotes(const QuantLib::Date&) const = 0;
 
-    virtual const boost::shared_ptr<MarketDatum>& get(const std::string& name, const QuantLib::Date&) const = 0;
+    //! get all quotes, TODO change the return value to std::set
+    virtual std::vector<QuantLib::ext::shared_ptr<MarketDatum>> loadQuotes(const QuantLib::Date&) const = 0;
+
+    //! get quote by its unique name, throws if not existent, override in derived classes for performance
+    virtual QuantLib::ext::shared_ptr<MarketDatum> get(const std::string& name, const QuantLib::Date& d) const;
+
+    //! get quotes matching a set of names, this should be overridden in derived classes for performance
+    virtual std::set<QuantLib::ext::shared_ptr<MarketDatum>> get(const std::set<std::string>& names,
+                                                         const QuantLib::Date& asof) const;
+
+    //! get quotes matching a wildcard, this should be overriden in derived classes for performance
+    virtual std::set<QuantLib::ext::shared_ptr<MarketDatum>> get(const Wildcard& wildcard, const QuantLib::Date& asof) const;
 
     //! Default implementation, returns false if get throws or returns a null pointer
-    virtual bool has(const std::string& name, const QuantLib::Date& d) const {
-        try {
-            return get(name, d) != nullptr;
-        } catch (...) {
-            return false;
-        }
-    }
+    virtual bool has(const std::string& name, const QuantLib::Date& d) const;
+
+    //! check if there are quotes for a date
+    virtual bool hasQuotes(const QuantLib::Date& d) const;
 
     /*! Default implementation for get that allows for the market data item to be optional. The first element of
         the \p name pair is the name of the market point being sought and the second element of the \p name pair
         is a flag to indicate if the market data point is optional, <code>true</code>, or not, <code>false</code>.
         - if the quote is in the loader for date \p d, it is returned
         - if the quote is not in the loader for date \p d and it is optional,
-          a warning is logged and a <code>boost::shared_ptr<MarketDatum>()</code> is returned
+          a warning is logged and a <code>QuantLib::ext::shared_ptr<MarketDatum>()</code> is returned
         - if the quote is not in the loader for date \p d and it is not optional, an exception is thrown
      */
-    virtual boost::shared_ptr<MarketDatum> get(const std::pair<std::string, bool>& name,
-                                               const QuantLib::Date& d) const {
-        if (has(name.first, d)) {
-            return get(name.first, d);
-        } else {
-            if (name.second) {
-                DLOG("Could not find quote for ID " << name.first << " with as of date " << QuantLib::io::iso_date(d)
-                                                    << ".");
-                return boost::shared_ptr<MarketDatum>();
-            } else {
-                QL_FAIL("Could not find quote for Mandatory ID " << name.first << " with as of date "
-                                                                 << QuantLib::io::iso_date(d));
-            }
-        }
-    }
+    virtual QuantLib::ext::shared_ptr<MarketDatum> get(const std::pair<std::string, bool>& name, const QuantLib::Date& d) const;
 
-    virtual const std::vector<Fixing>& loadFixings() const = 0;
+    virtual std::set<Fixing> loadFixings() const = 0;
+
+    virtual bool hasFixing(const string& name, const QuantLib::Date& d) const;
+
+    //! Default implementation for getFixing
+    virtual Fixing getFixing(const string& name, const QuantLib::Date& d) const;
     //@}
 
     //! Optional load dividends method
-    virtual const std::vector<Fixing>& loadDividends() const {
-        static std::vector<Fixing> noFixings;
-        return noFixings;
-    }
+    virtual std::set<QuantExt::Dividend> loadDividends() const;
+
+    void setActualDate(const QuantLib::Date& d) { actualDate_ = d; }
+    const Date& actualDate() const { return actualDate_; }
+
+	std::pair<bool, string> checkFxDuplicate(const ext::shared_ptr<MarketDatum>, const QuantLib::Date&);
 
 private:
     //! Serialization
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive& ar, const unsigned int version) {}
+
+protected:
+    /*! For lagged market data, where we need to take data from a different date but want to treat it as belonging to
+       the valuation date.
+     */
+    Date actualDate_ = Date();
 };
 } // namespace data
 } // namespace ore

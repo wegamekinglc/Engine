@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016 Quaternion Risk Management Ltd
+ Copyright (C) 2016-2022 Quaternion Risk Management Ltd
  Copyright (C) 2021 Skandinaviska Enskilda Banken AB (publ)
  All rights reserved.
 
@@ -17,82 +17,35 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <ored/portfolio/bond.hpp>
-#include <ored/portfolio/capfloor.hpp>
-#include <ored/portfolio/commodityforward.hpp>
-#include <ored/portfolio/commodityoption.hpp>
-#include <ored/portfolio/commoditydigitaloption.hpp>
-#include <ored/portfolio/creditdefaultswap.hpp>
-#include <ored/portfolio/creditdefaultswapoption.hpp>
-#include <ored/portfolio/equityforward.hpp>
-#include <ored/portfolio/equityfuturesoption.hpp>
-#include <ored/portfolio/equityoption.hpp>
-#include <ored/portfolio/equityswap.hpp>
-#include <ored/portfolio/forwardbond.hpp>
-#include <ored/portfolio/forwardrateagreement.hpp>
-#include <ored/portfolio/fxforward.hpp>
-#include <ored/portfolio/fxaverageforward.hpp>
-#include <ored/portfolio/fxoption.hpp>
-#include <ored/portfolio/fxswap.hpp>
-#include <ored/portfolio/swap.hpp>
-#include <ored/portfolio/swaption.hpp>
-#include <ored/portfolio/failedtrade.hpp>
 #include <ored/portfolio/tradefactory.hpp>
-#include <ored/utilities/log.hpp>
+
+#include <ql/errors.hpp>
 
 using namespace std;
 
 namespace ore {
 namespace data {
 
-TradeFactory::TradeFactory(std::map<string, boost::shared_ptr<AbstractTradeBuilder>> extraBuilders) {
-    addBuilder("Swap", boost::make_shared<TradeBuilder<Swap>>());
-    addBuilder("Swaption", boost::make_shared<TradeBuilder<Swaption>>());
-    addBuilder("FxAverageForward", boost::make_shared<TradeBuilder<FxAverageForward>>());
-    addBuilder("FxForward", boost::make_shared<TradeBuilder<FxForward>>());
-    addBuilder("ForwardRateAgreement", boost::make_shared<TradeBuilder<ForwardRateAgreement>>());
-    addBuilder("FxSwap", boost::make_shared<TradeBuilder<FxSwap>>());
-    addBuilder("FxOption", boost::make_shared<TradeBuilder<FxOption>>());
-    addBuilder("FxAsianOption", boost::make_shared<TradeBuilder<FxAsianOption>>());
-    addBuilder("CapFloor", boost::make_shared<TradeBuilder<CapFloor>>());
-    addBuilder("EquityOption", boost::make_shared<TradeBuilder<EquityOption>>());
-    addBuilder("EquityAsianOption", boost::make_shared<TradeBuilder<EquityAsianOption>>());
-    addBuilder("EquityForward", boost::make_shared<TradeBuilder<EquityForward>>());
-    addBuilder("EquitySwap", boost::make_shared<TradeBuilder<EquitySwap>>());
-    addBuilder("Bond", boost::make_shared<TradeBuilder<Bond>>());
-    addBuilder("ForwardBond", boost::make_shared<TradeBuilder<ForwardBond>>());
-    addBuilder("CreditDefaultSwap", boost::make_shared<TradeBuilder<CreditDefaultSwap>>());
-    addBuilder("CreditDefaultSwapOption", boost::make_shared<TradeBuilder<CreditDefaultSwapOption>>());
-    addBuilder("CommodityForward", boost::make_shared<TradeBuilder<CommodityForward>>());
-    addBuilder("CommodityOption", boost::make_shared<TradeBuilder<CommodityOption>>());
-    addBuilder("CommodityDigitalOption", boost::make_shared<TradeBuilder<CommodityDigitalOption>>());
-    addBuilder("CommodityAsianOption", boost::make_shared<TradeBuilder<CommodityAsianOption>>());
-    addBuilder("EquityFutureOption", boost::make_shared<TradeBuilder<EquityFutureOption>>());
-    addBuilder("Failed", boost::make_shared<TradeBuilder<FailedTrade>>());
-    if (extraBuilders.size() > 0)
-        addExtraBuilders(extraBuilders);
+std::map<std::string, QuantLib::ext::shared_ptr<AbstractTradeBuilder>> TradeFactory::getBuilders() const {
+    boost::shared_lock<boost::shared_mutex> lock(mutex_);
+    return builders_;
 }
 
-void TradeFactory::addBuilder(const string& className, const boost::shared_ptr<AbstractTradeBuilder>& b) {
-    builders_[className] = b;
+QuantLib::ext::shared_ptr<AbstractTradeBuilder> TradeFactory::getBuilder(const std::string& className) const {
+    boost::shared_lock<boost::shared_mutex> lock(mutex_);
+    auto b = builders_.find(className);
+    QL_REQUIRE(b != builders_.end(), "TradeFactory::getBuilder(" << className << "): no builder found");
+    return b->second;
 }
 
-void TradeFactory::addExtraBuilders(std::map<string, boost::shared_ptr<AbstractTradeBuilder>> extraBuilders) {
-    if (extraBuilders.size() > 0) {
-        LOG("adding " << extraBuilders.size() << " extra trade builders");
-        for (auto eb : extraBuilders)
-            addBuilder(eb.first, eb.second);
-    }
+void TradeFactory::addBuilder(const std::string& className, const QuantLib::ext::shared_ptr<AbstractTradeBuilder>& builder,
+                              const bool allowOverwrite) {
+    boost::unique_lock<boost::shared_mutex> lock(mutex_);
+    QL_REQUIRE(builders_.insert(std::make_pair(className, builder)).second || allowOverwrite,
+               "TradeFactory: duplicate builder for className '" << className << "'.");
 }
 
-boost::shared_ptr<Trade> TradeFactory::build(const string& className) const {
-    auto it = builders_.find(className);
-
-    if (it == builders_.end()) {
-        return boost::shared_ptr<Trade>();}
-    else {
-        return it->second->build();}
-}
+QuantLib::ext::shared_ptr<Trade> TradeFactory::build(const string& className) const { return getBuilder(className)->build(); }
 
 } // namespace data
 } // namespace ore

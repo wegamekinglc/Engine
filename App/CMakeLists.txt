@@ -1,10 +1,9 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.15)
 
 project(App CXX)
 
-include("../cmake/commonSettings.cmake")
+include(commonSettings)
 
-get_library_name("OREPlusSensitivity" OREPSENSITIVITY_LIB_NAME)
 get_library_name("OREPlusBase" OREPBASE_LIB_NAME)
 get_library_name("OREAnalytics" OREA_LIB_NAME)
 get_library_name("OREData" ORED_LIB_NAME)
@@ -33,6 +32,21 @@ target_link_libraries(ore ${ORED_LIB_NAME})
 target_link_libraries(ore ${QLE_LIB_NAME})
 target_link_libraries(ore ${QL_LIB_NAME})
 target_link_libraries(ore ${Boost_LIBRARIES})
+
+if(MSVC AND MSVC_WHOLE_PROGRAM_OPTIMIZATION)
+    target_compile_options(ore PRIVATE "$<$<CONFIG:RelWithDebInfo>:/GL>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:RelWithDebInfo>:/INCREMENTAL:NO>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:RelWithDebInfo>:/LTCG>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:RelWithDebInfo>:/OPT:REF>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:RelWithDebInfo>:/OPT:ICF>")
+
+    target_compile_options(ore PRIVATE "$<$<CONFIG:Release>:/GL>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:Release>:/INCREMENTAL:NO>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:Release>:/LTCG>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:Release>:/OPT:REF>")
+    target_link_options(ore PRIVATE "$<$<CONFIG:Release>:/OPT:ICF>")
+
+endif()
 
 install(TARGETS ore
         RUNTIME DESTINATION bin

@@ -25,6 +25,7 @@
 
 #include <ored/configuration/bootstrapconfig.hpp>
 #include <ored/configuration/curveconfig.hpp>
+#include <ored/configuration/parametricsmileconfiguration.hpp>
 #include <ored/configuration/reportconfig.hpp>
 #include <ql/termstructures/volatility/volatilitytype.hpp>
 #include <ql/time/calendar.hpp>
@@ -46,7 +47,7 @@ public:
     enum class VolatilityType { Lognormal, Normal, ShiftedLognormal };
 
     //! The type of structure that has been configured
-    enum class Type { Atm, Surface, SurfaceWithAtm };
+    enum class Type { TermAtm, TermSurface, TermSurfaceWithAtm, OptionletAtm, OptionletSurface, OptionletSurfaceWithAtm };
 
     //! Default constructor
     CapFloorVolatilityCurveConfig() {}
@@ -62,7 +63,8 @@ public:
         const std::string& interpolationMethod = "BicubicSpline", const std::string& interpolateOn = "TermVolatilities",
         const std::string& timeInterpolation = "LinearFlat", const std::string& strikeInterpolation = "LinearFlat",
         const std::vector<std::string>& atmTenors = {}, const BootstrapConfig& bootstrapConfig = BootstrapConfig(),
-        const std::string& smileDynamics = "");
+        const string& inputType = "TermVolatilities",
+        const boost::optional<ParametricSmileConfiguration>& parametricSmileConfiguration = boost::none);
 
     //! Detailled constructor for proxy config
     CapFloorVolatilityCurveConfig(const std::string& curveID, const std::string& curveDescription,
@@ -74,7 +76,7 @@ public:
     //! \name XMLSerializable interface
     //@{
     void fromXML(XMLNode* node) override;
-    XMLNode* toXML(XMLDocument& doc) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 
     //! \name Inspectors
@@ -102,7 +104,6 @@ public:
     bool quoteIncludesIndexName() const { return quoteIncludesIndexName_; }
     const std::vector<std::string>& atmTenors() const { return atmTenors_; }
     const BootstrapConfig& bootstrapConfig() const { return bootstrapConfig_; }
-    const std::string& smileDynamics() const { return smileDynamics_; }
     Type type() const { return type_; }
     const string& currency() const;
     string indexTenor() const;
@@ -112,6 +113,10 @@ public:
     const std::string& proxyTargetIndex() const { return proxyTargetIndex_; };
     const QuantLib::Period& proxySourceRateComputationPeriod() const { return proxySourceRateComputationPeriod_; }
     const QuantLib::Period& proxyTargetRateComputationPeriod() const { return proxyTargetRateComputationPeriod_; }
+    //
+    const boost::optional<ParametricSmileConfiguration> parametricSmileConfiguration() const {
+        return parametricSmileConfiguration_;
+    }
     //
     const ReportConfig& reportConfig() const { return reportConfig_; }
     //@}
@@ -142,15 +147,17 @@ private:
     bool quoteIncludesIndexName_ = false;
     std::vector<std::string> atmTenors_;
     BootstrapConfig bootstrapConfig_;
-    std::string smileDynamics_;
-    Type type_ = Type::Surface;
+    Type type_ = Type::TermSurface;
     std::string extrapolation_;
+    std::string inputType_;
     //
     std::string proxySourceCurveId_;
     std::string proxySourceIndex_;
     std::string proxyTargetIndex_;
     QuantLib::Period proxySourceRateComputationPeriod_;
     QuantLib::Period proxyTargetRateComputationPeriod_;
+    //
+    boost::optional<ParametricSmileConfiguration> parametricSmileConfiguration_;
     //
     ReportConfig reportConfig_;
 

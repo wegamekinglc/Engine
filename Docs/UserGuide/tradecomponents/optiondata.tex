@@ -29,6 +29,14 @@ elements. An example structure of the \lstinline!OptionData! trade component nod
     <ExerciseDate>2019-04-20</ExerciseDate>
     <ExerciseDate>2020-04-20</ExerciseDate>
   </ExerciseDates>
+  <!-- Alternative format for exercise dates using Schedule format -->
+  <ExerciseSchedule>
+    <Rules>
+      <StartDate>2019-04-20</StartDate>
+      <EndDate>2024-04-20</EndDate>
+      <Tenor>3M</Tenor>
+    </Rules>
+  </ExerciseSchedule>
   <Premiums>
     <Premium>
       <Amount>100000</Amount>
@@ -75,8 +83,9 @@ Index CDS Option &  \emph{Call/Put} values are ignored, and the OptionType field
 Asian FX Options &  \emph{Call}: The right to buy/receive the underlying currency at the strike price.  \newline \emph{Put}: The right to sell/pay  the underlying currency at the strike price.   \\ \hline
 Digital FX Options &  \emph{Call}: The digital payout will occur if the fx rate at the expiry date is above the given
 strike, \newline \emph{Put}: The digital payout will occur if the fx rate at the expiry date is below the given strike.   \\ \hline
-FX Single Touch Options &  The OptionType should be \emph{Call} for Up and \emph{Put} for Down barrier types - this is used to check whether the barrier has been hit in the past.   \\ \hline
-FX Double Touch Options &  \emph{Call/Put} values are ignored, and the OptionType field is optional.  \\ \hline
+FX Single Touch Options &  \emph{Call/Put} values are ignored, and are instead inferred from the BarrierData type, and the OptionType field is optional.   \\ \hline
+FX Double Touch Options &  \emph{Call/Put} values are ignored, and and the OptionType field is optional.  \\ \hline
+Ascot &  \emph{Call} has payout: $$ \max(0, convertiblePrice - Strike) $$ \emph{Put} has payout: $$ \max(0, Strike - convertiblePrice) $$  \\ \hline
 
   \end{tabular}
   \caption{Specification of Option Type Call / Put}
@@ -102,8 +111,8 @@ FX Double Touch Options &  \emph{Call/Put} values are ignored, and the OptionTyp
 
   Allowable values: \emph{European} or \emph{American} or \emph{Bermudan}. 
   
-  Note that trade types IR Swaption and CallableSwap can have style
-  \emph{European} or \emph{Bermudan}, but not \emph{American}.  
+  Note that trade types IR Swaption and CallableSwap can have all three styles:
+  \emph{European}, \emph{Bermudan}, or \emph{American}.  
   
   FX, Equity and Commodity vanilla options can have styles \emph{European}
   or \emph{American}, but not \emph{Bermudan}. 
@@ -113,6 +122,8 @@ FX Double Touch Options &  \emph{Call/Put} values are ignored, and the OptionTyp
   Commodity Swaption and Commodity Average Price Options must have style \emph{European}. 
   
   Index CDS Options must have style  \emph{European}. 
+  
+  Ascots must have style  \emph{American}. 
 
 \item PayoffType2 [Optional]: Subtype for payoff of exotic options. Only applicable to specific trade types as indicated in parantheses:
 
@@ -192,11 +203,16 @@ Note that for \lstinline!IndexCreditDefaultSwapOption! PayOffAtExpiry must be se
   Allowable values: See Table \ref{tab:convention} Roll Convention.
 
 \item ExerciseDates: This node contains child elements of type
-  \lstinline!ExerciseDate!.  Options of style \emph{European} or
+  \lstinline!ExerciseDate!. Options of style \emph{European} or
   \emph{American} require a single exercise date expressed by one
   single \lstinline!ExerciseDate! child element.  \emph{Bermudan}
   style options must have two or more \lstinline!ExerciseDate! child
-  elements.
+  elements. One can alternatively use \lstinline!ExerciseSchedule! to
+  specify the option exercise dates.
+
+\item ExerciseSchedule [Optional]: This node can be provided instead of \lstinline!ExerciseDates! and
+should be specified in the same format as a Schedule (see Section \ref{ss:schedule_data}), e.g.\ for
+a list of Bermudan exercise dates.
 
 \item Premiums [Optional]: Option premium amounts paid by the option buyer to the option seller.
 
@@ -212,7 +228,7 @@ Allowable values: A boolean value given in Table \ref{tab:boolean_allowable}. If
 
 Allowable values: The \lstinline!Date! node should be a valid date as outlined in Table \ref{tab:allow_stand_data} and the \lstinline!Price! node should be a valid price as a real number.
 
-\item PaymentData [Optional]: Currently, this node is only used for vanilla European cash settled FX, equity and commodity options. It is used to supply the date on which the option is cash settled if it is exercised. There are two methods in which this data may be supplied:
+\item PaymentData [Optional]:  This node is used to supply the date on which the option is cash settled if it is exercised. There are two methods in which this data may be supplied:
 
 \begin{enumerate}
 \item

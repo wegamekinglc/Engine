@@ -29,61 +29,19 @@
 #include <ql/types.hpp>
 
 #include <qle/models/lgm.hpp>
+#include <qle/pricingengines/analyticlgmswaptionengine.hpp>
 
 #include <ored/configuration/conventions.hpp>
 #include <ored/marketdata/market.hpp>
+#include <ored/model/irmodeldata.hpp>
 #include <ored/utilities/xmlutils.hpp>
 
 namespace ore {
 namespace data {
 using namespace QuantLib;
 
-//! Supported calibration parameter type
-enum class ParamType {
-    Constant,
-    Piecewise // i.e. time-dependent, but piecewise constant
-};
-
-//! Convert parameter type string into enumerated class value
-ParamType parseParamType(const string& s);
-//! Convert enumerated class value into a string
-std::ostream& operator<<(std::ostream& oss, const ParamType& type);
-
-//! Supported calibration types
-enum class CalibrationType {
-    /*! Choose this option if the component's calibration strategy is expected to
-      yield a perfect match of model to market prices. For example, this can be
-      achieved when calibrating an IR component to a series of co-terminal
-      swaptions with given mean reversion speed and piecewise volatility
-      function (alpha) where jump times coincide with expiry dates in the swaption
-      basket. Similarly, when calibrating an FX component to a series of FX Options.
-      The calibration routine will throw an exception if no perfect match is
-      achieved.
-     */
-    Bootstrap,
-    /*! Choose this if no perfect match like above can be expected, for example when
-      an IR component with constant parameters is calibrated to a basket of swaptions.
-      The calibration routine will consequently not throw an exception when the match
-      is imperfect.
-     */
-    BestFit,
-    /*! No calibration
-     */
-    None
-};
-
-//! Supported calibration strategies
-enum class CalibrationStrategy { CoterminalATM, CoterminalDealStrike, UnderlyingATM, UnderlyingDealStrike, None };
-
-//! Convert calibration type string into enumerated class value
-CalibrationType parseCalibrationType(const string& s);
-//! Convert enumerated class value into a string
-std::ostream& operator<<(std::ostream& oss, const CalibrationType& type);
-
-//! Convert calibration strategy string into enumerated class value
-CalibrationStrategy parseCalibrationStrategy(const string& s);
-//! Convert enumerated class value into a string
-std::ostream& operator<<(std::ostream& oss, const CalibrationStrategy& type);
+class VolatilityParameter;
+class ReversionParameter;
 
 //! Linear Gauss Markov Model Parameters
 /*!
@@ -92,7 +50,7 @@ std::ostream& operator<<(std::ostream& oss, const CalibrationStrategy& type);
 
   \ingroup models
  */
-class LgmData : public XMLSerializable {
+class LgmData : public IrModelData {
 public:
     //! Supported mean reversion types
     enum class ReversionType {
@@ -115,9 +73,9 @@ public:
 
     //! Default constructor
     LgmData()
-        : calibrationType_(CalibrationType::None), revType_(ReversionType::Hagan), volType_(VolatilityType::Hagan),
-          calibrateH_(false), hType_(ParamType::Constant), calibrateA_(false), aType_(ParamType::Constant),
-          shiftHorizon_(0.0), scaling_(1.0) {}
+        : IrModelData("LGM", "", CalibrationType::None), revType_(ReversionType::Hagan),
+          volType_(VolatilityType::Hagan), calibrateH_(false), hType_(ParamType::Constant), calibrateA_(false),
+          aType_(ParamType::Constant), shiftHorizon_(0.0), scaling_(1.0) {}
 
     //! Detailed constructor
     LgmData(std::string qualifier, CalibrationType calibrationType, ReversionType revType, VolatilityType volType,
@@ -125,28 +83,28 @@ public:
             ParamType aType, std::vector<Time> aTimes, std::vector<Real> aValues, Real shiftHorizon = 0.0,
             Real scaling = 1.0, std::vector<std::string> optionExpiries = std::vector<std::string>(),
             std::vector<std::string> optionTerms = std::vector<std::string>(),
-            std::vector<std::string> optionStrikes = std::vector<std::string>())
-        : qualifier_(qualifier), calibrationType_(calibrationType), revType_(revType), volType_(volType),
-          calibrateH_(calibrateH), hType_(hType), hTimes_(hTimes), hValues_(hValues), calibrateA_(calibrateA),
-          aType_(aType), aTimes_(aTimes), aValues_(aValues), shiftHorizon_(shiftHorizon), scaling_(scaling),
-          optionExpiries_(optionExpiries), optionTerms_(optionTerms), optionStrikes_(optionStrikes) {}
+            std::vector<std::string> optionStrikes = std::vector<std::string>(),
+            const QuantExt::AnalyticLgmSwaptionEngine::FloatSpreadMapping inputFloatSpreadMapping =
+                QuantExt::AnalyticLgmSwaptionEngine::proRata)
+        : IrModelData("LGM", qualifier, calibrationType), revType_(revType), volType_(volType), calibrateH_(calibrateH),
+          hType_(hType), hTimes_(hTimes), hValues_(hValues), calibrateA_(calibrateA), aType_(aType), aTimes_(aTimes),
+          aValues_(aValues), shiftHorizon_(shiftHorizon), scaling_(scaling), optionExpiries_(optionExpiries),
+          optionTerms_(optionTerms), optionStrikes_(optionStrikes), floatSpreadMapping_(inputFloatSpreadMapping) {}
 
     //! Clear list of calibration instruments
-    virtual void clear();
+    void clear() override;
 
     //! Reset member variables to defaults
-    virtual void reset();
+    void reset() override;
 
     //! \name Serialisation
     //@{
     virtual void fromXML(XMLNode* node) override;
-    virtual XMLNode* toXML(XMLDocument& doc) override;
+    virtual XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 
     //! \name Setters/Getters
     //@{
-    std::string& qualifier() { return qualifier_; }
-    CalibrationType& calibrationType() { return calibrationType_; }
     ReversionType& reversionType() { return revType_; }
     VolatilityType& volatilityType() { return volType_; }
     bool& calibrateH() { return calibrateH_; }
@@ -159,9 +117,12 @@ public:
     std::vector<Real>& aValues() { return aValues_; }
     Real& shiftHorizon() { return shiftHorizon_; }
     Real& scaling() { return scaling_; }
-    std::vector<std::string>& optionExpiries() { return optionExpiries_; }
-    std::vector<std::string>& optionTerms() { return optionTerms_; }
-    std::vector<std::string>& optionStrikes() { return optionStrikes_; }
+    QuantExt::AnalyticLgmSwaptionEngine::FloatSpreadMapping& floatSpreadMapping() { return floatSpreadMapping_; }
+    std::vector<std::string>& optionExpiries() const { return optionExpiries_; }
+    std::vector<std::string>& optionTerms() const { return optionTerms_; }
+    std::vector<std::string>& optionStrikes() const { return optionStrikes_; }
+    ReversionParameter reversionParameter() const;
+    VolatilityParameter volatilityParameter() const;
     //@}
 
     //! \name Operators
@@ -170,11 +131,7 @@ public:
     bool operator!=(const LgmData& rhs);
     //@}
 
-protected:
-    std::string qualifier_;
-
 private:
-    CalibrationType calibrationType_;
     ReversionType revType_;
     VolatilityType volType_;
     bool calibrateH_;
@@ -186,18 +143,22 @@ private:
     std::vector<Time> aTimes_;
     std::vector<Real> aValues_;
     Real shiftHorizon_, scaling_;
-    std::vector<std::string> optionExpiries_;
-    std::vector<std::string> optionTerms_;
-    std::vector<std::string> optionStrikes_;
+    mutable std::vector<std::string> optionExpiries_;
+    mutable std::vector<std::string> optionTerms_;
+    mutable std::vector<std::string> optionStrikes_;
+    QuantExt::AnalyticLgmSwaptionEngine::FloatSpreadMapping floatSpreadMapping_ =
+        QuantExt::AnalyticLgmSwaptionEngine::proRata;
 };
 
-//! Enum parsers used in CrossAssetModelBuilder's fromXML
+//! Enum parsers
 LgmData::ReversionType parseReversionType(const string& s);
 LgmData::VolatilityType parseVolatilityType(const string& s);
+QuantExt::AnalyticLgmSwaptionEngine::FloatSpreadMapping parseFloatSpreadMapping(const string& s);
 
-//! Enum to string used in CrossAssetModelBuilder's toXML
+//! Enum to string
 std::ostream& operator<<(std::ostream& oss, const LgmData::ReversionType& type);
 std::ostream& operator<<(std::ostream& oss, const LgmData::VolatilityType& type);
+std::ostream& operator<<(std::ostream& oss, const QuantExt::AnalyticLgmSwaptionEngine::FloatSpreadMapping& m);
 
 /*! LGM reversion transformation.
     
@@ -223,7 +184,7 @@ public:
     //! \name Serialisation
     //@{
     void fromXML(XMLNode* node) override;
-    XMLNode* toXML(XMLDocument& doc) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 
 private:

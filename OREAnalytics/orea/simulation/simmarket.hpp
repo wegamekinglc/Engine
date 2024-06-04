@@ -43,7 +43,7 @@ using namespace ore::data;
  */
 class SimMarket : public ore::data::MarketImpl {
 public:
-    SimMarket() : MarketImpl(), numeraire_(1.0) {}
+    explicit SimMarket(const bool handlePseudoCurrencies) : MarketImpl(handlePseudoCurrencies), numeraire_(1.0) {}
 
     //! Generate or retrieve market scenario, update market, notify termstructures and update fixings
     virtual void update(const Date& d) {
@@ -79,7 +79,7 @@ public:
     virtual void reset() = 0;
 
     //! Get the fixing manager
-    virtual const boost::shared_ptr<FixingManager>& fixingManager() const = 0;
+    virtual const QuantLib::ext::shared_ptr<FixingManager>& fixingManager() const = 0;
 
 protected:
     Real numeraire_;

@@ -40,12 +40,12 @@ namespace {
 
 class TestMarket : public MarketImpl {
 public:
-    TestMarket() {
+    TestMarket() : MarketImpl(false) {
         // valuation date
         asof_ = Date(22, Aug, 2016);
 
-        boost::shared_ptr<ore::data::Conventions> conventions = boost::make_shared<Conventions>();
-        conventions->add(boost::make_shared<ore::data::FXConvention>("EUR-USD-FX", "0", "EUR", "USD", "10000",
+        QuantLib::ext::shared_ptr<ore::data::Conventions> conventions = QuantLib::ext::make_shared<Conventions>();
+        conventions->add(QuantLib::ext::make_shared<ore::data::FXConvention>("EUR-USD-FX", "0", "EUR", "USD", "10000",
                                                                      "USD,EUR", "true"));
         InstrumentConventions::instance().setConventions(conventions);
 
@@ -108,16 +108,15 @@ public:
         hUSD->addFixing(Date(18, Aug, 2016), 0.00811);
 
         // add fx rates
-        fxIndices_[Market::defaultConfiguration].addIndex("EURUSD", 
-            Handle<QuantExt::FxIndex>(boost::make_shared<QuantExt::FxIndex>(
-                asof_, "EURUSD", 0, parseCurrency("EUR"), parseCurrency("USD"), parseCalendar("EUR,USD"),
-                Handle<Quote>(boost::make_shared<SimpleQuote>(1.1306)), discountCurve("EUR"), discountCurve("USD"), false)));
+	std::map<std::string, Handle<Quote>> quotes;
+	quotes["EURUSD"] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(1.1306));
+	fx_ = QuantLib::ext::make_shared<FXTriangulation>(quotes);
     }
 
 private:
     Handle<YieldTermStructure> intDiscCurve(vector<Date> dates, vector<DiscountFactor> dfs, DayCounter dc,
                                             Calendar cal) {
-        boost::shared_ptr<YieldTermStructure> idc(
+        QuantLib::ext::shared_ptr<YieldTermStructure> idc(
             new QuantLib::InterpolatedDiscountCurve<LogLinear>(dates, dfs, dc, cal));
         return Handle<YieldTermStructure>(idc);
     }
@@ -138,7 +137,7 @@ BOOST_AUTO_TEST_CASE(testCcySwapWithResetsPrice) {
     Real npvCCYswapReset = 0;
 
     // build market
-    boost::shared_ptr<Market> market = boost::make_shared<TestMarket>();
+    QuantLib::ext::shared_ptr<Market> market = QuantLib::ext::make_shared<TestMarket>();
     Settings::instance().evaluationDate() = market->asofDate();
 
     // test asof date
@@ -195,7 +194,7 @@ BOOST_AUTO_TEST_CASE(testCcySwapWithResetsPrice) {
     string foreignCCY = "USD";
     Real foreignAmount = 10000000;
     string fxIndex = "FX-ECB-EUR-USD";
-    auto legdataEUR = boost::make_shared<FloatingLegData>(indexEUR, days, isInArrears, spreadEUR);
+    auto legdataEUR = QuantLib::ext::make_shared<FloatingLegData>(indexEUR, days, isInArrears, spreadEUR);
     LegData legEUR1(legdataEUR, isPayerEUR, "EUR", scheduleEUR, dc, notionalEUR, vector<string>(), paymentConvention,
                     notionalInitialXNL, notionalFinalXNL, notionalAmortizingXNL, notionalFinalXNL, foreignCCY,
                     foreignAmount, fxIndex);
@@ -208,23 +207,22 @@ BOOST_AUTO_TEST_CASE(testCcySwapWithResetsPrice) {
     string indexUSD = "USD-LIBOR-3M";
     vector<Real> spreadUSD(1, 0);
     vector<Real> notionalUSD(1, 10000000);
-    auto legdataUSD = boost::make_shared<FloatingLegData>(indexUSD, days, isInArrears, spreadUSD);
+    auto legdataUSD = QuantLib::ext::make_shared<FloatingLegData>(indexUSD, days, isInArrears, spreadUSD);
     LegData legUSD(legdataUSD, isPayerUSD, "USD", scheduleUSD, dc, notionalUSD, vector<string>(), paymentConvention,
                    notionalInitialXNL, notionalFinalXNL, notionalAmortizingXNL);
 
     // Build swap trades
-    boost::shared_ptr<Trade> swap1(new ore::data::Swap(env, legUSD, legEUR1));
-    boost::shared_ptr<Trade> swap2(new ore::data::Swap(env, legUSD, legEUR2));
+    QuantLib::ext::shared_ptr<Trade> swap1(new ore::data::Swap(env, legUSD, legEUR1));
+    QuantLib::ext::shared_ptr<Trade> swap2(new ore::data::Swap(env, legUSD, legEUR2));
 
     // engine data and factory
-    boost::shared_ptr<EngineData> engineData = boost::make_shared<EngineData>();
+    QuantLib::ext::shared_ptr<EngineData> engineData = QuantLib::ext::make_shared<EngineData>();
     engineData->model("CrossCurrencySwap") = "DiscountedCashflows";
     engineData->engine("CrossCurrencySwap") = "DiscountingCrossCurrencySwapEngine";
-    boost::shared_ptr<EngineFactory> engineFactory = boost::make_shared<EngineFactory>(engineData, market);
-    engineFactory->registerBuilder(boost::make_shared<CrossCurrencySwapEngineBuilder>());
+    QuantLib::ext::shared_ptr<EngineFactory> engineFactory = QuantLib::ext::make_shared<EngineFactory>(engineData, market);
 
     // build swaps and portfolio
-    boost::shared_ptr<Portfolio> portfolio(new Portfolio());
+    QuantLib::ext::shared_ptr<Portfolio> portfolio(new Portfolio());
     swap1->id() = "XCCY_Swap_EUR_USD";
     swap2->id() = "XCCY_Swap_EUR_USD_RESET";
 
@@ -250,7 +248,7 @@ BOOST_AUTO_TEST_CASE(testCcySwapWithResetsPrice) {
     for (Size i = 3; i < legs.size(); i++) {
         const QuantLib::Leg& leg = legs[i];
         for (Size j = 0; j < leg.size(); j++) {
-            boost::shared_ptr<QuantLib::CashFlow> ptrFlow = leg[j];
+            QuantLib::ext::shared_ptr<QuantLib::CashFlow> ptrFlow = leg[j];
             sumXNL += ptrFlow->amount();
         }
     }

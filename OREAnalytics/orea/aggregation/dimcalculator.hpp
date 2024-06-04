@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <orea/app/inputparameters.hpp>
 #include <orea/aggregation/collatexposurehelper.hpp>
 #include <orea/cube/cubeinterpretation.hpp>
 #include <orea/cube/inmemorycube.hpp>
@@ -34,7 +35,7 @@
 
 #include <ql/time/date.hpp>
 
-#include <boost/shared_ptr.hpp>
+#include <ql/shared_ptr.hpp>
 
 namespace ore {
 namespace analytics {
@@ -52,14 +53,16 @@ using namespace std;
 class DynamicInitialMarginCalculator {
 public:
     DynamicInitialMarginCalculator(
+        //! Global input parameters
+        const QuantLib::ext::shared_ptr<InputParameters>& inputs,
         //! Driving portfolio consistent with the cube below
-        const boost::shared_ptr<Portfolio>& portfolio,
+        const QuantLib::ext::shared_ptr<Portfolio>& portfolio,
         //! NPV cube resulting from the Monte Carlo simulation loop
-        const boost::shared_ptr<NPVCube>& cube,
+        const QuantLib::ext::shared_ptr<NPVCube>& cube,
         //! Interpretation of the cube, regular NPV, MPoR grid etc
-        const boost::shared_ptr<CubeInterpretation>& cubeInterpretation,
+        const QuantLib::ext::shared_ptr<CubeInterpretation>& cubeInterpretation,
         //! Additional output of the MC simulation loop with numeraires, index fixings, FX spots etc
-        const boost::shared_ptr<AggregationScenarioData>& scenarioData,
+        const QuantLib::ext::shared_ptr<AggregationScenarioData>& scenarioData,
         //! VaR quantile, e.g. 0.99 for 99%
         Real quantile = 0.99,
         //! VaR holding period in calendar days
@@ -73,16 +76,16 @@ public:
     virtual map<string, Real> unscaledCurrentDIM() = 0;
 
     //! t0 IM by netting set, as provided as an arguments
-    map<string, Real> currentIM() { return currentIM_; }
+    const map<string, Real>& currentIM() const { return currentIM_; }
 
     //! Compute dynamic initial margin along all paths and fill result structures
     virtual void build() = 0;
 
     //! DIM evolution report
-    virtual void exportDimEvolution(ore::data::Report& dimEvolutionReport);
+    virtual void exportDimEvolution(ore::data::Report& dimEvolutionReport) const;
 
     //! DIM by nettingSet, date, sample returned as a regular NPV cube
-    const boost::shared_ptr<NPVCube>& dimCube() { return dimCube_; }
+    const QuantLib::ext::shared_ptr<NPVCube>& dimCube() { return dimCube_; }
 
     //! DIM matrix by date and sample index for the specified netting set
     const vector<vector<Real>>& dynamicIM(const string& nettingSet);
@@ -97,17 +100,18 @@ public:
     const std::map<std::string, Real>& getInitialMarginScaling() { return nettingSetScaling_; }
 
 protected:
-    boost::shared_ptr<Portfolio> portfolio_;
-    boost::shared_ptr<NPVCube> cube_, dimCube_;
-    boost::shared_ptr<CubeInterpretation> cubeInterpretation_;
-    boost::shared_ptr<AggregationScenarioData> scenarioData_;
+    QuantLib::ext::shared_ptr<InputParameters> inputs_;
+    QuantLib::ext::shared_ptr<Portfolio> portfolio_;
+    QuantLib::ext::shared_ptr<NPVCube> cube_, dimCube_;
+    QuantLib::ext::shared_ptr<CubeInterpretation> cubeInterpretation_;
+    QuantLib::ext::shared_ptr<AggregationScenarioData> scenarioData_;
     Real quantile_;
     Size horizonCalendarDays_;
     map<string, Real> currentIM_;
 
     bool cubeIsRegular_;
     Size datesLoopSize_;
-    vector<string> nettingSetIds_;
+    std::set<string> nettingSetIds_;
     map<string, Real> nettingSetScaling_;
 
     // For each netting set: matrix of values by date and sample, aggregated over trades
@@ -119,8 +123,6 @@ protected:
 
     // For each netting set: vector of values by date, aggregated over trades and samples
     map<string, vector<Real>> nettingSetExpectedDIM_;
-
-    
 };
 
 } // namespace analytics

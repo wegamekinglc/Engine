@@ -24,16 +24,22 @@ using ore::data::to_string;
 namespace ore {
 namespace analytics {
 
-ScenarioWriter::ScenarioWriter(const boost::shared_ptr<ScenarioGenerator>& src, const std::string& filename,
-                               const char sep, const string& filemode)
-    : src_(src), fp_(nullptr), i_(0), sep_(sep) {
+ScenarioWriter::ScenarioWriter(const QuantLib::ext::shared_ptr<ScenarioGenerator>& src, const std::string& filename,
+                               const char sep, const string& filemode, const std::vector<RiskFactorKey>& headerKeys)
+    : src_(src), fp_(nullptr), i_(0), sep_(sep), headerKeys_(headerKeys) {
     open(filename, filemode);
 }
 
-ScenarioWriter::ScenarioWriter(const std::string& filename, const char sep, const string& filemode)
-    : fp_(nullptr), i_(0), sep_(sep) {
+ScenarioWriter::ScenarioWriter(const std::string& filename, const char sep, const string& filemode,
+                               const std::vector<RiskFactorKey>& headerKeys)
+    : fp_(nullptr), i_(0), sep_(sep), headerKeys_(headerKeys) {
     open(filename, filemode);
 }
+
+ScenarioWriter::ScenarioWriter(const QuantLib::ext::shared_ptr<ScenarioGenerator>& src,
+                               QuantLib::ext::shared_ptr<ore::data::Report> report,
+                               const std::vector<RiskFactorKey>& headerKeys)
+    : src_(src), report_(report), fp_(nullptr), i_(0), sep_(','), headerKeys_(headerKeys) {}
 
 void ScenarioWriter::open(const std::string& filename, const std::string& filemode) {
     fp_ = fopen(filename.c_str(), filemode.c_str());
@@ -53,21 +59,23 @@ void ScenarioWriter::close() {
         fclose(fp_);
         fp_ = nullptr;
     }
+    if (report_)
+        report_->end();
 }
 
-boost::shared_ptr<Scenario> ScenarioWriter::next(const Date& d) {
+QuantLib::ext::shared_ptr<Scenario> ScenarioWriter::next(const Date& d) {
     QL_REQUIRE(src_, "No ScenarioGenerator found.");
-    boost::shared_ptr<Scenario> s = src_->next(d);
+    QuantLib::ext::shared_ptr<Scenario> s = src_->next(d);
     writeScenario(s, i_ == 0);
     return s;
 }
 
-void ScenarioWriter::writeScenario(boost::shared_ptr<Scenario>& s, const bool writeHeader) {
+void ScenarioWriter::writeScenario(const QuantLib::ext::shared_ptr<Scenario>& s, const bool writeHeader) {
+    const Date d = s->asof();
+    // take a copy of the keys here to ensure the order is preserved
+    keys_ = s->keys();
+    std::sort(keys_.begin(), keys_.end());
     if (fp_) {
-        const Date d = s->asof();
-        // take a copy of the keys here to ensure the order is preserved
-        keys_ = s->keys();
-        std::sort(keys_.begin(), keys_.end());
         if (writeHeader) {
             QL_REQUIRE(keys_.size() > 0, "No keys in scenario");
             fprintf(fp_, "Date%cScenario%cNumeraire%c%s", sep_, sep_, sep_, to_string(keys_[0]).c_str());
@@ -86,6 +94,33 @@ void ScenarioWriter::writeScenario(boost::shared_ptr<Scenario>& s, const bool wr
             fprintf(fp_, "%c%.8f", sep_, s->get(k));
         fprintf(fp_, "\n");
         fflush(fp_);
+    }
+
+    if (report_) {
+        if (writeHeader) {
+            QL_REQUIRE(keys_.size() > 0, "No keys in scenario");
+            if (headerKeys_.empty())
+                headerKeys_ = keys_;
+            report_->addColumn("Date", string());
+            report_->addColumn("Scenario", Size());
+            report_->addColumn("Numeraire", double(), 8);
+            for (Size i = 0; i < headerKeys_.size(); i++)
+                report_->addColumn(to_string(headerKeys_[i]), double(), 8);
+            // set the first date, this will bump i_ to 1 below
+            firstDate_ = d;
+        }
+        if (d == firstDate_)
+            i_++;
+        report_->next();
+        report_->add(to_string(d));
+        report_->add(i_);
+        report_->add(s->getNumeraire());
+        for (auto k : headerKeys_) {
+            if (s->has(k))
+                report_->add(s->get(k));
+            else
+                report_->add(QuantLib::Null<QuantLib::Real>());
+        }
     }
 }
 

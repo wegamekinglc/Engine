@@ -37,16 +37,16 @@ namespace data {
 
   \ingroup marketdata
 */
-class WrappedMarket : virtual public Market {
+class WrappedMarket : public Market {
 public:
-    explicit WrappedMarket(const boost::shared_ptr<Market>& market);
-    boost::shared_ptr<Market> underlyingMarket() const;
+    WrappedMarket(const QuantLib::ext::shared_ptr<Market>& market, const bool handlePseudoCurrencies);
+    QuantLib::ext::shared_ptr<Market> underlyingMarket() const;
 
     // market interface
     Date asofDate() const override;
     Handle<YieldTermStructure> yieldCurve(const YieldCurveType& type, const string& name,
                                           const string& configuration = Market::defaultConfiguration) const override;
-    Handle<YieldTermStructure> discountCurve(const string& ccy,
+    Handle<YieldTermStructure> discountCurveImpl(const string& ccy,
                                              const string& configuration = Market::defaultConfiguration) const override;
     Handle<YieldTermStructure> yieldCurve(const string& name,
                                           const string& configuration = Market::defaultConfiguration) const override;
@@ -56,29 +56,32 @@ public:
                                 const string& configuration = Market::defaultConfiguration) const override;
     Handle<SwaptionVolatilityStructure>
     swaptionVol(const string& key, const string& configuration = Market::defaultConfiguration) const override;
-    const string shortSwapIndexBase(const string& ccy,
+    string shortSwapIndexBase(const string& ccy,
                                     const string& configuration = Market::defaultConfiguration) const override;
-    const string swapIndexBase(const string& ccy,
+    string swapIndexBase(const string& ccy,
                                const string& configuration = Market::defaultConfiguration) const override;
     Handle<SwaptionVolatilityStructure>
     yieldVol(const string& securityID, const string& configuration = Market::defaultConfiguration) const override;
-    Handle<QuantExt::FxIndex> fxIndex(const string& fxIndex, const string& configuration = Market::defaultConfiguration) const override;
-    Handle<Quote> fxSpot(const string& ccypair,
-                         const string& configuration = Market::defaultConfiguration) const override;
-    Handle<Quote> fxRate(const string& ccypair,
-                         const string& configuration = Market::defaultConfiguration) const override;
-    Handle<BlackVolTermStructure> fxVol(const string& ccypair,
-                                        const string& configuration = Market::defaultConfiguration) const override;
-    Handle<QuantExt::CreditCurve> defaultCurve(const string& name,
-                                     const string& configuration = Market::defaultConfiguration) const override;
+    Handle<QuantExt::FxIndex> fxIndexImpl(const string& fxIndex,
+                                          const string& configuration = Market::defaultConfiguration) const override;
+    Handle<Quote> fxSpotImpl(const string& ccypair,
+                             const string& configuration = Market::defaultConfiguration) const override;
+    Handle<Quote> fxRateImpl(const string& ccypair,
+                             const string& configuration = Market::defaultConfiguration) const override;
+    Handle<BlackVolTermStructure> fxVolImpl(const string& ccypair,
+                                            const string& configuration = Market::defaultConfiguration) const override;
+    Handle<QuantExt::CreditCurve>
+    defaultCurve(const string& name, const string& configuration = Market::defaultConfiguration) const override;
     Handle<Quote> recoveryRate(const string& name,
                                const string& configuration = Market::defaultConfiguration) const override;
     Handle<QuantExt::CreditVolCurve> cdsVol(const string& name,
                                             const string& configuration = Market::defaultConfiguration) const override;
-    Handle<ore::data::BilinearBaseCorrelationTermStructure>
+    Handle<QuantExt::BaseCorrelationTermStructure>
     baseCorrelation(const string& name, const string& configuration = Market::defaultConfiguration) const override;
     Handle<OptionletVolatilityStructure>
     capFloorVol(const string& key, const string& configuration = Market::defaultConfiguration) const override;
+    std::pair<string, QuantLib::Period>
+    capFloorVolIndexBase(const string& key, const string& configuration = Market::defaultConfiguration) const override;
     Handle<QuantExt::YoYOptionletVolatilitySurface>
     yoyCapFloorVol(const string& indexName, const string& configuration = Market::defaultConfiguration) const override;
     Handle<ZeroInflationIndex>
@@ -98,7 +101,7 @@ public:
     Handle<YieldTermStructure>
     equityForecastCurve(const string& eqName,
                         const string& configuration = Market::defaultConfiguration) const override;
-    Handle<QuantExt::EquityIndex>
+    Handle<QuantExt::EquityIndex2>
     equityCurve(const string& eqName, const string& configuration = Market::defaultConfiguration) const override;
     Handle<BlackVolTermStructure> equityVol(const string& eqName,
                                             const string& configuration = Market::defaultConfiguration) const override;
@@ -121,7 +124,7 @@ public:
                       const string& configuration = Market::defaultConfiguration) const override;
 
 protected:
-    boost::shared_ptr<Market> market_;
+    QuantLib::ext::shared_ptr<Market> market_;
 };
 
 } // namespace data

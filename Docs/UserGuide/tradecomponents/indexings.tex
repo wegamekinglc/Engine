@@ -120,7 +120,7 @@ The Indexings node contains the following elements:
   details, or ``EQ-NAME'' for Equity with ``Name'' being the general string representation for equity underlyings
   {IdentifierType}:{Name}:{Currency}:{Exchange}, see \ref{ss:underlying}.
 
-\item IndexFixingCalendar [Optional]: Fixing calendar of the index, this is only used for Bond indices
+%\item IndexFixingCalendar [Optional]: Fixing calendar of the index, this is only used for Bond indices
 
 %  Allowable values: See Table \ref{tab:calendar} Calendar. Defaults to the \emph{NullCalendar} (no holidays) if left blank or omitted.
 
@@ -143,6 +143,12 @@ The Indexings node contains the following elements:
 
 \item InitialFixing [Optional]: If given the index fixing value to apply on the fixing date of the first coupon. If not
   given the value is read from the relevant fixing history.
+
+  Allowable values: any number
+
+\item InitialNotionalFixing [Optional]: If given the index fixing value to apply on the fixing date of the first
+  notional exchange flow. This is used in non-deliverable XCCY swaps. If not given the value is read from the relevant
+  fixing history.
 
   Allowable values: any number
 

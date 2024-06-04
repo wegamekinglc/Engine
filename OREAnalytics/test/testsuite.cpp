@@ -18,22 +18,29 @@
 
 #include <iomanip>
 #include <iostream>
-using namespace std;
+#include <oret/config.hpp>
 
 // Boost
+#include <boost/make_shared.hpp>
 #include <boost/timer/timer.hpp>
-using namespace boost;
 using boost::timer::cpu_timer;
 
 // Boost.Test
-#define BOOST_TEST_MODULE OREAnalyticsTestSuite
+#define BOOST_TEST_MODULE "OREAnalyticsTestSuite"
+#ifdef ORE_ENABLE_PARALLEL_UNIT_TEST_RUNNER
+#include <test-suite/paralleltestrunner.hpp>
+#else
+#include <boost/test/included/unit_test.hpp>
+#endif
 #include <boost/test/parameterized_test.hpp>
 #include <boost/test/test_tools.hpp>
-#include <boost/test/unit_test.hpp>
 using boost::unit_test::test_suite;
 using boost::unit_test::framework::master_test_suite;
 
+#include <oret/basedatapath.hpp>
+#include <oret/datapaths.hpp>
 #include <oret/oret.hpp>
+using ore::test::getBaseDataPath;
 using ore::test::setupTestLogging;
 
 #ifdef BOOST_MSVC
@@ -51,6 +58,9 @@ using ore::test::setupTestLogging;
 #include <boost/config/auto_link.hpp>
 #endif
 
+// Global base path variable
+string basePath = "";
+
 class OreaGlobalFixture {
 public:
     OreaGlobalFixture() {
@@ -59,6 +69,9 @@ public:
 
         // Set up test logging
         setupTestLogging(argc, argv);
+
+        // Set the base data path for the unit tests
+        basePath = getBaseDataPath(argc, argv);
     }
 
     ~OreaGlobalFixture() { stopTimer(); }
@@ -71,12 +84,12 @@ public:
         seconds -= hours * 3600;
         int minutes = int(seconds / 60);
         seconds -= minutes * 60;
-        cout << endl << "OREAnalytics tests completed in ";
+        std::cout << std::endl << "OREData tests completed in ";
         if (hours > 0)
-            cout << hours << " h ";
+            std::cout << hours << " h ";
         if (hours > 0 || minutes > 0)
-            cout << minutes << " m ";
-        cout << fixed << setprecision(0) << seconds << " s" << endl;
+            std::cout << minutes << " m ";
+        std::cout << std::fixed << std::setprecision(0) << seconds << " s" << std::endl;
     }
 
 private:

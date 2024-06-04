@@ -35,6 +35,9 @@ DefaultCurveConfig::DefaultCurveConfig(const string& curveId, const string& curv
     : CurveConfig(curveId, curveDescription), currency_(currency), configs_(configs) {
     populateQuotes();
     populateRequiredCurveIds();
+    // ensure priority in config is consistent to the key used in the map
+    for (auto& c : configs_)
+        c.second.priority() = c.first;
 }
 
 void DefaultCurveConfig::populateRequiredCurveIds(const std::string& discountCurveID,
@@ -95,7 +98,7 @@ void DefaultCurveConfig::fromXML(XMLNode* node) {
     populateRequiredCurveIds();
 }
 
-XMLNode* DefaultCurveConfig::toXML(XMLDocument& doc) {
+XMLNode* DefaultCurveConfig::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode("DefaultCurve");
 
     XMLUtils::addChild(doc, node, "CurveId", curveID_);
@@ -142,6 +145,8 @@ void DefaultCurveConfig::Config::fromXML(XMLNode* node) {
         type_ = Type::Benchmark;
     } else if (type == "MultiSection") {
         type_ = Type::MultiSection;
+    } else if (type == "TransitionMatrix") {
+        type_ = Type::TransitionMatrix;
     } else if (type == "Null") {
         type_ = Type::Null;
     } else {
@@ -166,6 +171,18 @@ void DefaultCurveConfig::Config::fromXML(XMLNode* node) {
         multiSectionSourceCurveIds_ = XMLUtils::getChildrenValues(node, "SourceCurves", "SourceCurve", true);
         multiSectionSwitchDates_ = XMLUtils::getChildrenValues(node, "SwitchDates", "SwitchDate", true);
         discountCurveID_ = conventionID_ = "";
+        recoveryRateQuote_ = XMLUtils::getChildValue(node, "RecoveryRate", false);
+    } else if(type_ == Type::TransitionMatrix)  {
+        initialState_ = XMLUtils::getChildValue(node, "InitialState", false);
+        states_ = parseListOfValues(XMLUtils::getChildValue(node, "States", false));
+        XMLNode* quotesNode = XMLUtils::getChildNode(node, "Quotes");
+        if (quotesNode) {
+            for (auto n : XMLUtils::getChildrenNodes(quotesNode, "Quote")) {
+                string attr = XMLUtils::getAttribute(n, "optional");
+                bool opt = (!attr.empty() && parseBool(attr));
+                cdsQuotes_.emplace_back(make_pair(XMLUtils::getNodeValue(n), opt));
+            }
+        }
         recoveryRateQuote_ = XMLUtils::getChildValue(node, "RecoveryRate", false);
     } else {
         discountCurveID_ = XMLUtils::getChildValue(node, "DiscountCurve", false);
@@ -212,7 +229,7 @@ void DefaultCurveConfig::Config::fromXML(XMLNode* node) {
     }
 }
 
-XMLNode* DefaultCurveConfig::Config::toXML(XMLDocument& doc) {
+XMLNode* DefaultCurveConfig::Config::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode("Configuration");
     XMLUtils::addAttribute(doc, node, "priority", std::to_string(priority_));
     if (type_ == Type::SpreadCDS || type_ == Type::HazardRate || type_ == Type::Price) {
@@ -246,6 +263,9 @@ XMLNode* DefaultCurveConfig::Config::toXML(XMLDocument& doc) {
         XMLUtils::addChild(doc, node, "RecoveryRate", recoveryRateQuote_);
         XMLUtils::addChildren(doc, node, "SourceCurves", "SourceCurve", multiSectionSourceCurveIds_);
         XMLUtils::addChildren(doc, node, "SwitchDates", "SwitchDate", multiSectionSwitchDates_);
+    } else if ( type_ == Type::TransitionMatrix) {
+        XMLUtils::addChild(doc, node, "InitialState", initialState_);
+        XMLUtils::addChild(doc, node, "States", boost::algorithm::join(states_, ","));
     } else if (type_ == Type::Null) {
         XMLUtils::addChild(doc, node, "Type", "Null");
         XMLUtils::addChild(doc, node, "DayCounter", to_string(dayCounter_));

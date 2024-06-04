@@ -21,7 +21,7 @@
 #include <ored/utilities/log.hpp>
 #include <ored/utilities/wildcard.hpp>
 
-#include <qle/termstructures/defaultprobabilityhelpers.hpp>
+#include <qle/termstructures/generatordefaulttermstructure.hpp>
 #include <qle/termstructures/interpolatedhazardratecurve.hpp>
 #include <qle/termstructures/interpolatedsurvivalprobabilitycurve.hpp>
 #include <qle/termstructures/iterativebootstrap.hpp>
@@ -33,6 +33,7 @@
 
 #include <ql/math/interpolations/backwardflatinterpolation.hpp>
 #include <ql/math/interpolations/loginterpolation.hpp>
+#include <ql/termstructures/credit/defaultprobabilityhelpers.hpp>
 #include <ql/termstructures/credit/flathazardrate.hpp>
 #include <ql/time/daycounters/actual365fixed.hpp>
 
@@ -41,14 +42,6 @@
 
 using namespace QuantLib;
 using namespace std;
-
-// Temporary workaround to silence warnings on g++ until QL 1.17 is released with the
-// pull request: https://github.com/lballabio/QuantLib/pull/679
-#ifdef BOOST_MSVC
-#define ATTR_UNUSED
-#else
-#define ATTR_UNUSED __attribute__((unused))
-#endif
 
 namespace {
 
@@ -89,11 +82,22 @@ set<QuoteData> getRegexQuotes(const Wildcard& wc, const string& configId, Defaul
 
     // Loop over the available market data and pick out quotes that match the expression
     set<QuoteData> result;
-    for (const auto& md : loader.loadQuotes(asof)) {
 
-        // Go to next quote if the market data point's date does not equal our asof
-        if (md->asofDate() != asof)
-            continue;
+    std::ostringstream ss1;
+    ss1 << MDIT::CDS << "/*";
+    Wildcard w1(ss1.str());
+    auto data1 = loader.get(w1, asof);
+
+    std::ostringstream ss2;
+    ss2 << MDIT::HAZARD_RATE << "/*";
+    Wildcard w2(ss2.str());
+    auto data2 = loader.get(w2, asof);
+
+    data1.merge(data2);
+
+    for (const auto& md : data1) {
+
+        QL_REQUIRE(md->asofDate() == asof, "MarketDatum asofDate '" << md->asofDate() << "' <> asof '" << asof << "'");
 
         auto mdit = md->instrumentType();
         auto mdqt = md->quoteType();
@@ -102,7 +106,8 @@ set<QuoteData> getRegexQuotes(const Wildcard& wc, const string& configId, Defaul
         if (type == DCCT::SpreadCDS && mdit == MDIT::CDS &&
             (mdqt == MDQT::CREDIT_SPREAD || mdqt == MDQT::CONV_CREDIT_SPREAD)) {
 
-            auto q = boost::dynamic_pointer_cast<CdsQuote>(md);
+            auto q = QuantLib::ext::dynamic_pointer_cast<CdsQuote>(md);
+            QL_REQUIRE(q, "Internal error: could not downcast MarketDatum '" << md->name() << "' to CdsQuote");
             if (wc.matches(q->name())) {
                 addQuote(result, configId, q->name(), q->term(), q->quote()->value(), q->seniority(), q->ccy(),
                          q->docClause(), q->runningSpread());
@@ -110,7 +115,8 @@ set<QuoteData> getRegexQuotes(const Wildcard& wc, const string& configId, Defaul
 
         } else if (type == DCCT::Price && (mdit == MDIT::CDS && mdqt == MDQT::PRICE)) {
 
-            auto q = boost::dynamic_pointer_cast<CdsQuote>(md);
+            auto q = QuantLib::ext::dynamic_pointer_cast<CdsQuote>(md);
+            QL_REQUIRE(q, "Internal error: could not downcast MarketDatum '" << md->name() << "' to CdsQuote");
             if (wc.matches(q->name())) {
                 addQuote(result, configId, q->name(), q->term(), q->quote()->value(), q->seniority(), q->ccy(),
                          q->docClause(), q->runningSpread());
@@ -118,7 +124,8 @@ set<QuoteData> getRegexQuotes(const Wildcard& wc, const string& configId, Defaul
 
         } else if (type == DCCT::HazardRate && (mdit == MDIT::HAZARD_RATE && mdqt == MDQT::RATE)) {
 
-            auto q = boost::dynamic_pointer_cast<HazardRateQuote>(md);
+            auto q = QuantLib::ext::dynamic_pointer_cast<HazardRateQuote>(md);
+            QL_REQUIRE(q, "Internal error: could not downcast MarketDatum '" << md->name() << "' to HazardRateQuote");
             if (wc.matches(q->name())) {
                 addQuote(result, configId, q->name(), q->term(), q->quote()->value(), q->seniority(), q->ccy(),
                          q->docClause());
@@ -162,14 +169,14 @@ set<QuoteData> getExplicitQuotes(const vector<pair<string, bool>>& quotes, const
 
     set<QuoteData> result;
     for (const auto& p : quotes) {
-        if (boost::shared_ptr<MarketDatum> md = loader.get(p, asof)) {
+        if (QuantLib::ext::shared_ptr<MarketDatum> md = loader.get(p, asof)) {
             if (type == DCCT::SpreadCDS || type == DCCT::Price) {
-                auto q = boost::dynamic_pointer_cast<CdsQuote>(md);
+                auto q = QuantLib::ext::dynamic_pointer_cast<CdsQuote>(md);
                 QL_REQUIRE(q, "Quote " << p.first << " for config " << configId << " should be a CdsQuote");
                 addQuote(result, configId, q->name(), q->term(), q->quote()->value(), q->seniority(), q->ccy(),
                          q->docClause(), q->runningSpread());
             } else {
-                auto q = boost::dynamic_pointer_cast<HazardRateQuote>(md);
+                auto q = QuantLib::ext::dynamic_pointer_cast<HazardRateQuote>(md);
                 QL_REQUIRE(q, "Quote " << p.first << " for config " << configId << " should be a HazardRateQuote");
                 addQuote(result, configId, q->name(), q->term(), q->quote()->value(), q->seniority(), q->ccy(),
                          q->docClause());
@@ -218,20 +225,20 @@ namespace data {
 
 DefaultCurve::DefaultCurve(Date asof, DefaultCurveSpec spec, const Loader& loader,
                            const CurveConfigurations& curveConfigs,
-                           map<string, boost::shared_ptr<YieldCurve>>& yieldCurves,
-                           map<string, boost::shared_ptr<DefaultCurve>>& defaultCurves) {
-    const boost::shared_ptr<DefaultCurveConfig>& configs = curveConfigs.defaultCurveConfig(spec.curveConfigID());
+                           map<string, QuantLib::ext::shared_ptr<YieldCurve>>& yieldCurves,
+                           map<string, QuantLib::ext::shared_ptr<DefaultCurve>>& defaultCurves) {
+    const QuantLib::ext::shared_ptr<DefaultCurveConfig>& configs = curveConfigs.defaultCurveConfig(spec.curveConfigID());
     bool built = false;
     std::string errors;
     for (auto const& config : configs->configs()) {
         try {
             recoveryRate_ = Null<Real>();
             if (!config.second.recoveryRateQuote().empty()) {
-		// handle case where the recovery rate is hardcoded in the curve config
+                // handle case where the recovery rate is hardcoded in the curve config
                 if (!tryParseReal(config.second.recoveryRateQuote(), recoveryRate_)) {
                     Wildcard wc(config.second.recoveryRateQuote());
                     if (wc.hasWildcard()) {
-                        for (auto const& q : loader.loadQuotes(asof)) {
+                        for (auto const& q : loader.get(wc, asof)) {
                             if (wc.matches(q->name())) {
                                 QL_REQUIRE(recoveryRate_ == Null<Real>(),
                                            "There is more than one recovery rate matching the pattern '" << wc.pattern()
@@ -262,6 +269,9 @@ DefaultCurve::DefaultCurve(Date asof, DefaultCurveSpec spec, const Loader& loade
             case DefaultCurveConfig::Config::Type::MultiSection:
                 buildMultiSectionCurve(configs->curveID(), config.second, asof, spec, loader, defaultCurves);
                 break;
+            case DefaultCurveConfig::Config::Type::TransitionMatrix:
+                buildTransitionMatrixCurve(configs->curveID(), config.second, asof, spec, loader, defaultCurves);
+                break;
             case DefaultCurveConfig::Config::Type::Null:
                 buildNullCurve(configs->curveID(), config.second, asof, spec);
                 break;
@@ -270,6 +280,7 @@ DefaultCurve::DefaultCurve(Date asof, DefaultCurveSpec spec, const Loader& loade
                                                        << " was not recognised");
             }
             built = true;
+            break;
         } catch (exception& e) {
             std::ostringstream message;
             message << "build attempt failed for " << configs->curveID() << " using config with priority "
@@ -285,7 +296,7 @@ DefaultCurve::DefaultCurve(Date asof, DefaultCurveSpec spec, const Loader& loade
 
 void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveConfig::Config& config, const Date& asof,
                                  const DefaultCurveSpec& spec, const Loader& loader,
-                                 map<string, boost::shared_ptr<YieldCurve>>& yieldCurves) {
+                                 map<string, QuantLib::ext::shared_ptr<YieldCurve>>& yieldCurves) {
 
     LOG("Start building default curve of type SpreadCDS for curve " << curveID);
 
@@ -295,10 +306,10 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
     QL_REQUIRE(recoveryRate_ != Null<Real>(), "DefaultCurve: recovery rate needed to build SpreadCDS curve");
 
     // Get the CDS curve conventions
-    boost::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
+    QuantLib::ext::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
     QL_REQUIRE(conventions->has(config.conventionID()), "No conventions found with id " << config.conventionID());
-    boost::shared_ptr<CdsConvention> cdsConv =
-        boost::dynamic_pointer_cast<CdsConvention>(conventions->get(config.conventionID()));
+    QuantLib::ext::shared_ptr<CdsConvention> cdsConv =
+        QuantLib::ext::dynamic_pointer_cast<CdsConvention>(conventions->get(config.conventionID()));
     QL_REQUIRE(cdsConv, "SpreadCDS curves require CDS convention");
 
     // Get the discount curve for use in the CDS spread curve bootstrap
@@ -334,12 +345,12 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
             // and in places like ScenarioSimMarket.
             vector<Date> dates{asof, asof + 1 * Years, asof + 10 * Years};
             vector<Real> survivalProbs{1.0, 1e-16, 1e-18};
-            curve_ = boost::make_shared<QuantExt::CreditCurve>(
+            curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(
                 Handle<DefaultProbabilityTermStructure>(
-                    boost::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
+                    QuantLib::ext::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
                         dates, survivalProbs, config.dayCounter(), Calendar(), std::vector<Handle<Quote>>(),
                         std::vector<Date>(), LogLinear())),
-                discountCurve, Handle<Quote>(boost::make_shared<SimpleQuote>(recoveryRate_)), refData);
+                discountCurve, Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(recoveryRate_)), refData);
             curve_->curve()->enableExtrapolation();
             WLOG("DefaultCurve: recovery rate found but no CDS quotes for "
                  << curveID << " and "
@@ -351,7 +362,7 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
     }
 
     // Create the CDS instrument helpers, only keep alive helpers
-    vector<boost::shared_ptr<QuantExt::DefaultProbabilityHelper>> helpers;
+    vector<QuantLib::ext::shared_ptr<QuantExt::DefaultProbabilityHelper>> helpers;
     std::map<QuantLib::Date, QuantLib::Period> helperQuoteTerms;
     Real runningSpread = Null<Real>();
     QuantExt::CreditDefaultSwap::ProtectionPaymentTime ppt = cdsConv->paysAtDefaultTime()
@@ -360,20 +371,21 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
 
     if (config.type() == DefaultCurveConfig::Config::Type::SpreadCDS) {
         for (auto quote : quotes) {
-            boost::shared_ptr<QuantExt::SpreadCdsHelper> tmp;
+            QuantLib::ext::shared_ptr<SpreadCdsHelper> tmp;
             try {
-                tmp = boost::make_shared<QuantExt::SpreadCdsHelper>(
+                tmp = QuantLib::ext::make_shared<SpreadCdsHelper>(
                     quote.value, quote.term, cdsConv->settlementDays(), cdsConv->calendar(), cdsConv->frequency(),
                     cdsConv->paymentConvention(), cdsConv->rule(), cdsConv->dayCounter(), recoveryRate_, discountCurve,
-                    config.startDate(), cdsConv->settlesAccrual(), ppt, cdsConv->lastPeriodDayCounter());
+                    cdsConv->settlesAccrual(), ppt, config.startDate(), cdsConv->lastPeriodDayCounter());
 
             } catch (exception& e) {
                 if (quote.term == Period(0, Months)) {
-                    WLOG("DefaultCurve:: Cannot add quote of term 0M to CDS curve " << curveID << 
-                        " for asof date " << asof);
+                    WLOG("DefaultCurve:: Cannot add quote of term 0M to CDS curve " << curveID << " for asof date "
+                                                                                    << asof);
                 } else {
-                    QL_FAIL("DefaultCurve:: Failed to add quote of term " << quote.term << " to CDS curve " 
-                        << curveID << " for asof date " << asof << ", with error: " << e.what());
+                    QL_FAIL("DefaultCurve:: Failed to add quote of term " << quote.term << " to CDS curve " << curveID
+                                                                          << " for asof date " << asof
+                                                                          << ", with error: " << e.what());
                 }
             }
             if (tmp) {
@@ -394,11 +406,11 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
                                << "string so it must be provided in the config for CDS upfront curve " << curveID);
                 runningSpread = config.runningSpread();
             }
-            auto tmp = boost::make_shared<QuantExt::UpfrontCdsHelper>(
+            auto tmp = QuantLib::ext::make_shared<UpfrontCdsHelper>(
                 quote.value, runningSpread, quote.term, cdsConv->settlementDays(), cdsConv->calendar(),
                 cdsConv->frequency(), cdsConv->paymentConvention(), cdsConv->rule(), cdsConv->dayCounter(),
-                recoveryRate_, discountCurve, config.startDate(), cdsConv->upfrontSettlementDays(),
-                cdsConv->settlesAccrual(), ppt, cdsConv->lastPeriodDayCounter());
+                recoveryRate_, discountCurve, cdsConv->upfrontSettlementDays(), cdsConv->settlesAccrual(), ppt,
+                config.startDate(), cdsConv->lastPeriodDayCounter());
             if (tmp->latestDate() > asof) {
                 helpers.push_back(tmp);
             }
@@ -424,10 +436,9 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
     Size dontThrowSteps = config.bootstrapConfig().dontThrowSteps();
 
     typedef PiecewiseDefaultCurve<QuantExt::SurvivalProbability, LogLinear, QuantExt::IterativeBootstrap> SpCurve;
-    ATTR_UNUSED typedef SpCurve::traits_type dummy;
-    QuantExt::IterativeBootstrap<SpCurve> btconfig(accuracy, globalAccuracy, dontThrow, maxAttempts, maxFactor,
+    SpCurve::bootstrap_type btconfig(accuracy, globalAccuracy, dontThrow, maxAttempts, maxFactor,
                                                    minFactor, dontThrowSteps);
-    boost::shared_ptr<DefaultProbabilityTermStructure> qlCurve;
+    QuantLib::ext::shared_ptr<DefaultProbabilityTermStructure> qlCurve;
 
     if (config.indexTerm() != 0 * Days) {
 
@@ -444,29 +455,29 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
         Real alpha;
         std::tie(helperIndex_m, helperIndex_p, alpha) = QuantExt::interpolationIndices(helperTermTimes, t);
 
-        auto tmp1 = boost::make_shared<SpCurve>(
-            asof, std::vector<boost::shared_ptr<QuantExt::DefaultProbabilityHelper>>{helpers[helperIndex_m]},
+        auto tmp1 = QuantLib::ext::make_shared<SpCurve>(
+            asof, std::vector<QuantLib::ext::shared_ptr<QuantExt::DefaultProbabilityHelper>>{helpers[helperIndex_m]},
             config.dayCounter(), LogLinear(), btconfig);
         Date d1 = helpers[helperIndex_m]->pillarDate();
         Real p1 = tmp1->survivalProbability(d1);
-        auto tmp1i = boost::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
+        auto tmp1i = QuantLib::ext::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
             std::vector<Date>{asof, d1}, std::vector<Real>{1.0, p1}, config.dayCounter(), Calendar(),
             std::vector<Handle<Quote>>(), std::vector<Date>(), LogLinear(), config.allowNegativeRates());
 
         if (close_enough(alpha, 1.0)) {
             qlCurve = tmp1i;
         } else {
-            auto tmp2 = boost::make_shared<SpCurve>(
-                asof, std::vector<boost::shared_ptr<QuantExt::DefaultProbabilityHelper>>{helpers[helperIndex_p]},
+            auto tmp2 = QuantLib::ext::make_shared<SpCurve>(
+                asof, std::vector<QuantLib::ext::shared_ptr<QuantExt::DefaultProbabilityHelper>>{helpers[helperIndex_p]},
                 config.dayCounter(), LogLinear(), btconfig);
             Date d2 = helpers[helperIndex_p]->pillarDate();
             Real p2 = tmp2->survivalProbability(d2);
-            auto tmp2i = boost::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
+            auto tmp2i = QuantLib::ext::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
                 std::vector<Date>{asof, d2}, std::vector<Real>{1.0, p2}, config.dayCounter(), Calendar(),
                 std::vector<Handle<Quote>>(), std::vector<Date>(), LogLinear(), config.allowNegativeRates());
             tmp1i->enableExtrapolation();
             tmp2i->enableExtrapolation();
-            qlCurve = boost::make_shared<QuantExt::TermInterpolatedDefaultCurve>(
+            qlCurve = QuantLib::ext::make_shared<QuantExt::TermInterpolatedDefaultCurve>(
                 Handle<DefaultProbabilityTermStructure>(tmp1i), Handle<DefaultProbabilityTermStructure>(tmp2i), alpha);
         }
 
@@ -474,7 +485,7 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
 
         // build single name curve
 
-        boost::shared_ptr<DefaultProbabilityTermStructure> tmp = boost::make_shared<SpCurve>(
+        QuantLib::ext::shared_ptr<DefaultProbabilityTermStructure> tmp = QuantLib::ext::make_shared<SpCurve>(
             asof, helpers, config.dayCounter(), LogLinear(),
             QuantExt::IterativeBootstrap<SpCurve>(accuracy, globalAccuracy, dontThrow, maxAttempts, maxFactor,
                                                   minFactor, dontThrowSteps));
@@ -511,7 +522,7 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
             dates.push_back(dates.back() + 1);
             survivalProbs.push_back(survivalProbs.back());
         }
-        qlCurve = boost::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
+        qlCurve = QuantLib::ext::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
             dates, survivalProbs, config.dayCounter(), Calendar(), std::vector<Handle<Quote>>(), std::vector<Date>(),
             LogLinear(), config.allowNegativeRates());
     }
@@ -521,8 +532,8 @@ void DefaultCurve::buildCdsCurve(const std::string& curveID, const DefaultCurveC
         DLOG("DefaultCurve: Enabled Extrapolation");
     }
 
-    curve_ = boost::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(qlCurve), discountCurve,
-                                                       Handle<Quote>(boost::make_shared<SimpleQuote>(recoveryRate_)),
+    curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(qlCurve), discountCurve,
+                                                       Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(recoveryRate_)),
                                                        refData);
 
     LOG("Finished building default curve of type SpreadCDS for curve " << curveID);
@@ -537,10 +548,10 @@ void DefaultCurve::buildHazardRateCurve(const std::string& curveID, const Defaul
                "DefaultCurve::buildHazardRateCurve expected a default curve configuration with type HazardRate");
 
     // Get the hazard rate curve conventions
-    boost::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
+    QuantLib::ext::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
     QL_REQUIRE(conventions->has(config.conventionID()), "No conventions found with id " << config.conventionID());
-    boost::shared_ptr<CdsConvention> cdsConv =
-        boost::dynamic_pointer_cast<CdsConvention>(conventions->get(config.conventionID()));
+    QuantLib::ext::shared_ptr<CdsConvention> cdsConv =
+        QuantLib::ext::dynamic_pointer_cast<CdsConvention>(conventions->get(config.conventionID()));
     QL_REQUIRE(cdsConv, "HazardRate curves require CDS convention");
 
     // Get the hazard rate quotes
@@ -564,8 +575,8 @@ void DefaultCurve::buildHazardRateCurve(const std::string& curveID, const Defaul
     }
 
     LOG("DefaultCurve: set up interpolated hazard rate curve");
-    curve_ = boost::make_shared<QuantExt::CreditCurve>(
-        Handle<DefaultProbabilityTermStructure>(boost::make_shared<QuantExt::InterpolatedHazardRateCurve<BackwardFlat>>(
+    curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(
+        Handle<DefaultProbabilityTermStructure>(QuantLib::ext::make_shared<QuantExt::InterpolatedHazardRateCurve<BackwardFlat>>(
             dates, quoteValues, config.dayCounter(), BackwardFlat(), config.allowNegativeRates())));
 
     if (config.extrapolation()) {
@@ -586,7 +597,7 @@ void DefaultCurve::buildHazardRateCurve(const std::string& curveID, const Defaul
 
 void DefaultCurve::buildBenchmarkCurve(const std::string& curveID, const DefaultCurveConfig::Config& config,
                                        const Date& asof, const DefaultCurveSpec& spec, const Loader& loader,
-                                       map<string, boost::shared_ptr<YieldCurve>>& yieldCurves) {
+                                       map<string, QuantLib::ext::shared_ptr<YieldCurve>>& yieldCurves) {
 
     LOG("Start building default curve of type Benchmark for curve " << curveID);
 
@@ -601,14 +612,14 @@ void DefaultCurve::buildBenchmarkCurve(const std::string& curveID, const Default
     QL_REQUIRE(it != yieldCurves.end(), "The benchmark curve, " << config.benchmarkCurveID()
                                                                 << ", required in the building of the curve, "
                                                                 << spec.name() << ", was not found.");
-    boost::shared_ptr<YieldCurve> benchmarkCurve = it->second;
+    QuantLib::ext::shared_ptr<YieldCurve> benchmarkCurve = it->second;
 
     // Populate source yield curve
     it = yieldCurves.find(config.sourceCurveID());
     QL_REQUIRE(it != yieldCurves.end(), "The source curve, " << config.sourceCurveID()
                                                              << ", required in the building of the curve, "
                                                              << spec.name() << ", was not found.");
-    boost::shared_ptr<YieldCurve> sourceCurve = it->second;
+    QuantLib::ext::shared_ptr<YieldCurve> sourceCurve = it->second;
 
     // Parameters from the configuration
     vector<Period> pillars = parseVectorOfValues<Period>(config.pillars(), &parsePeriod);
@@ -637,8 +648,8 @@ void DefaultCurve::buildBenchmarkCurve(const std::string& curveID, const Default
     }
 
     LOG("DefaultCurve: set up interpolated surv prob curve as yield over benchmark");
-    curve_ = boost::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(
-        boost::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
+    curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(
+        QuantLib::ext::make_shared<QuantExt::InterpolatedSurvivalProbabilityCurve<LogLinear>>(
             dates, impliedSurvProb, config.dayCounter(), Calendar(), std::vector<Handle<Quote>>(), std::vector<Date>(),
             LogLinear(), config.allowNegativeRates())));
 
@@ -655,7 +666,7 @@ void DefaultCurve::buildBenchmarkCurve(const std::string& curveID, const Default
 
 void DefaultCurve::buildMultiSectionCurve(const std::string& curveID, const DefaultCurveConfig::Config& config,
                                           const Date& asof, const DefaultCurveSpec& spec, const Loader& loader,
-                                          map<string, boost::shared_ptr<DefaultCurve>>& defaultCurves) {
+                                          map<string, QuantLib::ext::shared_ptr<DefaultCurve>>& defaultCurves) {
     LOG("Start building default curve of type MultiSection for curve " << curveID);
 
     std::vector<Handle<DefaultProbabilityTermStructure>> curves;
@@ -667,27 +678,77 @@ void DefaultCurve::buildMultiSectionCurve(const std::string& curveID, const Defa
         QL_REQUIRE(it != defaultCurves.end(),
                    "The multi section source curve " << s << " required for " << spec.name() << " was not found.");
         curves.push_back(Handle<DefaultProbabilityTermStructure>(it->second->creditCurve()->curve()));
-        recoveryRates.push_back(Handle<Quote>(boost::make_shared<SimpleQuote>(it->second->recoveryRate())));
+        recoveryRates.push_back(Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(it->second->recoveryRate())));
     }
 
     for (auto const& d : config.multiSectionSwitchDates()) {
         switchDates.push_back(parseDate(d));
     }
 
-    Handle<Quote> recoveryRate(boost::make_shared<SimpleQuote>(recoveryRate_));
+    Handle<Quote> recoveryRate(QuantLib::ext::make_shared<SimpleQuote>(recoveryRate_));
     LOG("DefaultCurve: set up multi section curve with " << curves.size() << " sections");
-    curve_ = boost::make_shared<QuantExt::CreditCurve>(
-        Handle<DefaultProbabilityTermStructure>(boost::make_shared<QuantExt::MultiSectionDefaultCurve>(
+    curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(
+        Handle<DefaultProbabilityTermStructure>(QuantLib::ext::make_shared<QuantExt::MultiSectionDefaultCurve>(
             curves, recoveryRates, switchDates, recoveryRate, config.dayCounter(), config.extrapolation())));
 
     LOG("Finished building default curve of type MultiSection for curve " << curveID);
 }
 
+void DefaultCurve::buildTransitionMatrixCurve(const std::string& curveID, const DefaultCurveConfig::Config& config,
+                                              const Date& asof, const DefaultCurveSpec& spec, const Loader& loader,
+                                              map<string, QuantLib::ext::shared_ptr<DefaultCurve>>& defaultCurves) {
+    LOG("Start building default curve of type TransitionMatrix for curve " << curveID);
+    Size dim = config.states().size();
+    QL_REQUIRE(dim >= 2,
+               "DefaultCurve::buildTransitionMatrixCurve(): transition matrix dimension >= 2 required, found " << dim);
+    Matrix transitionMatrix(dim, dim, Null<Real>());
+    map<string, Size> stateIndex;
+    for (Size i = 0; i < config.states().size(); ++i)
+        stateIndex[config.states()[i]] = i;
+    QL_REQUIRE(!config.cdsQuotes().empty(), "DefaultCurve::buildTransitionMatrixCurve(): not quotes given.");
+    std::vector<std::string> tmp;
+    std::transform(config.cdsQuotes().begin(), config.cdsQuotes().end(), std::back_inserter(tmp),
+                   [](const std::pair<std::string, bool>& p) { return p.first; });
+    auto wildcard = getUniqueWildcard(tmp);
+    std::set<QuantLib::ext::shared_ptr<MarketDatum>> mdData;
+    if (wildcard) {
+        mdData = loader.get(*wildcard, asof);
+    } else {
+        for (auto const& q : config.cdsQuotes()) {
+            if (auto m = loader.get(q, asof))
+                mdData.insert(m);
+        }
+    }
+    for (const auto& md : mdData) {
+        QL_REQUIRE(md->instrumentType() == MarketDatum::InstrumentType::RATING,
+                   "DefaultCurve::buildTransitionMatrixCurve(): quote instrument type must be RATING.");
+        QuantLib::ext::shared_ptr<TransitionProbabilityQuote> q = QuantLib::ext::dynamic_pointer_cast<TransitionProbabilityQuote>(md);
+        Size i = stateIndex[q->fromRating()];
+        Size j = stateIndex[q->toRating()];
+        transitionMatrix[i][j] = q->quote()->value();
+    }
+    for (Size i = 0; i < dim; ++i) {
+        for (Size j = 0; j < dim; ++j) {
+            QL_REQUIRE(transitionMatrix[i][j] != Null<Real>(),
+                       "DefaultCurve::buildTransitionMatrixCurve():matrix element "
+                           << config.states()[i] << " -> " << config.states()[j] << " missing in market data");
+        }
+    }
+    Size initialStateIndex = stateIndex[config.initialState()];
+    curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(
+        Handle<DefaultProbabilityTermStructure>(QuantLib::ext::make_shared<QuantExt::GeneratorDefaultProbabilityTermStructure>(
+            QuantExt::GeneratorDefaultProbabilityTermStructure::MatrixType::Transition, transitionMatrix,
+            initialStateIndex, asof)));
+    if (recoveryRate_ == Null<Real>())
+        recoveryRate_ = 0.0;
+    LOG("Finished building default curve of type TransitionMatrix for curve " << curveID);
+}
+
 void DefaultCurve::buildNullCurve(const std::string& curveID, const DefaultCurveConfig::Config& config,
                                   const Date& asof, const DefaultCurveSpec& spec) {
     LOG("Start building null default curve for " << curveID);
-    curve_ = boost::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(
-        boost::make_shared<QuantLib::FlatHazardRate>(asof, 0.0, config.dayCounter())));
+    curve_ = QuantLib::ext::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(
+        QuantLib::ext::make_shared<QuantLib::FlatHazardRate>(asof, 0.0, config.dayCounter())));
     recoveryRate_ = 0.0;
     LOG("Finished building default curve of type Null for curve " << curveID);
 }

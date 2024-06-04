@@ -54,6 +54,7 @@ SimpleDeltaInterpolatedSmile::SimpleDeltaInterpolatedSmile(
         try {
             BlackDeltaCalculator c(Option::Put, dt_, spot_, domDisc_, forDisc_, putVols_[i] * std::sqrt(expiryTime_));
             x.push_back(simpleDeltaFromStrike(c.strikeFromDelta(-deltas[i])));
+            y.push_back(transformVol(putVols_[i]));
         } catch (const std::exception& e) {
             QL_FAIL("SimpleDeltaInterpolatedSmile: strikeFromDelta("
                     << -deltas[i] << ") could not be computed for spot=" << spot_
@@ -61,19 +62,18 @@ SimpleDeltaInterpolatedSmile::SimpleDeltaInterpolatedSmile(
                     << ", forRate=" << -std::log(forDisc) / expiryTime_ << "), putVol=" << putVols_[i]
                     << ", expiry=" << expiryTime_ << ": " << e.what());
         }
-        y.push_back(transformVol(putVols_[i]));
     }
 
     try {
         BlackDeltaCalculator c(Option::Call, dt_, spot_, domDisc_, forDisc_, atmVol * std::sqrt(expiryTime_));
         x.push_back(simpleDeltaFromStrike(c.atmStrike(at_)));
+        y.push_back(transformVol(atmVol_));
     } catch (const std::exception& e) {
         QL_FAIL("SimpleDeltaIinterpolatedSmile: atmStrike could not be computed for spot="
                 << spot_ << ", forward=" << spot_ / domDisc_ * forDisc_
                 << " (domRate=" << -std::log(domDisc_) / expiryTime_ << ", forRate=" << -std::log(forDisc) / expiryTime_
                 << "), atmVol=" << atmVol << ", expiry=" << expiryTime_ << ": " << e.what());
     }
-    y.push_back(transformVol(atmVol_));
 
     for (Size i = deltas_.size(); i > 0; --i) {
         try {
@@ -111,9 +111,9 @@ SimpleDeltaInterpolatedSmile::SimpleDeltaInterpolatedSmile(
     /* Create the interpolation object */
 
     if (smileInterpolation_ == BlackVolatilitySurfaceBFRR::SmileInterpolation::Linear) {
-        interpolation_ = boost::make_shared<LinearInterpolation>(x_.begin(), x_.end(), y_.begin());
+        interpolation_ = QuantLib::ext::make_shared<LinearInterpolation>(x_.begin(), x_.end(), y_.begin());
     } else if (smileInterpolation_ == BlackVolatilitySurfaceBFRR::SmileInterpolation::Cubic) {
-        interpolation_ = boost::make_shared<CubicInterpolation>(
+        interpolation_ = QuantLib::ext::make_shared<CubicInterpolation>(
             x_.begin(), x_.end(), y_.begin(), CubicInterpolation::Spline, false, CubicInterpolation::SecondDerivative,
             0.0, CubicInterpolation::SecondDerivative, 0.0);
     } else {
@@ -176,8 +176,11 @@ Real SimpleDeltaInterpolatedSmile::atmStrike(const DeltaVolQuote::DeltaType dt, 
     return result;
 }
 
-Real SimpleDeltaInterpolatedSmile::volatilityAtSimpleDelta(const Real tnp) {
-    return untransformVol((*interpolation_)(tnp));
+Real SimpleDeltaInterpolatedSmile::volatilityAtSimpleDelta(const Real simpleDelta) {
+    Real tmp = untransformVol((*interpolation_)(simpleDelta));
+    QL_REQUIRE(std::isfinite(tmp), "SimpleDeltaInterpolatedSmile::volatilityAtSimpleDelta() non-finite result ("
+                                       << tmp << ") for simple delta " << simpleDelta);
+    return tmp;
 }
 
 Real SimpleDeltaInterpolatedSmile::volatility(const Real strike) {
@@ -202,7 +205,7 @@ Real SimpleDeltaInterpolatedSmile::simpleDeltaFromStrike(const Real strike) cons
     return Phi(std::log(strike / forward_) / (atmVol_ * std::sqrt(expiryTime_)));
 }
 
-boost::shared_ptr<SimpleDeltaInterpolatedSmile>
+QuantLib::ext::shared_ptr<SimpleDeltaInterpolatedSmile>
 createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real expiryTime,
             const std::vector<Real>& deltas, const std::vector<Real>& bfQuotes, const std::vector<Real>& rrQuotes,
             const Real atmVol, const DeltaVolQuote::DeltaType dt, const DeltaVolQuote::AtmType at,
@@ -210,6 +213,7 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
             const BlackVolatilitySurfaceBFRR::SmileInterpolation smileInterpolation) {
 
     Real phirr = riskReversalInFavorOf == Option::Call ? 1.0 : -1.0;
+    QuantLib::ext::shared_ptr<SimpleDeltaInterpolatedSmile> resultSmile;
 
     if (!butterflyIsBrokerStyle) {
 
@@ -228,8 +232,8 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
 
         // ... and set up the interpolated smile
 
-        return boost::make_shared<SimpleDeltaInterpolatedSmile>(spot, domDisc, forDisc, expiryTime, deltas, vol_p,
-                                                                vol_c, atmVol, dt, at, smileInterpolation);
+        resultSmile = QuantLib::ext::make_shared<SimpleDeltaInterpolatedSmile>(
+            spot, domDisc, forDisc, expiryTime, deltas, vol_p, vol_c, atmVol, dt, at, smileInterpolation);
 
     } else {
 
@@ -255,11 +259,11 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
         }
 
         /* set initial guess for smile butterfly vol := broker butterfly vol
-           we optimise in z = log( atmVol + bf - 0.5 * abs(rr) */
+           we optimise in z = log( bf - 0.5 * abs(rr) + atmVol ) */
 
         Array guess(deltas.size());
         for (Size i = 0; i < deltas.size(); ++i) {
-            guess[i] = std::log(std::max(0.0001, bfQuotes[i] + atmVol - 0.5 * rrQuotes[i]));
+            guess[i] = std::log(std::max(0.0001, bfQuotes[i] - 0.5 * std::abs(rrQuotes[i]) + atmVol));
         }
 
         /* define the target function to match up the butterfly market values and smile values */
@@ -281,12 +285,15 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
             BlackVolatilitySurfaceBFRR::SmileInterpolation smileInterpolation;
 
             mutable Real bestValue = QL_MAX_REAL;
-            mutable boost::shared_ptr<SimpleDeltaInterpolatedSmile> bestSmile;
+            mutable QuantLib::ext::shared_ptr<SimpleDeltaInterpolatedSmile> bestSmile;
 
-            Disposable<Array> values(const Array& x) const override {
+            Array values(const Array& x) const override {
 
-                Array rrTmp(rrQuotes.begin(), rrQuotes.end());
-                Array smileBfVol = Exp(x) - atmVol + 0.5 * Abs(rrTmp);
+                constexpr Real large_error = 1E6;
+
+                Array smileBfVol(x.size());
+                for (Size i = 0; i < x.size(); ++i)
+                    smileBfVol[i] = std::exp(x[i]) + 0.5 * std::abs(rrQuotes[i]) - atmVol;
 
                 // compute the call/put vols ....
 
@@ -303,17 +310,29 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
 
                 // ... set up the interpolated smile ...
 
-                auto tmpSmile = boost::make_shared<SimpleDeltaInterpolatedSmile>(
-                    spot, domDisc, forDisc, expiryTime, deltas, vol_p, vol_c, atmVol, dt, at, smileInterpolation);
+                QuantLib::ext::shared_ptr<SimpleDeltaInterpolatedSmile> tmpSmile;
+                try {
+                    tmpSmile = QuantLib::ext::make_shared<SimpleDeltaInterpolatedSmile>(
+                        spot, domDisc, forDisc, expiryTime, deltas, vol_p, vol_c, atmVol, dt, at, smileInterpolation);
+                } catch (...) {
+                    // if we run into a problem we return max error and continue with the optimization
+                    return Array(deltas.size(), large_error);
+                }
 
                 // ... and price the market butterfly on the constructed smile
 
                 std::vector<Real> vs;
                 for (Size i = 0; i < deltas.size(); ++i) {
-                    vs.push_back(blackFormula(Option::Put, kb_p[i], forward,
-                                              tmpSmile->volatility(kb_p[i]) * std::sqrt(expiryTime)) +
-                                 blackFormula(Option::Call, kb_c[i], forward,
-                                              tmpSmile->volatility(kb_c[i]) * std::sqrt(expiryTime)));
+                    Real pvol, cvol;
+                    try {
+                        pvol = tmpSmile->volatility(kb_p[i]);
+                        cvol = tmpSmile->volatility(kb_c[i]);
+                    } catch (...) {
+                        // as above, if there is a problem, return max error
+                        return Array(deltas.size(), large_error);
+                    }
+                    vs.push_back(blackFormula(Option::Put, kb_p[i], forward, pvol * std::sqrt(expiryTime)) +
+                                 blackFormula(Option::Call, kb_c[i], forward, cvol * std::sqrt(expiryTime)));
                 }
 
                 // now set the target function to the relative difference of smile vs. market price
@@ -321,10 +340,13 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
                 Array result(deltas.size());
                 for (Size i = 0; i < deltas.size(); ++i) {
                     result[i] = (vs[i] - vb[i]) / vb[i];
+                    if (!std::isfinite(result[i]))
+                        result[i] = large_error;
                 }
 
-                Real value =
-                    std::accumulate(result.begin(), result.end(), 0.0, [](Real acc, Real x) { return acc + x * x; });
+                Real value = std::sqrt(std::accumulate(result.begin(), result.end(), 0.0,
+                                                       [](Real acc, Real x) { return acc + x * x; })) /
+                             result.size();
 
                 if (value < bestValue) {
                     bestValue = value;
@@ -343,12 +365,24 @@ createSmile(const Real spot, const Real domDisc, const Real forDisc, const Real 
         Problem problem(targetFunction, noConstraint, guess);
         lm.minimize(problem, endCriteria);
 
-        QL_REQUIRE(problem.functionValue() < 0.01, "createSmile at expiry "
-                                                       << expiryTime << " failed: target function value ("
-                                                       << problem.functionValue() << ") not close to zero");
+        QL_REQUIRE(targetFunction.bestValue < 0.01, "createSmile at expiry "
+                                                        << expiryTime << " failed: target function value ("
+                                                        << problem.functionValue() << ") not close to zero");
 
-        return targetFunction.bestSmile;
+        resultSmile = targetFunction.bestSmile;
     }
+
+    // sanity check of result smile before return it
+
+    static const std::vector<Real> samplePoints = {0.01, 0.05, 0.1, 0.2, 0.5, 0.8, 0.9, 0.95, 0.99};
+    for (auto const& simpleDelta : samplePoints) {
+        Real vol = resultSmile->volatilityAtSimpleDelta(simpleDelta);
+        QL_REQUIRE(vol > 0.0001 && vol < 5.0, "createSmile at expiry " << expiryTime << ": volatility at simple delta "
+                                                                       << simpleDelta << " (" << vol
+                                                                       << ") is not plausible.");
+    }
+
+    return resultSmile;
 }
 
 } // namespace detail
@@ -444,15 +478,23 @@ void BlackVolatilitySurfaceBFRR::performCalculations() const {
 
     // clear caches
 
-    std::fill(smiles_.begin(), smiles_.end(), nullptr);
-    std::fill(smileHasError_.begin(), smileHasError_.end(), false);
-    std::fill(smileErrorMessage_.begin(), smileErrorMessage_.end(), std::string());
-    cachedInterpolatedSmiles_.clear();
+    clearCaches();
+
+    // reset deltas to use
+
+    currentDeltas_ = deltas_;
 }
 
 void BlackVolatilitySurfaceBFRR::update() {
     BlackVolatilityTermStructure::update();
     LazyObject::update();
+}
+
+void BlackVolatilitySurfaceBFRR::clearCaches() const {
+    std::fill(smiles_.begin(), smiles_.end(), nullptr);
+    std::fill(smileHasError_.begin(), smileHasError_.end(), false);
+    std::fill(smileErrorMessage_.begin(), smileErrorMessage_.end(), std::string());
+    cachedInterpolatedSmiles_.clear();
 }
 
 Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
@@ -494,9 +536,19 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
     if (index_p != Null<Size>() && smileHasError_[index_p])
         index_p = Null<Size>();
 
-    QL_REQUIRE(index_m != Null<Size>() || index_p != Null<Size>(),
-               "BlackVolatilitySurfaceBFRR::blackVolImpl(" << t << "," << strike
-                                                           << "): no valid smiles, check the market data input.");
+    if (index_m == Null<Size>() && index_p == Null<Size>()) {
+
+        /* no valid smiles, try to remove the smallest delta until there is only one delta left, then throw an error */
+
+        if (currentDeltas_.size() <= 1) {
+            QL_FAIL("BlackVolatilitySurfaceBFRR::blackVolImpl(" << t << "," << strike
+                                                                << "): no valid smiles, check the market data input.");
+        }
+
+        currentDeltas_.erase(currentDeltas_.begin());
+        clearCaches();
+        return blackVolImpl(t, strike);
+    }
 
     /* build the smiles on the indices, if we do not have them yet */
 
@@ -513,7 +565,7 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
         try {
             smiles_[index_m] = detail::createSmile(
                 spot_->value(), domesticTS_->discount(settlementDates_[index_m]) / settlDomDisc_,
-                foreignTS_->discount(settlementDates_[index_m]) / settlForDisc_, expiryTimes_[index_m], deltas_,
+                foreignTS_->discount(settlementDates_[index_m]) / settlForDisc_, expiryTimes_[index_m], currentDeltas_,
                 bfQuotes_[index_m], rrQuotes_[index_m], atmQuotes_[index_m], dt, at, riskReversalInFavorOf_,
                 butterflyIsBrokerStyle_, smileInterpolation_);
         } catch (const std::exception& e) {
@@ -536,7 +588,7 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
         try {
             smiles_[index_p] = detail::createSmile(
                 spot_->value(), domesticTS_->discount(settlementDates_[index_p]) / settlDomDisc_,
-                foreignTS_->discount(settlementDates_[index_p]) / settlForDisc_, expiryTimes_[index_p], deltas_,
+                foreignTS_->discount(settlementDates_[index_p]) / settlForDisc_, expiryTimes_[index_p], currentDeltas_,
                 bfQuotes_[index_p], rrQuotes_[index_p], atmQuotes_[index_p], dt, at, riskReversalInFavorOf_,
                 butterflyIsBrokerStyle_, smileInterpolation_);
         } catch (const std::exception& e) {
@@ -562,7 +614,7 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
     if (index_m != Null<Size>()) {
         try {
             atmVol_m = smiles_[index_m]->volatility(smiles_[index_m]->atmStrike(dt_c, at_c));
-            for (auto const& d : deltas_) {
+            for (auto const& d : currentDeltas_) {
                 putVols_m.push_back(
                     smiles_[index_m]->volatility(smiles_[index_m]->strikeFromDelta(Option::Put, d, dt_c)));
                 callVols_m.push_back(
@@ -578,7 +630,7 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
     if (index_p != Null<Size>()) {
         try {
             atmVol_p = smiles_[index_p]->volatility(smiles_[index_p]->atmStrike(dt_c, at_c));
-            for (auto const& d : deltas_) {
+            for (auto const& d : currentDeltas_) {
                 putVols_p.push_back(
                     smiles_[index_p]->volatility(smiles_[index_p]->strikeFromDelta(Option::Put, d, dt_c)));
                 callVols_p.push_back(
@@ -602,7 +654,7 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
         putVols_i = putVols_m;
         callVols_i = callVols_m;
         QL_REQUIRE(atmVol_i > 0.0, "BlackVolatilitySurfaceBFRR: negative front-extrapolated atm vol " << atmVol_i);
-        for (Size i = 0; i < deltas_.size(); ++i) {
+        for (Size i = 0; i < currentDeltas_.size(); ++i) {
             QL_REQUIRE(putVols_i[i] > 0.0,
                        "BlackVolatilitySurfaceBFRR: negative front-extrapolated put vol " << putVols_i[i]);
             QL_REQUIRE(callVols_i[i] > 0.0,
@@ -614,7 +666,7 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
         putVols_i = putVols_p;
         callVols_i = callVols_p;
         QL_REQUIRE(atmVol_i > 0.0, "BlackVolatilitySurfaceBFRR: negative back-extrapolated atm vol " << atmVol_i);
-        for (Size i = 0; i < deltas_.size(); ++i) {
+        for (Size i = 0; i < currentDeltas_.size(); ++i) {
             QL_REQUIRE(putVols_i[i] > 0.0,
                        "BlackVolatilitySurfaceBFRR: negative back-extrapolated put vol " << putVols_i[i]);
             QL_REQUIRE(callVols_i[i] > 0.0,
@@ -627,15 +679,17 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
         QL_REQUIRE(atmVol_i > 0.0, "BlackVolatilitySurfaceBFRR: negative atm vol "
                                        << atmVol_i << " = " << (1.0 - a) << " * " << atmVol_m << " + " << a << " * "
                                        << atmVol_p);
-        for (Size i = 0; i < deltas_.size(); ++i) {
+        for (Size i = 0; i < currentDeltas_.size(); ++i) {
             putVols_i.push_back((1.0 - a) * putVols_m[i] + a * putVols_p[i]);
             callVols_i.push_back((1.0 - a) * callVols_m[i] + a * callVols_p[i]);
             QL_REQUIRE(putVols_i.back() > 0.0, "BlackVolatilitySurfaceBFRR: negative put vol for delta="
-                                                   << deltas_[i] << ", " << putVols_i.back() << " = " << (1.0 - a)
-                                                   << " * " << putVols_m[i] << " + " << a << " * " << putVols_p[i]);
+                                                   << currentDeltas_[i] << ", " << putVols_i.back() << " = "
+                                                   << (1.0 - a) << " * " << putVols_m[i] << " + " << a << " * "
+                                                   << putVols_p[i]);
             QL_REQUIRE(callVols_i.back() > 0.0, "BlackVolatilitySurfaceBFRR: negative call vol for delta="
-                                                    << deltas_[i] << ", " << callVols_i.back() << " = " << (1.0 - a)
-                                                    << " * " << callVols_m[i] << " + " << a << " * " << callVols_p[i]);
+                                                    << currentDeltas_[i] << ", " << callVols_i.back() << " = "
+                                                    << (1.0 - a) << " * " << callVols_m[i] << " + " << a << " * "
+                                                    << callVols_p[i]);
         }
     }
 
@@ -647,13 +701,13 @@ Volatility BlackVolatilitySurfaceBFRR::blackVolImpl(Time t, Real strike) const {
         but the best we can realistically do in this context, because we don't have a date
         corresponding to t) */
 
-    boost::shared_ptr<detail::SimpleDeltaInterpolatedSmile> smile;
+    QuantLib::ext::shared_ptr<detail::SimpleDeltaInterpolatedSmile> smile;
 
     try {
-        smile = boost::make_shared<detail::SimpleDeltaInterpolatedSmile>(
+        smile = QuantLib::ext::make_shared<detail::SimpleDeltaInterpolatedSmile>(
             spot_->value(), domesticTS_->discount(t + settlLag_) / settlDomDisc_,
-            foreignTS_->discount(t + settlLag_) / settlForDisc_, t, deltas_, putVols_i, callVols_i, atmVol_i, dt_c,
-            at_c, smileInterpolation_);
+            foreignTS_->discount(t + settlLag_) / settlForDisc_, t, currentDeltas_, putVols_i, callVols_i, atmVol_i,
+            dt_c, at_c, smileInterpolation_);
     } catch (const std::exception& e) {
         // the interpolated smile failed to build => mark the "m" smile as a failure if available and retry, otherwise
         // market the "p" smile as a failure and retry

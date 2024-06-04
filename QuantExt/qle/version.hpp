@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016 - 2021 Quaternion Risk Management Ltd
+ Copyright (C) 2016 - 2023 Quaternion Risk Management Ltd
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -36,16 +36,16 @@
 #error using an old version of Boost, please update.
 #endif
 
-// We require QuantLib 1.11 or higher
+// We require QuantLib 1.30
 #include <ql/version.hpp>
-#if QL_HEX_VERSION < 0x011100f0
+#if QL_HEX_VERSION < 0x013000f0
 #error using an old version of QuantLib, please update.
 #endif
 
 //! Version string
-#define OPEN_SOURCE_RISK_VERSION "1.8.6.0"
+#define OPEN_SOURCE_RISK_VERSION "1.8.12.0"
 
 //! Version number
-#define OPEN_SOURCE_RISK_VERSION_NUM 1080600
+#define OPEN_SOURCE_RISK_VERSION_NUM 1081200
 
 #endif

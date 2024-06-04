@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <map>
 #include <functional>
 #include <ql/patterns/singleton.hpp>
 #include <string>
@@ -37,7 +38,7 @@ class ReferenceDatum;
 class AbstractReferenceDatumBuilder {
 public:
     virtual ~AbstractReferenceDatumBuilder() {}
-    virtual boost::shared_ptr<ReferenceDatum> build() const = 0;
+    virtual QuantLib::ext::shared_ptr<ReferenceDatum> build() const = 0;
 };
 
 //! Template TradeBuilder class
@@ -46,7 +47,7 @@ public:
 */
 template <class T> class ReferenceDatumBuilder : public AbstractReferenceDatumBuilder {
 public:
-    virtual boost::shared_ptr<ReferenceDatum> build() const override { return boost::make_shared<T>(); }
+    virtual QuantLib::ext::shared_ptr<ReferenceDatum> build() const override { return QuantLib::ext::make_shared<T>(); }
 };
 
 class ReferenceDatumFactory : public QuantLib::Singleton<ReferenceDatumFactory, std::integral_constant<bool, true>> {
@@ -54,28 +55,22 @@ class ReferenceDatumFactory : public QuantLib::Singleton<ReferenceDatumFactory, 
     friend class QuantLib::Singleton<ReferenceDatumFactory, std::integral_constant<bool, true>>;
 
 public:
-    typedef std::map<std::string, std::function<boost::shared_ptr<AbstractReferenceDatumBuilder>()>> map_type;
+    typedef std::map<std::string, std::function<QuantLib::ext::shared_ptr<AbstractReferenceDatumBuilder>()>> map_type;
 
-    boost::shared_ptr<ReferenceDatum> build(const std::string& refDatumType);
+    QuantLib::ext::shared_ptr<ReferenceDatum> build(const std::string& refDatumType);
 
     void addBuilder(const std::string& refDatumType,
-                    std::function<boost::shared_ptr<AbstractReferenceDatumBuilder>()> builder);
+                    std::function<QuantLib::ext::shared_ptr<AbstractReferenceDatumBuilder>()> builder,
+                    const bool allowOverwrite = false);
 
 private:
     boost::shared_mutex mutex_;
     map_type map_;
 };
 
-template <class T> boost::shared_ptr<AbstractReferenceDatumBuilder> createReferenceDatumBuilder() {
-    return boost::make_shared<T>();
+template <class T> QuantLib::ext::shared_ptr<AbstractReferenceDatumBuilder> createReferenceDatumBuilder() {
+    return QuantLib::ext::make_shared<T>();
 }
-
-template <class T> struct ReferenceDatumRegister {
-public:
-    ReferenceDatumRegister(const std::string& refDatumType) {
-        ReferenceDatumFactory::instance().addBuilder(refDatumType, &createReferenceDatumBuilder<T>);
-    }
-};
 
 } // namespace data
 } // namespace ore

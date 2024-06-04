@@ -28,6 +28,7 @@
 #include <ored/portfolio/structuredtradeerror.hpp>
 #include <ored/utilities/log.hpp>
 #include <ored/utilities/to_string.hpp>
+#include <ored/utilities/marketdata.hpp>
 
 #include <qle/instruments/impliedbondspread.hpp>
 #include <qle/pricingengines/discountingforwardbondengine.hpp>
@@ -62,11 +63,10 @@ protected:
 class DiscountingForwardBondEngineBuilder : public fwdBondEngineBuilder {
 public:
     DiscountingForwardBondEngineBuilder()
-        : fwdBondEngineBuilder("DiscountedCashflows" /*the model; dont touch*/,
-                               "DiscountingForwardBondEngine" /*the engine*/) {}
+        : fwdBondEngineBuilder("DiscountedCashflows", "DiscountingForwardBondEngine") {}
 
 protected:
-    virtual boost::shared_ptr<PricingEngine> engineImpl(const string& id, const Currency& ccy,
+    virtual QuantLib::ext::shared_ptr<PricingEngine> engineImpl(const string& id, const Currency& ccy,
                                                         const string& creditCurveId, const bool hasCreditRisk,
                                                         const string& securityId, const string& referenceCurveId,
                                                         const string& incomeCurveId) override {
@@ -108,7 +108,7 @@ protected:
             dpts = Handle<DefaultProbabilityTermStructure>();
         }
 
-        return boost::make_shared<QuantExt::DiscountingForwardBondEngine>(discountTS, incomeTS, yts, bondSpread, dpts,
+        return QuantLib::ext::make_shared<QuantExt::DiscountingForwardBondEngine>(discountTS, incomeTS, yts, bondSpread, dpts,
                                                                           recovery, tsperiod);
     }
 };

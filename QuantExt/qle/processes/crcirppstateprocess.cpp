@@ -1,6 +1,19 @@
 /*
  Copyright (C) 2020 Quaternion Risk Management Ltd
  All rights reserved.
+
+ This file is part of ORE, a free-software/open-source library
+ for transparent pricing and risk analysis - http://opensourcerisk.org
+
+ ORE is free software: you can redistribute it and/or modify it
+ under the terms of the Modified BSD License.  You should have received a
+ copy of the license along with this program.
+ The license is also available online at <http://opensourcerisk.org>
+
+ This program is distributed on the basis that it will form a useful
+ contribution to risk analytics and model standardisation, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
 #include <boost/make_shared.hpp>
@@ -14,27 +27,27 @@ namespace QuantExt {
 
 CrCirppStateProcess::CrCirppStateProcess(CrCirpp* const model,
                                          CrCirppStateProcess::Discretization disc)
-    : StochasticProcess(boost::shared_ptr<StochasticProcess::discretization>(new EulerDiscretization)), model_(model),
+    : StochasticProcess(QuantLib::ext::shared_ptr<StochasticProcess::discretization>(new EulerDiscretization)), model_(model),
       discretization_(disc) {}
 
 Size CrCirppStateProcess::size() const { return 2; }
 
-Disposable<Array> CrCirppStateProcess::initialValues() const {
+Array CrCirppStateProcess::initialValues() const {
     Array res(size(), 0.0);
     res[0] = model_->parametrization()->y0(0); // y0
     res[1] = 1.0; // S(0,0) = 1
     return res;
 }
 
-Disposable<Array> CrCirppStateProcess::drift(Time t, const Array& x) const {
+Array CrCirppStateProcess::drift(Time t, const Array& x) const {
     QL_FAIL("not implemented");
 }
 
-Disposable<Matrix> CrCirppStateProcess::diffusion(Time t, const Array& x) const {
+Matrix CrCirppStateProcess::diffusion(Time t, const Array& x) const {
     QL_FAIL("not implemented");
 }
 
-Disposable<Array> CrCirppStateProcess::evolve(Time t0, const Array& x0, Time dt, const Array& dw) const {
+Array CrCirppStateProcess::evolve(Time t0, const Array& x0, Time dt, const Array& dw) const {
     Array retVal(size());
     Real kappa, theta, sigma, y0;
     kappa = model_->parametrization()->kappa(t0);

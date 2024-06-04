@@ -39,15 +39,15 @@ using namespace std;
 Wildcard::Wildcard(const std::string& pattern, const bool usePrefixes, const bool aggressivePrefixes)
     : pattern_(pattern), usePrefixes_(usePrefixes), aggressivePrefixes_(aggressivePrefixes) {
 
-    std::size_t wildCardPos = pattern_.find("*");
+    wildCardPos_ = pattern_.find("*");
 
-    if (wildCardPos == std::string::npos)
+    if (wildCardPos_ == std::string::npos)
         return;
 
     hasWildCard_ = true;
 
-    if (usePrefixes && (aggressivePrefixes || wildCardPos == pattern_.size() - 1)) {
-        prefixString_ = pattern_.substr(0, wildCardPos);
+    if (usePrefixes && (aggressivePrefixes || wildCardPos_ == pattern_.size() - 1)) {
+        prefixString_ = pattern_.substr(0, wildCardPos_);
     } else {
         regexString_ = pattern_;
         static std::vector<std::string> specialChars = {"\\", ".", "+", "?", "^", "$", "(",
@@ -61,6 +61,8 @@ Wildcard::Wildcard(const std::string& pattern, const bool usePrefixes, const boo
 
 bool Wildcard::hasWildcard() const { return hasWildCard_; }
 
+std::size_t Wildcard::wildcardPos() const { return wildCardPos_; }
+
 bool Wildcard::isPrefix() const { return prefixString_ ? true : false; }
 
 bool Wildcard::matches(const std::string& s) const {
@@ -68,7 +70,7 @@ bool Wildcard::matches(const std::string& s) const {
         return s.substr(0, (*prefixString_).size()) == (*prefixString_);
     } else if (regexString_) {
         if (regex_ == nullptr)
-            regex_ = boost::make_shared<std::regex>(*regexString_);
+            regex_ = QuantLib::ext::make_shared<std::regex>(*regexString_);
         return std::regex_match(s, *regex_);
     } else {
         return s == pattern_;

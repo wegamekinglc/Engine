@@ -1,5 +1,6 @@
 /*
  Copyright (C) 2016 Quaternion Risk Management Ltd
+ Copyright (C) 2023 Skandinaviska Enskilda Banken AB (publ)
  All rights reserved.
 
  This file is part of ORE, a free-software/open-source library
@@ -22,15 +23,16 @@
 #include <ored/utilities/parsers.hpp>
 #include <ored/utilities/strike.hpp>
 #include <oret/toplevelfixture.hpp>
+#include <ql/currencies/america.hpp>
 #include <ql/math/comparison.hpp>
 #include <ql/time/calendars/austria.hpp>
+#include <ql/time/calendars/chile.hpp>
 #include <ql/time/calendars/france.hpp>
+#include <ql/time/calendars/jointcalendar.hpp>
 #include <ql/time/calendars/thailand.hpp>
 #include <ql/time/daycounters/all.hpp>
-#include <ql/time/calendars/chile.hpp>
 #include <qle/calendars/colombia.hpp>
 #include <qle/calendars/israel.hpp>
-#include <qle/calendars/largejointcalendar.hpp>
 #include <qle/calendars/malaysia.hpp>
 #include <qle/calendars/netherlands.hpp>
 #include <qle/calendars/peru.hpp>
@@ -335,6 +337,324 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
     BOOST_TEST_MESSAGE("Testing market datum parsing...");
 
+    BOOST_TEST_MESSAGE("Testing cap/floor market datum parsing...");
+
+    { // test capfloor normal vol ATM
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "CAPFLOOR/RATE_NVOL/USD/5Y/3M/0/0/0";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CAPFLOOR);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::RATE_NVOL);
+
+        QuantLib::ext::shared_ptr<ore::data::CapFloorQuote> capfloorVolDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CapFloorQuote>(datum);
+
+        BOOST_CHECK(capfloorVolDatum->ccy() == "USD");
+        BOOST_CHECK(capfloorVolDatum->term() == Period(5, Years));
+        BOOST_CHECK(capfloorVolDatum->underlying() == Period(3, Months));
+        BOOST_CHECK(capfloorVolDatum->atm() == false);
+        BOOST_CHECK(capfloorVolDatum->relative() == false);
+        BOOST_CHECK_CLOSE(capfloorVolDatum->strike(), 0.0, 1e-12);
+    }
+
+    { // test capfloor shifted lognormal vol ATM w/ index name
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "CAPFLOOR/RATE_SLNVOL/JPY/EYTIBOR/5Y/3M/1/1/0.0075";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CAPFLOOR);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::RATE_SLNVOL);
+
+        QuantLib::ext::shared_ptr<ore::data::CapFloorQuote> capfloorVolDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CapFloorQuote>(datum);
+
+        BOOST_CHECK(capfloorVolDatum->ccy() == "JPY");
+        BOOST_CHECK(capfloorVolDatum->indexName() == "EYTIBOR");
+        BOOST_CHECK(capfloorVolDatum->term() == Period(5, Years));
+        BOOST_CHECK(capfloorVolDatum->underlying() == Period(3, Months));
+        BOOST_CHECK(capfloorVolDatum->atm() == true);
+        BOOST_CHECK(capfloorVolDatum->relative() == true);
+        BOOST_CHECK_CLOSE(capfloorVolDatum->strike(), 0.0075, 1e-12);
+    }
+
+    { // test capfloor shift
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "CAPFLOOR/SHIFT/USD/5Y";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CAPFLOOR);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::SHIFT);
+
+        QuantLib::ext::shared_ptr<ore::data::CapFloorShiftQuote> capfloorShiftDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CapFloorShiftQuote>(datum);
+
+        BOOST_CHECK(capfloorShiftDatum->ccy() == "USD");
+        BOOST_CHECK(capfloorShiftDatum->indexTenor() == Period(5, Years));
+    }
+
+    { // test capfloor shift w/name
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "CAPFLOOR/SHIFT/JPY/EYTIBOR/5Y";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CAPFLOOR);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::SHIFT);
+
+        QuantLib::ext::shared_ptr<ore::data::CapFloorShiftQuote> capfloorShiftDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CapFloorShiftQuote>(datum);
+
+        BOOST_CHECK(capfloorShiftDatum->ccy() == "JPY");
+        BOOST_CHECK(capfloorShiftDatum->indexName() == "EYTIBOR");
+        BOOST_CHECK(capfloorShiftDatum->indexTenor() == Period(5, Years));
+    }
+
+    { // test capfloor price ATM
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "CAPFLOOR/PRICE/USD/5Y/3M/0/0/0/C";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CAPFLOOR);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::PRICE);
+
+        QuantLib::ext::shared_ptr<ore::data::CapFloorQuote> capfloorPremiumDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CapFloorQuote>(datum);
+
+        BOOST_CHECK(capfloorPremiumDatum->ccy() == "USD");
+        BOOST_CHECK(capfloorPremiumDatum->term() == Period(5, Years));
+        BOOST_CHECK(capfloorPremiumDatum->underlying() == Period(3, Months));
+        BOOST_CHECK(capfloorPremiumDatum->atm() == false);
+        BOOST_CHECK(capfloorPremiumDatum->relative() == false);
+        BOOST_CHECK_CLOSE(capfloorPremiumDatum->strike(), 0.0, 1e-12);
+        BOOST_CHECK(capfloorPremiumDatum->isCap() == true);
+    }
+
+    { // test capfloor shifted lognormal vol ATM w/ index name
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "CAPFLOOR/PRICE/JPY/EYTIBOR/5Y/3M/1/1/-0.0075/F";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CAPFLOOR);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::PRICE);
+
+        QuantLib::ext::shared_ptr<ore::data::CapFloorQuote> capfloorVolDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CapFloorQuote>(datum);
+
+        BOOST_CHECK(capfloorVolDatum->ccy() == "JPY");
+        BOOST_CHECK(capfloorVolDatum->indexName() == "EYTIBOR");
+        BOOST_CHECK(capfloorVolDatum->term() == Period(5, Years));
+        BOOST_CHECK(capfloorVolDatum->underlying() == Period(3, Months));
+        BOOST_CHECK(capfloorVolDatum->atm() == true);
+        BOOST_CHECK(capfloorVolDatum->relative() == true);
+        BOOST_CHECK_CLOSE(capfloorVolDatum->strike(), -0.0075, 1e-12);
+        BOOST_CHECK(capfloorVolDatum->isCap() == false);
+    }
+
+    { // test parsing throws
+        Date d(3, Mar, 2018);
+        Real value = 10;
+
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "CAPFLOOR/RATE_LNVOL/JPY/EYTIBOR/fortnight/3M/1/1/0.0075", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "CAPFLOOR/RATE_LNVOL/JPY/EYTIBOR/5Y/fortnight/1/1/0.0075", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(ore::data::parseMarketDatum(d, "CAPFLOOR/RATE_LNVOL/JPY/EYTIBOR/5Y/3M/2Y/1/0.0075", value),
+                          QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "CAPFLOOR/RATE_LNVOL/JPY/EYTIBOR/5Y/3M/1/string/0.0075", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(ore::data::parseMarketDatum(d, "CAPFLOOR/PRICE/JPY/EYTIBOR/5Y/3M/1/1/one/F", value),
+                          QuantLib::Error);
+        BOOST_CHECK_THROW(ore::data::parseMarketDatum(d, "CAPFLOOR/PRICE/JPY/EYTIBOR/5Y/3M/1/1/0.0075/straddle", value),
+                          QuantLib::Error);
+        BOOST_CHECK_THROW(ore::data::parseMarketDatum(d, "CAPFLOOR/PRICE/JPY/EYTIBOR/5Y/3M/1/1/0.0", value),
+                          QuantLib::Error);
+    }
+
+    BOOST_TEST_MESSAGE("Testing swaption market datum parsing...");
+
+    { // test swaption normal vol ATM
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "SWAPTION/RATE_NVOL/EUR/10Y/30Y/ATM";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::SWAPTION);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::RATE_NVOL);
+
+        QuantLib::ext::shared_ptr<ore::data::SwaptionQuote> swaptionVolDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::SwaptionQuote>(datum);
+
+        BOOST_CHECK(swaptionVolDatum->ccy() == "EUR");
+        BOOST_CHECK(swaptionVolDatum->expiry() == Period(10, Years));
+        BOOST_CHECK(swaptionVolDatum->term() == Period(30, Years));
+        BOOST_CHECK(swaptionVolDatum->dimension() == "ATM");
+        BOOST_CHECK_CLOSE(swaptionVolDatum->strike(), 0.0, 1e-12);
+        BOOST_CHECK(swaptionVolDatum->quoteTag() == "");
+    }
+
+    { // test swaption normal vol smile
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "SWAPTION/RATE_NVOL/EUR/EURIBOR/10Y/30Y/Smile/-0.0025";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::SWAPTION);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::RATE_NVOL);
+
+        QuantLib::ext::shared_ptr<ore::data::SwaptionQuote> swaptionVolDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::SwaptionQuote>(datum);
+
+        BOOST_CHECK(swaptionVolDatum->ccy() == "EUR");
+        BOOST_CHECK(swaptionVolDatum->expiry() == Period(10, Years));
+        BOOST_CHECK(swaptionVolDatum->term() == Period(30, Years));
+        BOOST_CHECK(swaptionVolDatum->dimension() == "Smile");
+        BOOST_CHECK_CLOSE(swaptionVolDatum->strike(), -0.0025, 1e-12);
+        BOOST_CHECK(swaptionVolDatum->quoteTag() == "EURIBOR");
+    }
+
+    { // test swaption shifted lognormal vol smile
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "SWAPTION/RATE_SLNVOL/EUR/EURIBOR/10Y/30Y/Smile/-0.0025";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->asofDate() == d);
+        BOOST_CHECK(datum->quote()->value() == value);
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::SWAPTION);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::RATE_SLNVOL);
+
+        QuantLib::ext::shared_ptr<ore::data::SwaptionQuote> swaptionVolDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::SwaptionQuote>(datum);
+
+        BOOST_CHECK(swaptionVolDatum->ccy() == "EUR");
+        BOOST_CHECK(swaptionVolDatum->expiry() == Period(10, Years));
+        BOOST_CHECK(swaptionVolDatum->term() == Period(30, Years));
+        BOOST_CHECK(swaptionVolDatum->dimension() == "Smile");
+        BOOST_CHECK_CLOSE(swaptionVolDatum->strike(), -0.0025, 1e-12);
+        BOOST_CHECK(swaptionVolDatum->quoteTag() == "EURIBOR");
+    }
+
+    { // test swaption shift
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "SWAPTION/SHIFT/EUR/EURIBOR/30Y";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::SWAPTION);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::SHIFT);
+
+        QuantLib::ext::shared_ptr<ore::data::SwaptionShiftQuote> swaptionShiftDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::SwaptionShiftQuote>(datum);
+
+        BOOST_CHECK(swaptionShiftDatum->ccy() == "EUR");
+        BOOST_CHECK(swaptionShiftDatum->term() == Period(30, Years));
+        BOOST_CHECK(swaptionShiftDatum->quoteTag() == "EURIBOR");
+    }
+
+    { // test payer swaption ATM premium
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "SWAPTION/PRICE/EUR/10Y/30Y/ATM/P";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::SWAPTION);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::PRICE);
+
+        QuantLib::ext::shared_ptr<ore::data::SwaptionQuote> swaptionPremiumDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::SwaptionQuote>(datum);
+
+        BOOST_CHECK(swaptionPremiumDatum->ccy() == "EUR");
+        BOOST_CHECK(swaptionPremiumDatum->expiry() == Period(10, Years));
+        BOOST_CHECK(swaptionPremiumDatum->term() == Period(30, Years));
+        BOOST_CHECK(swaptionPremiumDatum->dimension() == "ATM");
+        BOOST_CHECK_CLOSE(swaptionPremiumDatum->strike(), 0.0, 1e-12);
+        BOOST_CHECK(swaptionPremiumDatum->quoteTag() == "");
+        BOOST_CHECK(swaptionPremiumDatum->isPayer() == true);
+    }
+
+    { // test receiver swaption smile premium
+        Date d(1, Jan, 1990);
+        Real value = 0.01;
+
+        string input = "SWAPTION/PRICE/EUR/EURIBOR/10Y/30Y/Smile/-0.0025/R";
+
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+
+        BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::SWAPTION);
+        BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::PRICE);
+
+        QuantLib::ext::shared_ptr<ore::data::SwaptionQuote> swaptionPremiumDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::SwaptionQuote>(datum);
+
+        BOOST_CHECK(swaptionPremiumDatum->ccy() == "EUR");
+        BOOST_CHECK(swaptionPremiumDatum->expiry() == Period(10, Years));
+        BOOST_CHECK(swaptionPremiumDatum->term() == Period(30, Years));
+        BOOST_CHECK(swaptionPremiumDatum->dimension() == "Smile");
+        BOOST_CHECK_CLOSE(swaptionPremiumDatum->strike(), -0.0025, 1e-12);
+        BOOST_CHECK(swaptionPremiumDatum->quoteTag() == "EURIBOR");
+        BOOST_CHECK(swaptionPremiumDatum->isPayer() == false);
+        BOOST_CHECK_THROW(ore::data::parseMarketDatum(d, "SWAPTION/543/EUR/EURIBOR/10Y/30Y/Smile/-0.0025", value),
+                          QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "SWAPTION/RATE_SLNVOL/EUR/EURIBOR/TodayWasGonna/30Y/Smile/-0.0025", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "SWAPTION/RATE_SLNVOL/EUR/EURIBOR/10Y/BeTheDay/Smile/-0.0025", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "SWAPTION/RATE_SLNVOL/EUR/EURIBOR/10Y/30Y/ButTheyll/-0.0025", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "SWAPTION/RATE_SLNVOL/EUR/EURIBOR/10Y/30Y/Smile/NeverThrowIt", value),
+            QuantLib::Error);
+        BOOST_CHECK_THROW(
+            ore::data::parseMarketDatum(d, "SWAPTION/RATE_SLNVOL/EUR/EURIBOR/10Y/30Y/Smile/0.001/BackToYou", value),
+            QuantLib::Error);
+    }
+
     BOOST_TEST_MESSAGE("Testing correlation market datum parsing...");
 
     { // test rate quote
@@ -343,15 +663,15 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         string input = "CORRELATION/RATE/INDEX1/INDEX2/1Y/ATM";
 
-        boost::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
 
         BOOST_CHECK(datum->asofDate() == d);
         BOOST_CHECK(datum->quote()->value() == value);
         BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CORRELATION);
         BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::RATE);
 
-        boost::shared_ptr<ore::data::CorrelationQuote> spreadDatum =
-            boost::dynamic_pointer_cast<ore::data::CorrelationQuote>(datum);
+        QuantLib::ext::shared_ptr<ore::data::CorrelationQuote> spreadDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CorrelationQuote>(datum);
 
         BOOST_CHECK(spreadDatum->index1() == "INDEX1");
         BOOST_CHECK(spreadDatum->index2() == "INDEX2");
@@ -365,15 +685,15 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         string input = "CORRELATION/PRICE/INDEX1/INDEX2/1Y/0.1";
 
-        boost::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> datum = ore::data::parseMarketDatum(d, input, value);
 
         BOOST_CHECK(datum->asofDate() == d);
         BOOST_CHECK(datum->quote()->value() == value);
         BOOST_CHECK(datum->instrumentType() == ore::data::MarketDatum::InstrumentType::CORRELATION);
         BOOST_CHECK(datum->quoteType() == ore::data::MarketDatum::QuoteType::PRICE);
 
-        boost::shared_ptr<ore::data::CorrelationQuote> spreadDatum =
-            boost::dynamic_pointer_cast<ore::data::CorrelationQuote>(datum);
+        QuantLib::ext::shared_ptr<ore::data::CorrelationQuote> spreadDatum =
+            QuantLib::ext::dynamic_pointer_cast<ore::data::CorrelationQuote>(datum);
 
         BOOST_CHECK(spreadDatum->index1() == "INDEX1");
         BOOST_CHECK(spreadDatum->index2() == "INDEX2");
@@ -400,14 +720,14 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         string input = "COMMODITY/PRICE/PM:XAUUSD/USD";
 
-        boost::shared_ptr<MarketDatum> datum = parseMarketDatum(d, input, value);
+        QuantLib::ext::shared_ptr<MarketDatum> datum = parseMarketDatum(d, input, value);
 
         BOOST_CHECK(datum->asofDate() == d);
         BOOST_CHECK(datum->quote()->value() == value);
         BOOST_CHECK(datum->instrumentType() == MarketDatum::InstrumentType::COMMODITY_SPOT);
         BOOST_CHECK(datum->quoteType() == MarketDatum::QuoteType::PRICE);
 
-        boost::shared_ptr<CommoditySpotQuote> q = boost::dynamic_pointer_cast<CommoditySpotQuote>(datum);
+        QuantLib::ext::shared_ptr<CommoditySpotQuote> q = QuantLib::ext::dynamic_pointer_cast<CommoditySpotQuote>(datum);
 
         BOOST_CHECK(q->commodityName() == "PM:XAUUSD");
         BOOST_CHECK(q->quoteCurrency() == "USD");
@@ -432,14 +752,14 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         // Tenor based quote
         string input = "COMMODITY_FWD/PRICE/PM:XAUUSD/USD/1M";
-        boost::shared_ptr<MarketDatum> datum = parseMarketDatum(d, input, value);
+        QuantLib::ext::shared_ptr<MarketDatum> datum = parseMarketDatum(d, input, value);
 
         BOOST_CHECK(datum->asofDate() == d);
         BOOST_CHECK(datum->quote()->value() == value);
         BOOST_CHECK(datum->instrumentType() == MarketDatum::InstrumentType::COMMODITY_FWD);
         BOOST_CHECK(datum->quoteType() == MarketDatum::QuoteType::PRICE);
 
-        boost::shared_ptr<CommodityForwardQuote> q = boost::dynamic_pointer_cast<CommodityForwardQuote>(datum);
+        QuantLib::ext::shared_ptr<CommodityForwardQuote> q = QuantLib::ext::dynamic_pointer_cast<CommodityForwardQuote>(datum);
         BOOST_CHECK(q->commodityName() == "PM:XAUUSD");
         BOOST_CHECK(q->quoteCurrency() == "USD");
         BOOST_CHECK(q->tenorBased());
@@ -450,7 +770,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Date based quote
         input = "COMMODITY_FWD/PRICE/PM:XAUUSD/USD/2019-08-30";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<CommodityForwardQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<CommodityForwardQuote>(datum);
         BOOST_CHECK(q->commodityName() == "PM:XAUUSD");
         BOOST_CHECK(q->quoteCurrency() == "USD");
         BOOST_CHECK(!q->tenorBased());
@@ -463,7 +783,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Overnight
         input = "COMMODITY_FWD/PRICE/PM:XAUUSD/USD/ON";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<CommodityForwardQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<CommodityForwardQuote>(datum);
         BOOST_CHECK(q->tenorBased());
         BOOST_CHECK(q->expiryDate() == Date());
         BOOST_CHECK(q->tenor() == 1 * Days);
@@ -472,7 +792,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Tom-next
         input = "COMMODITY_FWD/PRICE/PM:XAUUSD/USD/TN";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<CommodityForwardQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<CommodityForwardQuote>(datum);
         BOOST_CHECK(q->tenorBased());
         BOOST_CHECK(q->expiryDate() == Date());
         BOOST_CHECK(q->tenor() == 1 * Days);
@@ -481,7 +801,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Spot-next
         input = "COMMODITY_FWD/PRICE/PM:XAUUSD/USD/SN";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<CommodityForwardQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<CommodityForwardQuote>(datum);
         BOOST_CHECK(q->tenorBased());
         BOOST_CHECK(q->expiryDate() == Date());
         BOOST_CHECK(q->tenor() == 1 * Days);
@@ -508,14 +828,14 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         // ATM quote
         string input = "FX_OPTION/RATE_LNVOL/EUR/USD/1M/ATM";
-        boost::shared_ptr<MarketDatum> datum = parseMarketDatum(d, input, value);
+        QuantLib::ext::shared_ptr<MarketDatum> datum = parseMarketDatum(d, input, value);
 
         BOOST_CHECK(datum->asofDate() == d);
         BOOST_CHECK(datum->quote()->value() == value);
         BOOST_CHECK(datum->instrumentType() == MarketDatum::InstrumentType::FX_OPTION);
         BOOST_CHECK(datum->quoteType() == MarketDatum::QuoteType::RATE_LNVOL);
 
-        boost::shared_ptr<FXOptionQuote> q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        QuantLib::ext::shared_ptr<FXOptionQuote> q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(1, Months));
@@ -524,7 +844,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Butterfly quote
         input = "FX_OPTION/RATE_LNVOL/EUR/USD/2M/25BF";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(2, Months));
@@ -532,7 +852,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         input = "FX_OPTION/RATE_LNVOL/EUR/USD/2M/10BF";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(2, Months));
@@ -541,7 +861,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Risk Reversal quote
         input = "FX_OPTION/RATE_LNVOL/EUR/USD/2M/25RR";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(2, Months));
@@ -549,7 +869,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         input = "FX_OPTION/RATE_LNVOL/EUR/USD/2M/10RR";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(2, Months));
@@ -558,7 +878,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
         // Strike based quote
         input = "FX_OPTION/RATE_LNVOL/EUR/USD/2M/10C";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(2, Months));
@@ -566,7 +886,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParsing) {
 
         input = "FX_OPTION/RATE_LNVOL/EUR/USD/2M/20P";
         datum = parseMarketDatum(d, input, value);
-        q = boost::dynamic_pointer_cast<FXOptionQuote>(datum);
+        q = QuantLib::ext::dynamic_pointer_cast<FXOptionQuote>(datum);
         BOOST_CHECK(q->unitCcy() == "EUR");
         BOOST_CHECK(q->ccy() == "USD");
         BOOST_CHECK(q->expiry() == Period(2, Months));
@@ -608,7 +928,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
     Calendar peru = QuantExt::Peru();
 
     cals.push_back(peru);
-    Calendar joint1 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint1 = QuantLib::JointCalendar(cals);
 
     std::vector<Date> hol = joint1.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -636,7 +956,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar col = Colombia();
     cals.push_back(col);
-    Calendar joint2 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint2 = QuantLib::JointCalendar(cals);
 
     hol = joint2.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -659,7 +979,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar phil = Philippines();
     cals.push_back(phil);
-    Calendar joint3 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint3 = QuantLib::JointCalendar(cals);
 
     hol = joint3.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -685,7 +1005,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar thai = Thailand();
     cals.push_back(thai);
-    Calendar joint4 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint4 = QuantLib::JointCalendar(cals);
 
     hol = joint4.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -701,7 +1021,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar mal = Malaysia();
     cals.push_back(mal);
-    Calendar joint5 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint5 = QuantLib::JointCalendar(cals);
 
     hol = joint5.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -725,7 +1045,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar chil = Chile();
     cals.push_back(chil);
-    Calendar joint6 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint6 = QuantLib::JointCalendar(cals);
 
     hol = joint6.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -743,7 +1063,7 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar net = Netherlands();
     cals.push_back(net);
-    Calendar joint7 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint7 = QuantLib::JointCalendar(cals);
 
     hol = joint7.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
@@ -764,11 +1084,35 @@ BOOST_AUTO_TEST_CASE(testJointCalendar) {
 
     Calendar fre = France();
     cals.push_back(fre);
-    Calendar joint8 = QuantExt::LargeJointCalendar(cals);
+    Calendar joint8 = QuantLib::JointCalendar(cals);
 
     hol = joint8.holidayList(Date(1, January, 2018), Date(31, December, 2018));
     BOOST_CHECK(hol.size() == expectedHolidays.size());
     checkCalendars(expectedHolidays, hol);
+}
+
+BOOST_AUTO_TEST_CASE(testParseBoostAny) {
+
+    BOOST_TEST_MESSAGE("Testing parsing of Boost::Any...");
+
+    // For QuantLib::Array
+    Array arr(5, 3);
+    boost::any any_array = boost::any_cast<Array>(arr);
+    std::pair<std::string, std::string> result;
+    BOOST_REQUIRE_NO_THROW(result = ore::data::parseBoostAny(any_array, 0));
+    BOOST_CHECK_EQUAL(result.first, "array");
+    BOOST_CHECK_EQUAL(result.second, "[ 3; 3; 3; 3; 3 ]");
+}
+
+BOOST_AUTO_TEST_CASE(testParseBoostAnyWithCurrency) {
+
+    BOOST_TEST_MESSAGE("Testing parsing of Boost::Any...");
+
+    Currency usd = USDCurrency();
+    std::pair<std::string, std::string> result;
+    BOOST_REQUIRE_NO_THROW(result = ore::data::parseBoostAny(usd));
+    BOOST_CHECK_EQUAL(result.first, "currency");
+    BOOST_CHECK_EQUAL(result.second, "USD");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

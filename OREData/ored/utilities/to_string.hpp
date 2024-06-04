@@ -23,8 +23,10 @@
 
 #pragma once
 
-#include <ored/configuration/equitycurveconfig.hpp>
 #include <ql/time/date.hpp>
+#include <ql/time/period.hpp>
+
+#include <set>
 #include <sstream>
 
 namespace ore {
@@ -46,6 +48,46 @@ std::string to_string(const QuantLib::Date& date);
     \ingroup utilities
 */
 std::string to_string(bool aBool);
+
+//! Convert QuantLib::Period to std::string
+/*!
+  Returns Period as a string as up to QuantLib 1.25, e.g. 13M is written as 1Y1M etc.
+
+  \ingroup utilities
+*/
+std::string to_string(const QuantLib::Period& period);
+
+//! Convert vector to std::string
+/*!
+  Returns a vector into a single string, with elemenst separated by Period as a string as up to QuantLib 1.25, e.g. 13M is written as 1Y1M etc.
+
+  \ingroup utilities
+*/
+template <class T>  std::string to_string(const std::vector<T>& vec, const std::string& sep = ",") {
+    std::ostringstream oss;
+    for (std::size_t i = 0; i < vec.size(); ++i) {
+        oss << vec[i];
+        if (i < vec.size() - 1)
+            oss << sep;
+    }
+    return oss.str();    
+}
+
+//! Convert set to std::string
+/*!
+  \ingroup utilities
+*/
+template <class T>  std::string to_string(const std::set<T>& set, const std::string& sep = ",") {
+    std::ostringstream oss;
+    std::size_t count = 1;
+    for (auto s: set) {
+        oss << s;
+        if (count < set.size())
+            oss << sep;
+        count++;
+    }
+    return oss.str();    
+}
 
 //! Convert type to std::string
 /*!

@@ -64,6 +64,29 @@
       <Parameter name="nx">10</Parameter>
     </EngineParameters>
   </Product>
+  <Product type="AmericanSwaption">
+    <Model>LGM</Model>
+    <ModelParameters>
+      <Parameter name="Calibration">Bootstrap</Parameter>
+      <Parameter name="CalibrationStrategy">CoterminalATM</Parameter>
+      <Parameter name="Reversion">0.03</Parameter>
+      <Parameter name="ReversionType">HullWhite</Parameter>
+      <Parameter name="Volatility">0.01</Parameter>
+      <Parameter name="VolatilityType">Hagan</Parameter>
+      <!-- shift horizon as ratio of maturity time -->
+      <Parameter name="ShiftHorizon">0.5</Parameter>
+      <Parameter name="Tolerance">0.0001</Parameter>
+      <Parameter name="ReferenceCalibrationGrid">400,3M</Parameter>
+      <Parameter name="ExerciseTimeStepsPerYear">24</Parameter>
+    </ModelParameters>
+     <Engine>FD</Engine>
+    <EngineParameters>
+      <Parameter name="Scheme">Douglas</Parameter>
+      <Parameter name="StateGridPoints">64</Parameter>
+      <Parameter name="TimeStepsPerYear">24</Parameter>
+      <Parameter name="MesherEpsilon">1E-4</Parameter>
+    </EngineParameters>
+ </Product>
   <Product type="CapFloor">
     <Model>IborCapModel</Model>
     <ModelParameters/>
@@ -162,6 +185,46 @@
     <Engine>BlackCdsOptionEngine</Engine>
     <EngineParameters/>
   </Product>
+  <Product type="IndexCreditDefaultSwap">
+    <Model>DiscountedCashflows</Model>
+    <ModelParameters/>
+    <Engine>MidPointIndexCdsEngine</Engine>
+    <EngineParameters>
+      <Parameter name="Curve">Underlying</Parameter> <!-- Underlying or Index -->
+    </EngineParameters>
+  </Product>
+  <Product type="IndexCreditDefaultSwapOption">
+    <Model>Black</Model>
+    <ModelParameters/>
+    <Engine>BlackIndexCdsOptionEngine</Engine>
+    <EngineParameters>
+      <!-- this is only affecting the FE protection, for the underlying the Curve -->
+      <!-- parameter of the IndexCreditDefaultSwap is used -->
+      <Parameter name="Curve">Underlying</Parameter> <!-- Underlying or Index -->
+    </EngineParameters>
+  </Product>
+  <Product type="SyntheticCDO">
+    <Model>GaussCopula</Model>
+    <ModelParameters>
+      <Parameter name="correlation">0.0</Parameter>
+      <Parameter name="min">-5.0</Parameter>
+      <Parameter name="max">5.0</Parameter>
+      <!-- high copula correlation requires large number of steps -->
+      <Parameter name="steps">64</Parameter>
+    </ModelParameters>
+    <Engine>Bucketing</Engine>
+    <EngineParameters>
+      <!-- large number of names and inhomogeneous loss amounts
+	   require large number of buckets, for a homogeneous pool 
+	   buckets in the ballpark of the pool size seems to be sufficient -->
+      <Parameter name="buckets">124</Parameter>
+      <!-- we use the inhomgeneous pol loss model by default. If this
+	   flag is set to Y we switch to homogeneous pool when
+	   justified (same notionals, same recovery rates across the
+	   basket) -->
+      <Parameter name="homogeneousPoolWhenJustified">Y</Parameter>
+    </EngineParameters>
+  </Product>
   <!-- CMS Linear TRS Model -->
   <Product type="CMS">
     <Model>LinearTSR</Model>
@@ -225,17 +288,116 @@
     <Engine>DiscountingCommodityForwardEngine</Engine>
     <EngineParameters/>
   </Product>
+  <Product type="CommoditySwap">
+    <Model>DiscountedCashflows</Model>
+    <ModelParameters/>
+    <Engine>CommoditySwapEngine</Engine>
+    <EngineParameters/>
+  </Product>
   <Product type="CommodityOption">
     <Model>BlackScholes</Model>
     <ModelParameters/>
     <Engine>AnalyticEuropeanEngine</Engine>
     <EngineParameters/>
   </Product>
+  <Product type="CommodityAveragePriceOption">
+    <Model>Black</Model>
+    <ModelParameters/>
+    <Engine>MonteCarlo</Engine>
+    <EngineParameters>
+      <Parameter name="beta">0</Parameter> 
+      <Parameter name="samples">1000</Parameter>
+      <Parameter name="seed">42</Parameter>
+    </EngineParameters>
+    <!--
+    <Engine>AnalyticalApproximation</Engine>
+    <EngineParameters>
+      <Parameter name="beta">0</Parameter>
+    </EngineParameters>
+    -->
+  </Product>
+  <Product type="CommoditySwaption">
+    <Model>Black</Model>
+    <ModelParameters/>
+    <Engine>AnalyticalApproximation</Engine>
+    <EngineParameters>
+      <Parameter name="beta">0</Parameter>
+    </EngineParameters>
+  </Product>
   <Product type="CPICapFloor">
     <Model>CPICapFloorModel</Model>
     <ModelParameters/>
     <Engine>CPIBlackCapFloorEngine</Engine>
     <EngineParameters/>
+  </Product>
+  <Product type="BondOption">
+    <Model>Black</Model>
+    <ModelParameters/>
+    <Engine>BlackBondOptionEngine</Engine>
+    <EngineParameters>
+        <Parameter name="TimestepPeriod">6M</Parameter>
+    </EngineParameters>
+  </Product>
+  <Product type="BondTRS">
+    <Model>DiscountedCashflows</Model>
+    <ModelParameters/>
+    <Engine>DiscountingBondTRSEngine</Engine>
+    <EngineParameters>
+      <Parameter name="TimestepPeriod">6M</Parameter>
+    </EngineParameters>
+  </Product>
+    <Product type="FlexiSwap">
+    <Model>LGM</Model>
+    <ModelParameters>
+      <Parameter name="Calibration">Bootstrap</Parameter>
+      <Parameter name="CalibrationStrategy">CoterminalDealStrike</Parameter>
+      <Parameter name="Reversion">0.0</Parameter>
+      <Parameter name="ReversionType">HullWhite</Parameter>
+      <Parameter name="Volatility">0.01</Parameter>
+      <Parameter name="VolatilityType">HullWhite</Parameter>
+      <!-- increased tolerance ! -->
+      <Parameter name="Tolerance">0.001</Parameter>
+    </ModelParameters>
+    <Engine>Grid</Engine>
+    <EngineParameters>
+      <!-- SingleSwaptions, SwaptionArray, Automatic -->
+      <Parameter name="method">Automatic</Parameter>
+      <!-- in Automatic mode, if the effective number of swaptions exceeds -->
+      <!-- this parameter, SwaptionArray is used, otherwise SingleSwaptions -->
+      <Parameter name="singleSwaptionThreshold">20.0</Parameter>
+      <!-- numeric integration parameters -->
+      <Parameter name="sy">5.0</Parameter>
+      <Parameter name="ny">20</Parameter>
+      <Parameter name="sx">5.0</Parameter>
+      <Parameter name="nx">20</Parameter>
+    </EngineParameters>
+  </Product>
+  <Product type="BalanceGuaranteedSwap">
+    <Model>LGM-FlexiSwap</Model>
+    <ModelParameters>
+      <!-- Notional Bounds for FlexiSwap are built using the average CPR -->
+      <!-- multiplier with the Min/Max multiplier here -->
+      <Parameter name="MinCPRMultiplier">0.0</Parameter>
+      <Parameter name="MaxCPRMultiplier">2.0</Parameter>
+      <!-- these parameters are the same as for the FlexiSwap engine -->
+      <Parameter name="Calibration">Bootstrap</Parameter>
+      <Parameter name="CalibrationStrategy">CoterminalDealStrike</Parameter>
+      <Parameter name="Reversion">0.0</Parameter>
+      <Parameter name="ReversionType">HullWhite</Parameter>
+      <Parameter name="Volatility">0.01</Parameter>
+      <Parameter name="VolatilityType">HullWhite</Parameter>
+      <Parameter name="Tolerance">0.001</Parameter>
+    </ModelParameters>
+    <Engine>Grid</Engine>
+    <EngineParameters>
+      <!-- these parameters are the same as for the FlexiSwap engine -->
+      <Parameter name="method">Automatic</Parameter>
+      <Parameter name="singleSwaptionThreshold">20.0</Parameter>
+      <Parameter name="sy">5.0</Parameter>
+      <Parameter name="ny">20</Parameter>
+      <Parameter name="sx">5.0</Parameter>
+      <Parameter name="nx">20</Parameter>
+    </EngineParameters>
   </Product>
   <GlobalParameters>
     <Parameter name="ContinueOnCalibrationError">true</Parameter>

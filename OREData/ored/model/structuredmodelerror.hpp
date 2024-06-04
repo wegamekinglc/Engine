@@ -30,23 +30,13 @@ namespace ore {
 namespace data {
 
 //! Utility class for Structured Model errors
-class StructuredModelErrorMessage : public StructuredErrorMessage {
+class StructuredModelErrorMessage : public StructuredMessage {
 public:
-    StructuredModelErrorMessage(const std::string& exceptionType, const string& exceptionWhat = "")
-        : exceptionType_(exceptionType), exceptionWhat_(exceptionWhat) {}
-
-    const std::string& exceptionType() const { return exceptionType_; }
-    const std::string& exceptionWhat() const { return exceptionWhat_; }
-
-protected:
-    std::string json() const override {
-        return "{ \"errorType\":\"Model\","
-               " \"exceptionType\":\"" +
-               exceptionType_ + "\"," + " \"exceptionMessage\":\"" + jsonify(exceptionWhat_) + "\"}";
-    }
-
-private:
-    std::string exceptionType_, exceptionWhat_;
+    StructuredModelErrorMessage(const std::string& exceptionType, const std::string& exceptionWhat,
+                                const std::string& contextId)
+        : StructuredMessage(
+              Category::Error, Group::Model, exceptionWhat,
+              std::map<std::string, std::string>({{"exceptionType", exceptionType}, {"context-id", contextId}})) {}
 };
 
 } // namespace data

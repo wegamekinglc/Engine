@@ -19,6 +19,8 @@
 #include <orea/aggregation/exposurecalculator.hpp>
 #include <orea/cube/inmemorycube.hpp>
 
+#include <ored/portfolio/trade.hpp>
+
 #include <ql/time/date.hpp>
 #include <ql/time/calendars/weekendsonly.hpp>
 
@@ -29,9 +31,9 @@ namespace ore {
 namespace analytics {
 
 ExposureCalculator::ExposureCalculator(
-    const boost::shared_ptr<Portfolio>& portfolio, const boost::shared_ptr<NPVCube>& cube,
-    const boost::shared_ptr<CubeInterpretation> cubeInterpretation,
-    const boost::shared_ptr<Market>& market,
+    const QuantLib::ext::shared_ptr<Portfolio>& portfolio, const QuantLib::ext::shared_ptr<NPVCube>& cube,
+    const QuantLib::ext::shared_ptr<CubeInterpretation> cubeInterpretation,
+    const QuantLib::ext::shared_ptr<Market>& market,
     bool exerciseNextBreak, const string& baseCurrency, const string& configuration,
     const Real quantile, const CollateralExposureHelper::CalculationType calcType, const bool multiPath,
     const bool flipViewXVA)
@@ -45,17 +47,17 @@ ExposureCalculator::ExposureCalculator(
     QL_REQUIRE(portfolio_, "portfolio is null");
 
     if (multiPath) {
-        exposureCube_ = boost::make_shared<SinglePrecisionInMemoryCubeN>(
+        exposureCube_ = QuantLib::ext::make_shared<SinglePrecisionInMemoryCubeN>(
             market->asofDate(), portfolio_->ids(), dates_,
             cube_->samples(), EXPOSURE_CUBE_DEPTH);// EPE, ENE, allocatedEPE, allocatedENE
     } else {
-        exposureCube_ = boost::make_shared<DoublePrecisionInMemoryCubeN>(
+        exposureCube_ = QuantLib::ext::make_shared<DoublePrecisionInMemoryCubeN>(
             market->asofDate(), portfolio_->ids(), dates_,
             1, EXPOSURE_CUBE_DEPTH);// EPE, ENE, allocatedEPE, allocatedENE
     }
 
     set<string> nettingSetIdsSet;
-    for (const auto& trade : portfolio->trades())
+    for (const auto& [tradeId, trade] : portfolio->trades())
         nettingSetIdsSet.insert(trade->envelope().nettingSetId());
     nettingSetIds_= vector<string>(nettingSetIdsSet.begin(), nettingSetIdsSet.end());
 
@@ -63,26 +65,27 @@ ExposureCalculator::ExposureCalculator(
     for (Size i = 0; i < dates_.size(); i++)
         times_[i] = dc_.yearFraction(today_, cube_->dates()[i]);
 
-    boost::shared_ptr<RegularCubeInterpretation> regularCubeInterpretation =
-        boost::dynamic_pointer_cast<RegularCubeInterpretation>(cubeInterpretation_);
-    isRegularCubeStorage_ = (regularCubeInterpretation != NULL);
+    isRegularCubeStorage_ = !cubeInterpretation_->withCloseOutLag();
 }
 
 void ExposureCalculator::build() {
     LOG("Compute trade exposure profiles, " << (flipViewXVA_ ? "inverted (flipViewXVA = Y)" : "regular (flipViewXVA = N)"));
-    
-    for (Size i = 0; i < portfolio_->size(); ++i) {
-        string tradeId = portfolio_->trades()[i]->id();
-        string nettingSetId = portfolio_->trades()[i]->envelope().nettingSetId();
+    size_t i = 0;
+    for (auto tradeIt = portfolio_->trades().begin(); tradeIt != portfolio_->trades().end(); ++tradeIt, ++i) {
+        auto trade = tradeIt->second;
+        string tradeId = tradeIt->first;
+        string nettingSetId = trade->envelope().nettingSetId();
         LOG("Aggregate exposure for trade " << tradeId);
         if (nettingSetDefaultValue_.find(nettingSetId) == nettingSetDefaultValue_.end()) {
             nettingSetDefaultValue_[nettingSetId] = vector<vector<Real>>(dates_.size(), vector<Real>(cube_->samples(), 0.0));
             nettingSetCloseOutValue_[nettingSetId] = vector<vector<Real>>(dates_.size(), vector<Real>(cube_->samples(), 0.0));
+            nettingSetMporPositiveFlow_[nettingSetId] = vector<vector<Real>>(dates_.size(), vector<Real>(cube_->samples(), 0.0));
+            nettingSetMporNegativeFlow_[nettingSetId] = vector<vector<Real>>(dates_.size(), vector<Real>(cube_->samples(), 0.0));
         }
 
         // Identify the next break date if provided, default is trade maturity.
-        Date nextBreakDate = portfolio_->trades()[i]->maturity();
-        TradeActions ta = portfolio_->trades()[i]->tradeActions();
+        Date nextBreakDate = trade->maturity();
+        TradeActions ta = trade->tradeActions();
         if (exerciseNextBreak_ && !ta.empty()) {
             // loop over actions and pick next mutual break, if available
             vector<TradeAction> actions = ta.actions();
@@ -146,11 +149,17 @@ void ExposureCalculator::build() {
                     closeOutValue = d > nextBreakDate && exerciseNextBreak_
                                         ? 0.0
                                         : cubeInterpretation_->getCloseOutNpv(cube_, i, j, k);
-                Real npv = calcType_ == CollateralExposureHelper::CalculationType::NoLag ? closeOutValue : defaultValue;
+
+                Real positiveCashFlow = cubeInterpretation_->getMporPositiveFlows(cube_, i, j, k);
+                Real negativeCashFlow = cubeInterpretation_->getMporNegativeFlows(cube_, i, j, k);
+                //for single trade exposures, always default value is relevant
+                Real npv = defaultValue;
                 epe[j + 1] += max(npv, 0.0) / cube_->samples();
                 ene[j + 1] += max(-npv, 0.0) / cube_->samples();
                 nettingSetDefaultValue_[nettingSetId][j][k] += defaultValue;
                 nettingSetCloseOutValue_[nettingSetId][j][k] += closeOutValue;
+                nettingSetMporPositiveFlow_[nettingSetId][j][k] += positiveCashFlow;
+                nettingSetMporNegativeFlow_[nettingSetId][j][k] += negativeCashFlow;
                 distribution[k] = npv;
                 if (multiPath_) {
                     exposureCube_->set(max(npv, 0.0), tradeId, d, k, ExposureIndex::EPE);
@@ -181,7 +190,7 @@ void ExposureCalculator::build() {
         This one year point is actually taken to be today+1Y+4D, so that the 1Y point on the dateGrid is always
         included.
         This may effect DateGrids with daily data points*/
-        Date maturity = std::min(cal.adjust(today_ + 1 * Years + 4 * Days), portfolio_->trades()[i]->maturity());
+        Date maturity = std::min(cal.adjust(today_ + 1 * Years + 4 * Days), trade->maturity());
         QuantLib::Real maturityTime = dc_.yearFraction(today_, maturity);
 
         while (t < dates_.size() && times_[t] <= maturityTime)

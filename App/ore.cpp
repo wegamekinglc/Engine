@@ -24,9 +24,14 @@
 #pragma warning(disable : 4503)
 #endif
 
-#include <iostream>
 
 #include <orea/app/oreapp.hpp>
+
+#include <orea/app/initbuilders.hpp>
+
+#include <qle/version.hpp>
+
+#include <iostream>
 
 #ifdef BOOST_MSVC
 #include <orea/auto_link.hpp>
@@ -66,13 +71,16 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    ore::analytics::initBuilders();
+
     string inputFile(argv[1]);
 
-    boost::shared_ptr<Parameters> params = boost::make_shared<Parameters>();
     try {
+        auto params = QuantLib::ext::make_shared<Parameters>();
         params->fromFile(inputFile);
-        OREApp ore(params);
-        return ore.run();
+        OREApp ore(params, true);
+        ore.run();
+        return 0;
     } catch (const exception& e) {
         cout << endl << "an error occurred: " << e.what() << endl;
         return -1;

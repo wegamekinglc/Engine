@@ -8,7 +8,7 @@
  ORE is free software: you can redistribute it and/or modify it
  under the terms of the Modified BSD License.  You should have received a
  copy of the license along with this program.
- The license is also available online at <http://opensourcerisk.org>
+ pr The license is also available online at <http://opensourcerisk.org>
 
  This program is distributed on the basis that it will form a useful
  contribution to risk analytics and model standardisation, but WITHOUT
@@ -30,108 +30,126 @@ namespace analytics {
 
 using crossPair = SensitivityCube::crossPair;
 
-SensitivityCubeStream::SensitivityCubeStream(const boost::shared_ptr<SensitivityCube>& cube, const string& currency)
-    : cube_(cube), currency_(currency), upRiskFactor_(cube_->upFactors().begin()),
-      downRiskFactor_(cube_->downFactors().begin()), itCrossPair_(cube_->crossFactors().begin()),
-      tradeIdx_(cube_->tradeIdx().begin()), canComputeGamma_(false) {
+SensitivityCubeStream::SensitivityCubeStream(const QuantLib::ext::shared_ptr<SensitivityCube>& cube, const string& currency)
+    : SensitivityCubeStream(std::vector<QuantLib::ext::shared_ptr<SensitivityCube>>{cube}, currency) {}
+
+SensitivityCubeStream::SensitivityCubeStream(const std::vector<QuantLib::ext::shared_ptr<SensitivityCube>>& cubes,
+                                             const string& currency)
+    : cubes_(cubes), currency_(currency), canComputeGamma_(false) {
 
     // Set the value of canComputeGamma_ based on up and down risk factors.
-    const auto& upFactors = cube_->upFactors();
-    const auto& downFactors = cube_->downFactors();
-    if (upFactors.size() == downFactors.size()) {
-        auto pred = [](decltype(*upFactors.left.begin()) a, pair<RiskFactorKey, SensitivityCube::FactorData> b) {
-            return a.first == b.first;
-        };
-        canComputeGamma_ = equal(upFactors.left.begin(), upFactors.left.end(), downFactors.begin(), pred);
+
+    canComputeGamma_ = true;
+    for (const auto& cube : cubes_) {
+        const auto& upFactors = cube->upFactors();
+        const auto& downFactors = cube->downFactors();
+        if (upFactors.size() == downFactors.size() &&
+            equal(upFactors.begin(), upFactors.end(), downFactors.begin(),
+                  [](const auto& a, const auto& b) { return a.first == b.first; }))
+            continue;
+        canComputeGamma_ = false;
+        break;
     }
+
+    reset();
 }
 
 SensitivityRecord SensitivityCubeStream::next() {
 
+    if (cubes_.size() == 0)
+        return SensitivityRecord();
+
+    while (tradeIdx_ != cubes_[currentCubeIdx_]->tradeIdx().end() && currentDeltaKey_ == currentDeltaKeys_.end() &&
+           currentCrossGammaKey_ == currentCrossGammaKeys_.end()) {
+        ++tradeIdx_;
+        updateForNewTrade();
+    }
+
+    if (tradeIdx_ == cubes_[currentCubeIdx_]->tradeIdx().end()) {
+        if (currentCubeIdx_ < cubes_.size() - 1) {
+            ++currentCubeIdx_;
+            tradeIdx_ = cubes_[currentCubeIdx_]->tradeIdx().begin();
+            updateForNewTrade();
+            return next();
+        } else {
+            return SensitivityRecord();
+        }
+    }
+
     SensitivityRecord sr;
+    Size tradeIdx = tradeIdx_->second;
+    sr.tradeId = tradeIdx_->first;
+    sr.isPar = false;
+    sr.currency = currency_;
+    sr.baseNpv = cubes_[currentCubeIdx_]->npv(tradeIdx);
 
-    const auto& upFactors = cube_->upFactors();
-    const auto& downFactors = cube_->downFactors();
-
-    // If exhausted deltas, gammas AND cross gammas, update to next trade and reset iterators
-    if (upRiskFactor_ == upFactors.end() && itCrossPair_ == cube_->crossFactors().end()) {
-        tradeIdx_++;
-        upRiskFactor_ = upFactors.begin();
-        downRiskFactor_ = downFactors.begin();
-        itCrossPair_ = cube_->crossFactors().begin();
+    if (currentDeltaKey_ != currentDeltaKeys_.end()) {
+        auto fd = cubes_[currentCubeIdx_]->upFactors().at(*currentDeltaKey_);
+        sr.key_1 = *currentDeltaKey_;
+        sr.desc_1 = fd.factorDesc;
+        sr.shift_1 = fd.targetShiftSize;
+        sr.delta = cubes_[currentCubeIdx_]->delta(tradeIdx_->first, *currentDeltaKey_);
+        if (canComputeGamma_)
+            sr.gamma = cubes_[currentCubeIdx_]->gamma(tradeIdx_->first, *currentDeltaKey_);
+        else
+            sr.gamma = Null<Real>();
+        ++currentDeltaKey_;
+    } else if (currentCrossGammaKey_ != currentCrossGammaKeys_.end()) {
+        auto fd = cubes_[currentCubeIdx_]->crossFactors().at(*currentCrossGammaKey_);
+        sr.key_1 = currentCrossGammaKey_->first;
+        sr.desc_1 = std::get<0>(fd).factorDesc;
+        sr.shift_1 = std::get<0>(fd).targetShiftSize;
+        sr.key_2 = currentCrossGammaKey_->second;
+        sr.desc_2 = std::get<1>(fd).factorDesc;
+        sr.shift_2 = std::get<1>(fd).targetShiftSize;
+        sr.gamma = cubes_[currentCubeIdx_]->crossGamma(tradeIdx_->first, *currentCrossGammaKey_);
+        ++currentCrossGammaKey_;
     }
 
-    // Give back next record if we have a valid trade index
-    if (tradeIdx_ != cube_->tradeIdx().end()) {
-        Size tradeIdx = tradeIdx_->second;
-        sr.tradeId = tradeIdx_->first;
-        sr.isPar = false;
-        sr.currency = currency_;
-        sr.baseNpv = cube_->npv(tradeIdx);
-
-        // Are there more deltas and gammas for current trade ID
-        if (upRiskFactor_ != upFactors.end()) {
-            Size usrx = upRiskFactor_->right.index;
-            sr.key_1 = upRiskFactor_->left;
-            sr.desc_1 = upRiskFactor_->right.factorDesc;
-            sr.shift_1 = upRiskFactor_->right.shiftSize;
-
-            if (!cube_->twoSidedDelta(sr.key_1.keytype)) {
-                sr.delta = cube_->delta(tradeIdx, usrx);
-            } else {
-                Size downIdx = downFactors.at(sr.key_1).index;
-                sr.delta = cube_->delta(tradeIdx, usrx, downIdx);
-            }
-
-            if (canComputeGamma_ && downRiskFactor_ != downFactors.end()) {
-                Size dsrx = downRiskFactor_->second.index;
-                sr.gamma = cube_->gamma(tradeIdx, usrx, dsrx);
-                downRiskFactor_++;
-            } else {
-                sr.gamma = Null<Real>(); // marks na result
-            }
-
-            upRiskFactor_++;
-
-            TLOG("Next record is: " << sr);
-            return sr;
-        }
-
-        // Are there more cross pairs for current trade ID
-        if (itCrossPair_ != cube_->crossFactors().end()) {
-            sr.key_1 = itCrossPair_->first.first;
-            sr.desc_1 = std::get<0>(itCrossPair_->second).factorDesc;
-            sr.shift_1 = std::get<0>(itCrossPair_->second).shiftSize;
-
-            sr.key_2 = itCrossPair_->first.second;
-            sr.desc_2 = std::get<1>(itCrossPair_->second).factorDesc;
-            sr.shift_2 = std::get<1>(itCrossPair_->second).shiftSize;
-
-            Size id_1, id_2, id_x;
-            id_1 = std::get<0>(itCrossPair_->second).index;
-            id_2 = std::get<1>(itCrossPair_->second).index;
-            id_x = std::get<2>(itCrossPair_->second);
-
-            sr.gamma = cube_->crossGamma(tradeIdx, id_1, id_2, id_x);
-
-            itCrossPair_++;
-
-            TLOG("Next record is: " << sr);
-            return sr;
-        }
-    }
-
-    // If we get to here, no more cube sensitivities to process so return empty record
     TLOG("Next record is: " << sr);
     return sr;
 }
 
+void SensitivityCubeStream::updateForNewTrade() {
+    currentDeltaKeys_.clear();
+    currentCrossGammaKeys_.clear();
+
+    if (tradeIdx_ != cubes_[currentCubeIdx_]->tradeIdx().end()) {
+
+        // add delta keys
+
+        for (auto const& [idx, _] : cubes_[currentCubeIdx_]->npvCube()->getTradeNPVs(tradeIdx_->second)) {
+            if (auto k = cubes_[currentCubeIdx_]->upDownFactor(idx); k.keytype != RiskFactorKey::KeyType::None)
+                currentDeltaKeys_.insert(k);
+        }
+
+        // add cross gamma keys
+
+        for (auto const& [crossPair, data] : cubes_[currentCubeIdx_]->crossFactors()) {
+            // scaling of cross gamma is not relevant here, so we use 1
+            if (!close_enough(cubes_[currentCubeIdx_]->crossGamma(tradeIdx_->second, std::get<0>(data).index,
+                                                                  std::get<1>(data).index, std::get<2>(data), 1.0, 1.0),
+                              0.0)) {
+                currentCrossGammaKeys_.insert(crossPair);
+
+                // make sure, delta keys contain both cross keys, that's a guarantee of the SensitivityCubeStream
+
+                currentDeltaKeys_.insert(crossPair.first);
+                currentDeltaKeys_.insert(crossPair.second);
+            }
+        }
+    }
+
+    currentDeltaKey_ = currentDeltaKeys_.begin();
+    currentCrossGammaKey_ = currentCrossGammaKeys_.begin();
+}
+
 void SensitivityCubeStream::reset() {
-    // Reset indices and iterators
-    tradeIdx_ = cube_->tradeIdx().begin();
-    upRiskFactor_ = cube_->upFactors().begin();
-    downRiskFactor_ = cube_->downFactors().begin();
-    itCrossPair_ = cube_->crossFactors().begin();
+    currentCubeIdx_ = 0;
+    if (cubes_.size() > 0) {
+        tradeIdx_ = cubes_[currentCubeIdx_]->tradeIdx().begin();
+        updateForNewTrade();
+    }
 }
 
 } // namespace analytics

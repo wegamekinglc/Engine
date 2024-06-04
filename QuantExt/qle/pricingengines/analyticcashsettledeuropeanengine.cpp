@@ -39,13 +39,13 @@ using QuantLib::detail::simple_event;
 namespace QuantExt {
 
 AnalyticCashSettledEuropeanEngine::AnalyticCashSettledEuropeanEngine(
-    const boost::shared_ptr<GeneralizedBlackScholesProcess>& bsp)
+    const QuantLib::ext::shared_ptr<GeneralizedBlackScholesProcess>& bsp)
     : underlyingEngine_(bsp), bsp_(bsp) {
     registerWith(bsp_);
 }
 
 AnalyticCashSettledEuropeanEngine::AnalyticCashSettledEuropeanEngine(
-    const boost::shared_ptr<GeneralizedBlackScholesProcess>& bsp, const Handle<YieldTermStructure>& discountCurve)
+    const QuantLib::ext::shared_ptr<GeneralizedBlackScholesProcess>& bsp, const Handle<YieldTermStructure>& discountCurve)
     : underlyingEngine_(bsp, discountCurve), bsp_(bsp), discountCurve_(discountCurve) {
     registerWith(bsp_);
     registerWith(discountCurve_);
@@ -54,7 +54,7 @@ AnalyticCashSettledEuropeanEngine::AnalyticCashSettledEuropeanEngine(
 void AnalyticCashSettledEuropeanEngine::calculate() const {
 
     // Same logic as underlying engine for discount curve.
-    boost::shared_ptr<YieldTermStructure> dts =
+    QuantLib::ext::shared_ptr<YieldTermStructure> dts =
         discountCurve_.empty() ? bsp_->riskFreeRate().currentLink() : discountCurve_.currentLink();
 
     // Option expiry date.
@@ -62,10 +62,10 @@ void AnalyticCashSettledEuropeanEngine::calculate() const {
 
     Date today = Settings::instance().evaluationDate();
     if (expiryDate <= today) {
-
         // If expiry has occurred, we attempt to establish the payoff amount, if any, and discount it.
         Real payoffAmount = 0.0;
         Real priceAtExercise = 0.0;
+        bool deterministicPayoff = true;
         if (arguments_.automaticExercise) {
             // If we have automatic exercise, we base the payoff on the value of the index on the expiry date.
             QL_REQUIRE(arguments_.underlying, "Expect a valid underlying index when exercise is automatic.");
@@ -81,6 +81,16 @@ void AnalyticCashSettledEuropeanEngine::calculate() const {
             // Expiry date is today, not automatic exercise and hasn't been manually exercised - use spot.
             priceAtExercise = bsp_->x0();
             payoffAmount = (*arguments_.payoff)(priceAtExercise);
+            deterministicPayoff = false;
+        }
+
+        if(deterministicPayoff) {
+            results_.delta = 0.0;
+            results_.deltaForward = 0.0;
+            results_.elasticity = 0.0;
+            results_.gamma = 0.0;
+            results_.dividendRho = 0.0;
+            results_.vega = 0.0;
         }
 
         // Discount factor to payment date.
@@ -96,19 +106,9 @@ void AnalyticCashSettledEuropeanEngine::calculate() const {
         }
         results_.thetaPerDay = results_.theta / 365.0;
 
-        // Remaining results are set to 0. Possibly not necessary but then they are Null<Real>().
-        results_.delta = 0.0;
-        results_.deltaForward = 0.0;
-        results_.elasticity = 0.0;
-        results_.gamma = 0.0;
-        results_.dividendRho = 0.0;
-        results_.vega = 0.0;
-        results_.strikeSensitivity = 0.0;
-        results_.itmCashProbability = 0.0;
-
         // Populate some additional results.
         results_.additionalResults["spot"] = bsp_->x0();
-        auto payoff = boost::dynamic_pointer_cast<StrikedTypePayoff>(arguments_.payoff);
+        auto payoff = QuantLib::ext::dynamic_pointer_cast<StrikedTypePayoff>(arguments_.payoff);
         if (payoff)
             results_.additionalResults["strike"] = payoff->strike();
         results_.additionalResults["priceAtExercise"] = priceAtExercise;
@@ -131,7 +131,7 @@ void AnalyticCashSettledEuropeanEngine::calculate() const {
 
         // If we have a commodity future index, set the forward date to its expiry to get the right future price 
         // in the Black formula. If not, just use the expiry date => same result as standard QL engine.
-        if (auto cfi = boost::dynamic_pointer_cast<CommodityFuturesIndex>(arguments_.underlying)) {
+        if (auto cfi = QuantLib::ext::dynamic_pointer_cast<CommodityFuturesIndex>(arguments_.underlying)) {
             underlyingArgs->forwardDate = cfi->expiryDate();
         } else {
             underlyingArgs->forwardDate = expiryDate;

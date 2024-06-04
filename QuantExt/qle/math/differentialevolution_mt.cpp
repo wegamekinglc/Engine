@@ -1,5 +1,3 @@
-/* -*- mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-
 /*
  Copyright (C) 2012 Ralph Schreyer
  Copyright (C) 2012 Mateusz Kapturski
@@ -21,6 +19,19 @@
 /*
  Copyright (C) 2016 Quaternion Risk Management Ltd.
  All rights reserved.
+
+ This file is part of ORE, a free-software/open-source library
+ for transparent pricing and risk analysis - http://opensourcerisk.org
+
+ ORE is free software: you can redistribute it and/or modify it
+ under the terms of the Modified BSD License.  You should have received a
+ copy of the license along with this program.
+ The license is also available online at <http://opensourcerisk.org>
+
+ This program is distributed on the basis that it will form a useful
+ contribution to risk analytics and model standardisation, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
 #include <qle/math/differentialevolution_mt.hpp>
@@ -292,7 +303,7 @@ void DifferentialEvolution_MT::crossover(const std::vector<Candidate>& oldPopula
 
 void DifferentialEvolution_MT::updateCost(std::vector<Candidate>& population, Problem_MT& p) const {
     struct Worker {
-        Worker(std::vector<Candidate>& p, const Size s, const Size e, const boost::shared_ptr<CostFunction> c)
+        Worker(std::vector<Candidate>& p, const Size s, const Size e, const QuantLib::ext::shared_ptr<CostFunction> c)
             : population(p), start(s), end(e), costFunction(c) {}
         void operator()() {
             for (Size popIter = start; popIter < end; popIter++) {
@@ -308,7 +319,7 @@ void DifferentialEvolution_MT::updateCost(std::vector<Candidate>& population, Pr
         }
         std::vector<Candidate>& population;
         const Size start, end;
-        const boost::shared_ptr<CostFunction> costFunction;
+        const QuantLib::ext::shared_ptr<CostFunction> costFunction;
     };
 
     Size threads = p.costFunctions().size();
@@ -325,13 +336,13 @@ void DifferentialEvolution_MT::updateCost(std::vector<Candidate>& population, Pr
         }
     } while (rest > 0);
 
-    std::vector<boost::shared_ptr<std::thread>> workers(threads);
+    std::vector<QuantLib::ext::shared_ptr<std::thread>> workers(threads);
 
     Size start = 0, end;
     for (Size thread = 0; thread < threads; ++thread) {
         end = std::min(start + chunks[thread], population.size());
         Worker worker(population, start, end, p.costFunctions()[thread]);
-        workers[thread] = boost::make_shared<std::thread>(worker);
+        workers[thread] = QuantLib::ext::make_shared<std::thread>(worker);
         start = end;
     }
 
@@ -377,7 +388,7 @@ Array DifferentialEvolution_MT::getMutationProbabilities(const std::vector<Candi
 }
 
 Array DifferentialEvolution_MT::rotateArray(Array a) const {
-    std::random_shuffle(a.begin(), a.end());
+    randomize(a.begin(), a.end(), rng_);
     return a;
 }
 

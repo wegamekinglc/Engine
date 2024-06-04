@@ -26,103 +26,15 @@
 
 #include <ql/pricingengines/blackformula.hpp>
 #include <qle/pricingengines/cpibacheliercapfloorengine.hpp>
+#include <qle/utilities/inflation.hpp>
 
 using namespace QuantLib;
 
 namespace QuantExt {
 
-CPIBachelierCapFloorEngine::CPIBachelierCapFloorEngine(const Handle<YieldTermStructure>& discountCurve,
-                                                       const Handle<CPIVolatilitySurface>& volatilitySurface)
-    : discountCurve_(discountCurve), volatilitySurface_(volatilitySurface) {
-    registerWith(discountCurve_);
-    registerWith(volatilitySurface_);
-}
-
-void CPIBachelierCapFloorEngine::calculate() const {
-
-    QL_REQUIRE(arguments_.observationInterpolation == QuantLib::CPI::AsIndex,
-               "observation interpolation as index required");
-
-    // Maturity adjustment for lag difference as in the QuantLib engine
-    Period lagDiff = arguments_.observationLag - volatilitySurface_->observationLag();
-    QL_REQUIRE(lagDiff >= Period(0, Months), "CPIBachelierCapFloorEngine: "
-                                             "lag difference must be non-negative: "
-                                                 << lagDiff);
-    // Date effectiveMaturity = arguments_.payDate - lagDiff;
-
-    Date maturity = arguments_.payDate;
-    Date effectiveMaturity = arguments_.payDate - arguments_.observationLag;
-    if (arguments_.observationInterpolation == QuantLib::CPI::AsIndex ||
-        arguments_.observationInterpolation == QuantLib::CPI::Flat) {
-        std::pair<Date, Date> ipm = inflationPeriod(effectiveMaturity, arguments_.infIndex->frequency());
-        effectiveMaturity = ipm.first;
-    }
-
-    DiscountFactor d = arguments_.nominal * discountCurve_->discount(arguments_.payDate);
-
-    Date baseDate = arguments_.infIndex->zeroInflationTermStructure()->baseDate();
-    Real baseFixing = indexFixing(baseDate, baseDate);
-
-    Real baseCPI = arguments_.baseCPI == Null<Real>()
-                    ? indexFixing(arguments_.startDate - arguments_.observationLag, arguments_.startDate)
-                    : arguments_.baseCPI;
-
-    Date effectiveStart = arguments_.startDate - arguments_.observationLag;
-    if (arguments_.observationInterpolation == QuantLib::CPI::AsIndex ||
-        arguments_.observationInterpolation == QuantLib::CPI::Flat) {
-        std::pair<Date, Date> ips = inflationPeriod(effectiveStart, arguments_.infIndex->frequency());
-        effectiveStart = ips.first;
-    }
-
-    Real timeFromStart =
-        arguments_.infIndex->zeroInflationTermStructure()->dayCounter().yearFraction(effectiveStart, effectiveMaturity);
-    Real timeFromBase =
-        arguments_.infIndex->zeroInflationTermStructure()->dayCounter().yearFraction(baseDate, effectiveMaturity);
-    Real K = pow(1.0 + arguments_.strike, timeFromStart);
-    Real F = indexFixing(effectiveMaturity, maturity) / baseCPI;
-
-    Real stdDev = 0.0;
-     if (timeFromBase > 0 && !close_enough(timeFromBase, 0.0)) {
-        // For reading volatility in the current market volatiltiy structure
-        // baseFixing(T0) * pow(1 + strikeRate(T0), T-T0) = StrikeIndex = baseFixing(t) * pow(1 + strikeRate(t), T-t),
-        // solve for strikeRate(t):
-        Real strikeZeroRate =
-            pow(baseCPI / baseFixing * pow(1.0 + arguments_.strike, timeFromStart), 1.0 / timeFromBase) -
-            1.0;
-        Period obsLag = Period(0, Days); // Should be zero here if we use the lag difference to adjust maturity above
-        stdDev = std::sqrt(volatilitySurface_->totalVariance(maturity, strikeZeroRate, obsLag));
-    }
-
-    results_.value = bachelierBlackFormula(arguments_.type, K, F, stdDev, d);
-}
-
-Rate CPIBachelierCapFloorEngine::indexFixing(const Date& observationDate, const Date& payDate) const {
-    // you may want to modify the interpolation of the index
-    // this gives you the chance
-    Rate I1;
-    // what interpolation do we use? Index / flat / linear
-    if (arguments_.observationInterpolation == CPI::AsIndex) {
-        I1 = arguments_.infIndex->fixing(observationDate);
-
-    } else {
-        // work out what it should be
-
-        std::pair<Date, Date> dd = inflationPeriod(observationDate, arguments_.infIndex->frequency());
-        Real indexStart = arguments_.infIndex->fixing(dd.first);
-        if (arguments_.observationInterpolation == CPI::Linear) {
-            std::pair<Date, Date> cpnInflationPeriod = inflationPeriod(payDate, arguments_.infIndex->frequency());
-            // linear interpolation
-            Real indexEnd = arguments_.infIndex->fixing(dd.second + Period(1, Days));
-            I1 = indexStart +
-                 (indexEnd - indexStart) * (payDate - cpnInflationPeriod.first) /
-                     (Real)((cpnInflationPeriod.second + Period(1, Days)) -
-                            cpnInflationPeriod.first); // can't get to next period's value within current period
-        } else {
-            // no interpolation, i.e. flat = constant, so use start-of-period value
-            I1 = indexStart;
-        }
-    }
-    return I1;
+double CPIBachelierCapFloorEngine::optionPriceImpl(QuantLib::Option::Type type, double strike, double forward,
+                                               double stdDev, double discount) const {
+    return bachelierBlackFormula(type, strike, forward, stdDev, discount);
 }
 
 } // namespace QuantExt

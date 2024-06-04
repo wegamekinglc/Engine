@@ -1,6 +1,7 @@
 /*
   Copyright (C) 2021 Skandinaviska Enskilda Banken AB (publ)
   All rights reserved.
+
   This file is part of ORE, a free-software/open-source library
   for transparent pricing and risk analysis - http://opensourcerisk.org
   ORE is free software: you can redistribute it and/or modify it
@@ -92,6 +93,16 @@
      FxEuropeanAsianOptionACGAPEngineBuilder()
          : EuropeanAsianOptionACGAPEngineBuilder("GarmanKohlhagen", {"FxAsianOptionGeometricPrice"}, AssetClass::FX) {
      }
+ };
+
+ //! Discrete Analytic TW Engine Builder for European Asian Fx Arithmetic Average Price Options
+ /*! Pricing engines are cached by asset/currency
+     \ingroup builders
+  */
+ class FxEuropeanAsianOptionTWEngineBuilder : public EuropeanAsianOptionTWEngineBuilder {
+ public:
+     FxEuropeanAsianOptionTWEngineBuilder()
+         : EuropeanAsianOptionTWEngineBuilder("GarmanKohlhagen", {"FxAsianOptionArithmeticPrice"}, AssetClass::FX) {}
  };
 
  } // namespace data

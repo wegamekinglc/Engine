@@ -43,7 +43,7 @@ public:
     //! Constructor
     BoostTestLogger() : Logger("BoostTestLogger") {}
     //! The log callback
-    virtual void log(unsigned, const string& msg) override { BOOST_TEST_MESSAGE(msg); }
+    virtual void log(unsigned, const std::string& msg) override { BOOST_TEST_MESSAGE(msg); }
 };
 
 //! Gets passed the command line arguments from a unit test suite
@@ -63,14 +63,14 @@ void setupTestLogging(int argc, char** argv) {
 
             // Check if mask is provided also (default is 255)
             unsigned int mask = 255;
-            vector<string> strs;
+            std::vector<std::string> strs;
             boost::split(strs, argv[i], boost::is_any_of("="));
             if (strs.size() > 1) {
                 mask = boost::lexical_cast<unsigned int>(strs[1]);
             }
 
             // Set up logging
-            boost::shared_ptr<ore::test::BoostTestLogger> logger = boost::make_shared<ore::test::BoostTestLogger>();
+            QuantLib::ext::shared_ptr<ore::test::BoostTestLogger> logger = QuantLib::ext::make_shared<ore::test::BoostTestLogger>();
             ore::data::Log::instance().removeAllLoggers();
             ore::data::Log::instance().registerLogger(logger);
             ore::data::Log::instance().switchOn();

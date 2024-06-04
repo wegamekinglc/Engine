@@ -42,19 +42,19 @@ namespace {
 template <typename T> const vector<T>& lookup(const map<string, vector<T>>& m, const string& k) {
     if (m.count(k) > 0) {
         return m.at(k);
-    } else if (m.count("") > 0) {
-        return m.at("");
+    } else if (m.count(std::string()) > 0) {
+        return m.at(std::string());
     } else
-        QL_FAIL("no vector for key \"" << k << "\" found.");
+        QL_FAIL("ScenarioSimMarketParameters: no vector for key \"" << k << "\" found.");
 }
 
 template <typename T> const T& lookup(const map<string, T>& m, const string& k) {
     if (m.count(k) > 0) {
         return m.at(k);
-    } else if (m.count("") > 0) {
-        return m.at("");
+    } else if (m.count(std::string()) > 0) {
+        return m.at(std::string());
     } else
-        QL_FAIL("no result for key \"" << k << "\" found.");
+        QL_FAIL("ScenarioSimMarketParameters: no result for key \"" << k << "\" found.");
 }
 
 } // namespace
@@ -123,7 +123,18 @@ void ScenarioSimMarketParameters::setDefaults() {
     setSimulateFxSpots(true);
     setSimulateCorrelations(false);
 
-    // Set default tenors (don't know why but keep it as is)
+    // set default smile dynamics
+    setSwapVolSmileDynamics("", "StickyStrike");
+    setYieldVolSmileDynamics("", "StickyStrike");
+    setCapFloorVolSmileDynamics("", "StickyStrike");
+    setYoYInflationCapFloorVolSmileDynamics("", "StickyStrike");
+    setZeroInflationCapFloorVolSmileDynamics("", "StickyStrike");
+    setCdsVolSmileDynamics("", "StickyStrike");
+    setFxVolSmileDynamics("", "StickyStrike");
+    setEquityVolSmileDynamics("", "StickyStrike");
+    setCommodityVolSmileDynamics("", "StickyStrike");
+
+    // Set default tenors
     defaultTenors_[""] = vector<Period>();
     equityDividendTenors_[""] = vector<Period>();
     zeroInflationTenors_[""] = vector<Period>();
@@ -132,9 +143,11 @@ void ScenarioSimMarketParameters::setDefaults() {
     defaultCurveCalendars_[""] = "TARGET";
     // Default fxVol params
     fxVolIsSurface_[""] = false;
-    // Defaults for equity/fx
+    // Defaults for simulate atm only
     setSimulateFxVolATMOnly(false);
     setSimulateEquityVolATMOnly(false);
+    simulateSwapVolATMOnly() = false;
+    setSimulateCdsVolsATMOnly(false);
     // Default interpolation for yield curves
     interpolation_ = "LogLinear";
     extrapolation_ = "FlatFwd";
@@ -177,6 +190,34 @@ const string& ScenarioSimMarketParameters::defaultCurveCalendar(const string& ke
 }
 
 bool ScenarioSimMarketParameters::swapVolIsCube(const string& key) const { return lookup(swapVolIsCube_, key); }
+
+const string& ScenarioSimMarketParameters::swapVolSmileDynamics(const string& key) const {
+    return lookup(swapVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::yieldVolSmileDynamics(const string& key) const {
+    return lookup(yieldVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::capFloorVolSmileDynamics(const string& key) const {
+    return lookup(capFloorVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::yoyInflationCapFloorVolSmileDynamics(const string& key) const {
+    return lookup(yoyInflationCapFloorVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::zeroInflationCapFloorVolSmileDynamics(const string& key) const {
+    return lookup(zeroInflationCapFloorVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::cdsVolSmileDynamics(const string& key) const {
+    return lookup(cdsVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::fxVolSmileDynamics(const string& key) const {
+    return lookup(fxVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::equityVolSmileDynamics(const string& key) const {
+    return lookup(equityVolSmileDynamics_, key);
+}
+const string& ScenarioSimMarketParameters::commodityVolSmileDynamics(const string& key) const {
+    return lookup(commodityVolSmileDynamics_, key);
+}
 
 const vector<Period>& ScenarioSimMarketParameters::swapVolTerms(const string& key) const {
     return lookup(swapVolTerms_, key);
@@ -261,6 +302,36 @@ void ScenarioSimMarketParameters::setYieldCurveTenors(const string& key, const s
 }
 
 void ScenarioSimMarketParameters::setSwapVolIsCube(const string& key, bool isCube) { swapVolIsCube_[key] = isCube; }
+
+void ScenarioSimMarketParameters::setSwapVolSmileDynamics(const string& key, const string& smileDynamics) {
+    swapVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setCdsVolSmileDynamics(const string& key, const string& smileDynamics) {
+    cdsVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setCapFloorVolSmileDynamics(const string& key, const string& smileDynamics) {
+    capFloorVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setYieldVolSmileDynamics(const string& key, const string& smileDynamics) {
+    yieldVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setZeroInflationCapFloorVolSmileDynamics(const string& key,
+                                                                           const string& smileDynamics) {
+    zeroInflationCapFloorVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setYoYInflationCapFloorVolSmileDynamics(const string& key,
+                                                                          const string& smileDynamics) {
+    yoyInflationCapFloorVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setEquityVolSmileDynamics(const string& key, const string& smileDynamics) {
+    equityVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setFxVolSmileDynamics(const string& key, const string& smileDynamics) {
+    fxVolSmileDynamics_[key] = smileDynamics;
+}
+void ScenarioSimMarketParameters::setCommodityVolSmileDynamics(const string& key, const string& smileDynamics) {
+    commodityVolSmileDynamics_[key] = smileDynamics;
+}
 
 void ScenarioSimMarketParameters::setSwapVolTerms(const string& key, const vector<Period>& p) {
     swapVolTerms_[key] = p;
@@ -595,14 +666,16 @@ bool ScenarioSimMarketParameters::operator==(const ScenarioSimMarketParameters& 
         capFloorVolIsAtm_ != rhs.capFloorVolIsAtm_ || capFloorVolDecayMode_ != rhs.capFloorVolDecayMode_ ||
         defaultCurveCalendars_ != rhs.defaultCurveCalendars_ || defaultTenors_ != rhs.defaultTenors_ ||
         defaultCurveExtrapolation_ != rhs.defaultCurveExtrapolation_ || cdsVolExpiries_ != rhs.cdsVolExpiries_ ||
-        cdsVolDecayMode_ != rhs.cdsVolDecayMode_ || equityDividendTenors_ != rhs.equityDividendTenors_ ||
-        fxVolIsSurface_ != rhs.fxVolIsSurface_ || 
+        cdsVolDecayMode_ != rhs.cdsVolDecayMode_ || cdsVolSimulateATMOnly_ != rhs.cdsVolSimulateATMOnly_ ||
+        equityDividendTenors_ != rhs.equityDividendTenors_ || fxVolIsSurface_ != rhs.fxVolIsSurface_ ||
         fxVolExpiries_ != rhs.fxVolExpiries_ || fxVolDecayMode_ != rhs.fxVolDecayMode_ ||
-        equityVolExpiries_ != rhs.equityVolExpiries_ || equityVolDecayMode_ != rhs.equityVolDecayMode_ ||
-        equityVolSimulateATMOnly_ != rhs.equityVolSimulateATMOnly_ || equityMoneyness_ != rhs.equityMoneyness_ ||
-        equityStandardDevs_ != rhs.equityStandardDevs_ ||
+        fxVolSimulateATMOnly_ != rhs.fxVolSimulateATMOnly_ || equityVolExpiries_ != rhs.equityVolExpiries_ ||
+        equityVolDecayMode_ != rhs.equityVolDecayMode_ || equityVolSimulateATMOnly_ != rhs.equityVolSimulateATMOnly_ ||
+        equityMoneyness_ != rhs.equityMoneyness_ || equityStandardDevs_ != rhs.equityStandardDevs_ ||
         additionalScenarioDataIndices_ != rhs.additionalScenarioDataIndices_ ||
         additionalScenarioDataCcys_ != rhs.additionalScenarioDataCcys_ ||
+        additionalScenarioDataNumberOfCreditStates_ != rhs.additionalScenarioDataNumberOfCreditStates_ ||
+        additionalScenarioDataSurvivalWeights_ != rhs.additionalScenarioDataSurvivalWeights_ ||
         baseCorrelationTerms_ != rhs.baseCorrelationTerms_ ||
         baseCorrelationDetachmentPoints_ != rhs.baseCorrelationDetachmentPoints_ ||
         zeroInflationTenors_ != rhs.zeroInflationTenors_ || yoyInflationTenors_ != rhs.yoyInflationTenors_ ||
@@ -742,7 +815,7 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
 	auto keys = XMLUtils::getChildrenValues(nodeChild, "Keys", "Key", false);
 	if(!ccys.empty()) {
 	    keys.insert(keys.end(), ccys.begin(), ccys.end());
-            ALOG("ScenarioSimMarketParameters: SwaptionVolatilities/Currencies is deprecated, use Keys instead.");
+            WLOG("ScenarioSimMarketParameters: SwaptionVolatilities/Currencies is deprecated, use Keys instead.");
         }
         setSwapVolKeys(keys);
         QL_REQUIRE(!keys.empty(), "SwaptionVolatilities needs at least one currency");
@@ -762,7 +835,7 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                 string ccyAttr = XMLUtils::getAttribute(expiryNode, "ccy");
                 if (!ccyAttr.empty()) {
                     key = ccyAttr;
-                    ALOG("ScenarioSimMarketParameters: SwaptionVolatilities/Expiries: 'ccy' attribute is deprecated, "
+                    WLOG("ScenarioSimMarketParameters: SwaptionVolatilities/Expiries: 'ccy' attribute is deprecated, "
                          "use 'key' instead.");
                 }
             }
@@ -787,7 +860,7 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                 string ccyAttr = XMLUtils::getAttribute(termNode, "ccy");
                 if (!ccyAttr.empty()) {
                     key = ccyAttr;
-                    ALOG("ScenarioSimMarketParameters: SwaptionVolatilities/Terms: 'ccy' attribute is deprecated, "
+                    WLOG("ScenarioSimMarketParameters: SwaptionVolatilities/Terms: 'ccy' attribute is deprecated, "
                          "use 'key' instead.");
                 }
             }
@@ -800,6 +873,13 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
         QL_REQUIRE(defaultProvided || keysCheck.empty(), "SwaptionVolatilities has no terms for "
                                                              << "keys '" << join(keysCheck, ",")
                                                              << "' and no default term set has been given");
+
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            swapVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
+        }
 
         XMLNode* atmOnlyNode = XMLUtils::getChildNode(nodeChild, "SimulateATMOnly");
         if (atmOnlyNode)
@@ -852,6 +932,12 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
             setYieldVolNames(XMLUtils::getChildrenValues(nodeChild, "Names", "Name", true));
             yieldVolDecayMode_ = XMLUtils::getChildValue(nodeChild, "ReactionToTimeDecay");
         }
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            yieldVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
+        }
     }
 
     DLOG("Loading Correlations");
@@ -898,7 +984,7 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
 	auto keys = XMLUtils::getChildrenValues(nodeChild, "Keys", "Key", false);
 	if(!ccys.empty()) {
 	    keys.insert(keys.end(), ccys.begin(), ccys.end());
-            ALOG("ScenarioSimMarketParameters: CapFloorVolatilities/Currencies is deprecated, use Keys instead.");
+            WLOG("ScenarioSimMarketParameters: CapFloorVolatilities/Currencies is deprecated, use Keys instead.");
         }
         setCapFloorVolKeys(keys);
         QL_REQUIRE(!keys.empty(), "CapFloorVolatilities needs at least one entry");
@@ -919,7 +1005,7 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                 string ccyAttr = XMLUtils::getAttribute(expiryNode, "ccy");
                 if (!ccyAttr.empty()) {
                     key = ccyAttr;
-                    ALOG("ScenarioSimMarketParameters: CapFloorVolatilities/Expiries: 'ccy' attribute is deprecated, "
+                    WLOG("ScenarioSimMarketParameters: CapFloorVolatilities/Expiries: 'ccy' attribute is deprecated, "
                          "use 'key' instead.");
                 }
             }
@@ -944,7 +1030,7 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                 string ccyAttr = XMLUtils::getAttribute(strikeNode, "ccy");
                 if (!ccyAttr.empty()) {
                     key = ccyAttr;
-                    ALOG("ScenarioSimMarketParameters: CapFloorVolatilities/Strikes: 'ccy' attribute is deprecated, "
+                    WLOG("ScenarioSimMarketParameters: CapFloorVolatilities/Strikes: 'ccy' attribute is deprecated, "
                          "use 'key' instead.");
                 }
             }
@@ -979,6 +1065,13 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
         capFloorVolUseCapAtm_ = false;
         if (XMLNode* n = XMLUtils::getChildNode(nodeChild, "UseCapAtm")) {
             capFloorVolUseCapAtm_ = parseBool(XMLUtils::getNodeValue(n));
+        }
+
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            capFloorVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
         }
     }
 
@@ -1035,6 +1128,13 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                                                                     << "' and no default strike set has been given");
 
         yoyInflationCapFloorVolDecayMode_ = XMLUtils::getChildValue(nodeChild, "ReactionToTimeDecay");
+
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            yoyInflationCapFloorVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
+        }
     }
 
     DLOG("Loading CPICapFloorVolatilities");
@@ -1091,6 +1191,13 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                                                                     << "' and no default strike set has been given");
 
         zeroInflationCapFloorVolDecayMode_ = XMLUtils::getChildValue(nodeChild, "ReactionToTimeDecay");
+
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            zeroInflationCapFloorVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
+        }
     }
 
     DLOG("Loading DefaultCurves Rates");
@@ -1143,6 +1250,18 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
         cdsVolExpiries_ = XMLUtils::getChildrenValuesAsPeriods(nodeChild, "Expiries", true);
         setCdsVolNames(XMLUtils::getChildrenValues(nodeChild, "Names", "Name", true));
         cdsVolDecayMode_ = XMLUtils::getChildValue(nodeChild, "ReactionToTimeDecay");
+
+        XMLNode* atmOnlyNode = XMLUtils::getChildNode(nodeChild, "SimulateATMOnly");
+        if (atmOnlyNode) {
+            cdsVolSimulateATMOnly_ = XMLUtils::getChildValueAsBool(nodeChild, "SimulateATMOnly", true);
+        }
+
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            cdsVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
+        }
     }
 
     DLOG("Loading FXVolatilities");
@@ -1175,12 +1294,6 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
         XMLNode* fxSurfaceNode = XMLUtils::getChildNode(nodeChild, "Surface");
         setFxVolIsSurface("", false);
         if (fxSurfaceNode) {
-            XMLNode* atmOnlyNode = XMLUtils::getChildNode(fxSurfaceNode, "SimulateATMOnly");
-            // if set to true we will simulate ATM only for any surfaces without an explicit surface defined
-            // adding a default surface of moneyness or standard deviations below will supersede this
-            if (atmOnlyNode) {
-                fxVolSimulateATMOnly_ = XMLUtils::getChildValueAsBool(fxSurfaceNode, "SimulateATMOnly", true);
-            }
             for (XMLNode* child = XMLUtils::getChildNode(fxSurfaceNode, "Moneyness"); child;
                  child = XMLUtils::getNextSibling(child, "Moneyness")) {
                 string label = XMLUtils::getAttribute(child, "ccyPair"); // will be "" if no attr
@@ -1205,6 +1318,17 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                     }
                 }
             }
+        } else {
+            XMLNode* atmOnlyNode = XMLUtils::getChildNode(nodeChild, "SimulateATMOnly");
+            if (atmOnlyNode) {
+                fxVolSimulateATMOnly_ = XMLUtils::getChildValueAsBool(nodeChild, "SimulateATMOnly", true);
+            }
+        }
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            fxVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
         }
     }
 
@@ -1235,12 +1359,6 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
         XMLNode* eqSurfaceNode = XMLUtils::getChildNode(nodeChild, "Surface");
         setEquityVolIsSurface("", false);
         if (eqSurfaceNode) {
-            XMLNode* atmOnlyNode = XMLUtils::getChildNode(eqSurfaceNode, "SimulateATMOnly");
-            // if set to true we will simulate ATM only for any surfaces without an explicit surface defined
-            // adding a default surface of moneyness or standard deviations below will supersede this
-            if (atmOnlyNode) {
-                equityVolSimulateATMOnly_ = XMLUtils::getChildValueAsBool(eqSurfaceNode, "SimulateATMOnly", true);
-            }
             for (XMLNode* child = XMLUtils::getChildNode(eqSurfaceNode, "Moneyness"); child;
                 child = XMLUtils::getNextSibling(child, "Moneyness")) {
                 string label = XMLUtils::getAttribute(child, "name"); // will be "" if no attr
@@ -1264,7 +1382,16 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
                 }
             }
         } else {
-            DLOG("No surface provided, all equity volatilities will be taken as ATM.");
+            XMLNode* atmOnlyNode = XMLUtils::getChildNode(nodeChild, "SimulateATMOnly");
+            if (atmOnlyNode) {
+                equityVolSimulateATMOnly_ = XMLUtils::getChildValueAsBool(nodeChild, "SimulateATMOnly", true);
+            }
+        }
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            equityVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
         }
     }
 
@@ -1388,12 +1515,36 @@ void ScenarioSimMarketParameters::fromXML(XMLNode* root) {
             }
         }
         setCommodityVolNames(names);
+        // Get smile dynamics
+        vector<XMLNode*> smileDynamicsNodes = XMLUtils::getChildrenNodes(nodeChild, "SmileDynamics");
+        for (XMLNode* smileDynamicsNode : smileDynamicsNodes) {
+            string key = XMLUtils::getAttribute(smileDynamicsNode, "key");
+            commodityVolSmileDynamics_.insert(make_pair(key, XMLUtils::getNodeValue(smileDynamicsNode)));
+        }
     }
+
+    DLOG("Loading credit states data");
+    nodeChild = XMLUtils::getChildNode(node, "CreditStates");
+    numberOfCreditStates_ = 0;
+    if (nodeChild) {
+        numberOfCreditStates_ = XMLUtils::getChildValueAsInt(nodeChild, "NumberOfFactors", true);
+    }
+
+    DLOG("Loading AggregationScenarioDataCreditStates");
+    nodeChild = XMLUtils::getChildNode(node, "AggregationScenarioDataCreditStates");
+    additionalScenarioDataNumberOfCreditStates_ = 0;
+    if (nodeChild) {
+        additionalScenarioDataNumberOfCreditStates_ = XMLUtils::getChildValueAsInt(nodeChild, "NumberOfFactors", true);
+    }
+
+    DLOG("Loading AggregationScenarioDataSurvivalWeights");
+    additionalScenarioDataSurvivalWeights_ = XMLUtils::getChildrenValues(node, "AggregationScenarioDataSurvivalWeights", "Name");
+
 
     DLOG("Loaded ScenarioSimMarketParameters");
 }
 
-XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
+XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) const {
 
     XMLNode* simulationNode = doc.allocNode("Simulation");
     XMLNode* marketNode = doc.allocNode("Market");
@@ -1491,11 +1642,11 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         XMLUtils::addChild(doc, swaptionVolatilitiesNode, "ReactionToTimeDecay", swapVolDecayMode_);
         XMLUtils::addChildren(doc, swaptionVolatilitiesNode, "Keys", "Key", swapVolKeys());
         for (auto it = swapVolExpiries_.begin(); it != swapVolExpiries_.end(); it++) {
-            XMLUtils::addGenericChildAsList(doc, swaptionVolatilitiesNode, "Expiries", swapVolExpiries_[it->first],
+            XMLUtils::addGenericChildAsList(doc, swaptionVolatilitiesNode, "Expiries", swapVolExpiries_.find(it->first)->second,
                                             "key", it->first);
         }
         for (auto it = swapVolTerms_.begin(); it != swapVolTerms_.end(); it++) {
-            XMLUtils::addGenericChildAsList(doc, swaptionVolatilitiesNode, "Terms", swapVolTerms_[it->first], "key",
+            XMLUtils::addGenericChildAsList(doc, swaptionVolatilitiesNode, "Terms", swapVolTerms_.find(it->first)->second, "key",
                                             it->first);
         }
 
@@ -1504,8 +1655,11 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         } else {
             for (auto it = swapVolStrikeSpreads_.begin(); it != swapVolStrikeSpreads_.end(); it++) {
                 XMLUtils::addGenericChildAsList(doc, swaptionVolatilitiesNode, "StrikeSpreads",
-                                                swapVolStrikeSpreads_[it->first], "key", it->first);
+                                                swapVolStrikeSpreads_.find(it->first)->second, "key", it->first);
             }
+        }
+        for (auto it = swapVolSmileDynamics_.begin(); it != swapVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, swaptionVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
         }
     }
 
@@ -1518,6 +1672,9 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         XMLUtils::addChildren(doc, yieldVolatilitiesNode, "Names", "Name", yieldVolNames());
         XMLUtils::addGenericChildAsList(doc, yieldVolatilitiesNode, "Expiries", yieldVolExpiries_);
         XMLUtils::addGenericChildAsList(doc, yieldVolatilitiesNode, "Terms", yieldVolTerms_);
+        for (auto it = yieldVolSmileDynamics_.begin(); it != yieldVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, yieldVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
+        }
     }
 
     // cap/floor volatilities
@@ -1553,6 +1710,9 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         XMLUtils::addChild(doc, capFloorVolatilitiesNode, "AdjustOptionletPillars",
             capFloorVolAdjustOptionletPillars_);
         XMLUtils::addChild(doc, capFloorVolatilitiesNode, "UseCapAtm", capFloorVolUseCapAtm_);
+        for (auto it = capFloorVolSmileDynamics_.begin(); it != capFloorVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, capFloorVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
+        }
     }
 
     // zero inflation cap/floor volatilities
@@ -1580,6 +1740,10 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
             XMLUtils::addAttribute(doc, strikesNode, "name", kv.first);
             XMLUtils::appendNode(n, strikesNode);
         }
+        for (auto it = zeroInflationCapFloorVolSmileDynamics_.begin();
+             it != zeroInflationCapFloorVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, n, "SmileDynamics", it->second, "key", it->first);
+        }
     }
 
     if (!cdsVolNames().empty()) {
@@ -1589,6 +1753,12 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         XMLUtils::addChild(doc, cdsVolatilitiesNode, "ReactionToTimeDecay", cdsVolDecayMode_);
         XMLUtils::addChildren(doc, cdsVolatilitiesNode, "Names", "Name", cdsVolNames());
         XMLUtils::addGenericChildAsList(doc, cdsVolatilitiesNode, "Expiries", cdsVolExpiries_);
+        if (cdsVolSimulateATMOnly_) {
+            XMLUtils::addChild(doc, cdsVolatilitiesNode, "SimulateATMOnly", cdsVolSimulateATMOnly_);
+        }
+        for (auto it = cdsVolSmileDynamics_.begin(); it != cdsVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, cdsVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
+        }
     }
 
     // fx volatilities
@@ -1599,22 +1769,25 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         XMLUtils::addChild(doc, fxVolatilitiesNode, "ReactionToTimeDecay", fxVolDecayMode_);
         XMLUtils::addChildren(doc, fxVolatilitiesNode, "CurrencyPairs", "CurrencyPair", fxVolCcyPairs());
         for (auto it = fxVolExpiries_.begin(); it != fxVolExpiries_.end(); it++) {
-            XMLUtils::addGenericChildAsList(doc, fxVolatilitiesNode, "Expiries", fxVolExpiries_[it->first], "ccyPair",
+            XMLUtils::addGenericChildAsList(doc, fxVolatilitiesNode, "Expiries", fxVolExpiries_.find(it->first)->second, "ccyPair",
                                             it->first);
+        }
+        if (fxVolSimulateATMOnly_) {
+            XMLUtils::addChild(doc, fxVolatilitiesNode, "SimulateATMOnly", fxVolSimulateATMOnly_);
         }
         if (fxVolSimulateATMOnly_ || fxMoneyness_.size() > 0 || fxStandardDevs_.size() > 0) {
             XMLNode* fxSurfaceNode = XMLUtils::addChild(doc, fxVolatilitiesNode, "Surface");
-            if (fxVolSimulateATMOnly_) {
-                XMLUtils::addChild(doc, fxSurfaceNode, "SimulateATMOnly", fxVolSimulateATMOnly_);
-            }
             for (auto it = fxMoneyness_.begin(); it != fxMoneyness_.end(); it++) {
-                XMLUtils::addGenericChildAsList(doc, fxSurfaceNode, "Moneyness", equityMoneyness_[it->first], "ccyPair",
+                XMLUtils::addGenericChildAsList(doc, fxSurfaceNode, "Moneyness", equityMoneyness_.find(it->first)->second, "ccyPair",
                                                 it->first);
             }
             for (auto it = fxStandardDevs_.begin(); it != fxStandardDevs_.end(); it++) {
                 XMLUtils::addGenericChildAsList(doc, fxSurfaceNode, "StandardDeviations",
-                                                fxStandardDevs_[it->first], "ccyPair", it->first);
+                                                fxStandardDevs_.find(it->first)->second, "ccyPair", it->first);
             }
+        }
+        for (auto it = fxVolSmileDynamics_.begin(); it != fxVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, fxVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
         }
     }
 
@@ -1626,22 +1799,25 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         XMLUtils::addChild(doc, eqVolatilitiesNode, "ReactionToTimeDecay", equityVolDecayMode_);
         XMLUtils::addChildren(doc, eqVolatilitiesNode, "Names", "Name", equityVolNames());
         for (auto it = equityVolExpiries_.begin(); it != equityVolExpiries_.end(); it++) {
-            XMLUtils::addGenericChildAsList(doc, eqVolatilitiesNode, "Expiries", equityVolExpiries_[it->first], "name",
+            XMLUtils::addGenericChildAsList(doc, eqVolatilitiesNode, "Expiries", equityVolExpiries_.find(it->first)->second, "name",
                 it->first);
+        }
+        if (equityVolSimulateATMOnly_) {
+            XMLUtils::addChild(doc, eqVolatilitiesNode, "SimulateATMOnly", equityVolSimulateATMOnly_);
         }
         if (equityVolSimulateATMOnly_ || equityMoneyness_.size() > 0 || equityStandardDevs_.size() > 0) {
             XMLNode* eqSurfaceNode = XMLUtils::addChild(doc, eqVolatilitiesNode, "Surface");
-            if (equityVolSimulateATMOnly_) {
-                XMLUtils::addChild(doc, eqSurfaceNode, "SimulateATMOnly", equityVolSimulateATMOnly_);
-            }
             for (auto it = equityMoneyness_.begin(); it != equityMoneyness_.end(); it++) {
-                XMLUtils::addGenericChildAsList(doc, eqSurfaceNode, "Moneyness", equityMoneyness_[it->first], "name",
+                XMLUtils::addGenericChildAsList(doc, eqSurfaceNode, "Moneyness", equityMoneyness_.find(it->first)->second, "name",
                     it->first);
             }
             for (auto it = equityStandardDevs_.begin(); it != equityStandardDevs_.end(); it++) {
-                XMLUtils::addGenericChildAsList(doc, eqSurfaceNode, "StandardDeviations", equityStandardDevs_[it->first], "name",
+                XMLUtils::addGenericChildAsList(doc, eqSurfaceNode, "StandardDeviations", equityStandardDevs_.find(it->first)->second, "name",
                     it->first);
             }            
+        }
+        for (auto it = equityVolSmileDynamics_.begin(); it != equityVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, eqVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
         }
     }
 
@@ -1650,7 +1826,7 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
     for (Size i = 0; i < yieldCurveNames().size(); ++i) {
         DLOG("Writing benchmark yield curves data");
         XMLNode* benchmarkCurveNode = XMLUtils::addChild(doc, benchmarkCurvesNode, "BenchmarkCurve");
-        XMLUtils::addChild(doc, benchmarkCurveNode, "Currency", yieldCurveCurrencies_[yieldCurveNames()[i]]);
+        XMLUtils::addChild(doc, benchmarkCurveNode, "Currency", yieldCurveCurrencies_.find(yieldCurveNames()[i])->second);
         XMLUtils::addChild(doc, benchmarkCurveNode, "Name", yieldCurveNames()[i]);
     }
 
@@ -1717,6 +1893,10 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
             XMLUtils::addAttribute(doc, strikesNode, "name", kv.first);
             XMLUtils::appendNode(n, strikesNode);
         }
+        for (auto it = yoyInflationCapFloorVolSmileDynamics_.begin(); it != yoyInflationCapFloorVolSmileDynamics_.end();
+             it++) {
+            XMLUtils::addChild(doc, n, "SmileDynamics", it->second, "key", it->first);
+        }
     }
 
     // Commodity price curves
@@ -1747,9 +1927,12 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         for (const auto& name : commodityVolNames()) {
             XMLNode* nameNode = doc.allocNode("Name");
             XMLUtils::addAttribute(doc, nameNode, "id", name);
-            XMLUtils::addGenericChildAsList(doc, nameNode, "Expiries", commodityVolExpiries_[name]);
-            XMLUtils::addGenericChildAsList(doc, nameNode, "Moneyness", commodityVolMoneyness_[name]);
+            XMLUtils::addGenericChildAsList(doc, nameNode, "Expiries", commodityVolExpiries_.find(name)->second);
+            XMLUtils::addGenericChildAsList(doc, nameNode, "Moneyness", commodityVolMoneyness_.find(name)->second);
             XMLUtils::appendNode(namesNode, nameNode);
+        }
+        for (auto it = commodityVolSmileDynamics_.begin(); it != commodityVolSmileDynamics_.end(); it++) {
+            XMLUtils::addChild(doc, commodityVolatilitiesNode, "SmileDynamics", it->second, "key", it->first);
         }
     }
 
@@ -1765,6 +1948,23 @@ XMLNode* ScenarioSimMarketParameters::toXML(XMLDocument& doc) {
         DLOG("Writing aggregation scenario data indices");
         XMLUtils::addChildren(doc, marketNode, "AggregationScenarioDataIndices", "Index",
                               additionalScenarioDataIndices_);
+    }
+
+    // Credit States
+    DLOG("Writing number of credit states");
+    XMLNode* creditStatesNode = XMLUtils::addChild(doc, marketNode, "CreditStates");
+    XMLUtils::addChild(doc, creditStatesNode, "NumberOfFactors", int(numberOfCreditStates_));
+
+    DLOG("Writing number of credit states, AggregationScenarioDataCreditStates");
+    XMLNode* aggScenDataCreditStatesNode = XMLUtils::addChild(doc, marketNode, "AggregationScenarioDataCreditStates");
+    XMLUtils::addChild(doc, aggScenDataCreditStatesNode, "NumberOfFactors",
+                       int(additionalScenarioDataNumberOfCreditStates_));
+
+    // Survival Weights
+    DLOG("Writing names that need tracking of survival weights");
+    if (!additionalScenarioDataSurvivalWeights_.empty()) {
+        XMLUtils::addChildren(doc, marketNode, "AggregationScenarioDataSurvivalWeights", "Name",
+                              additionalScenarioDataSurvivalWeights_);
     }
 
     // base correlations

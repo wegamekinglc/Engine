@@ -24,24 +24,37 @@
 
 #pragma once
 
-#include <ored/utilities/log.hpp>
-#include <ored/configuration/conventions.hpp>
 #include <ored/configuration/commoditycurveconfig.hpp>
+#include <ored/configuration/conventions.hpp>
 #include <ored/portfolio/types.hpp>
+#include <ored/utilities/log.hpp>
+
+#include <qle/cashflows/commoditycashflow.hpp>
+#include <qle/currencies/configurablecurrency.hpp>
+#include <qle/indexes/bondindex.hpp>
+#include <qle/instruments/cdsoption.hpp>
+#include <qle/methods/multipathgeneratorbase.hpp>
+#include <qle/models/crossassetmodel.hpp>
+#include <qle/pricingengines/mcmultilegbaseengine.hpp>
+#include <qle/termstructures/sabrparametricvolatility.hpp>
+
 #include <ql/cashflows/cpicoupon.hpp>
 #include <ql/compounding.hpp>
 #include <ql/currency.hpp>
 #include <ql/exercise.hpp>
+#include <ql/instruments/doublebarriertype.hpp>
 #include <ql/experimental/fx/deltavolquote.hpp>
 #include <ql/instruments/averagetype.hpp>
-#include <ql/instruments/swaption.hpp>
-#include <ql/instruments/capfloor.hpp>
+#include <ql/instruments/barriertype.hpp>
 #include <ql/instruments/bond.hpp>
+#include <ql/instruments/capfloor.hpp>
 #include <ql/instruments/inflationcapfloor.hpp>
 #include <ql/instruments/overnightindexfuture.hpp>
+#include <ql/instruments/swaption.hpp>
 #include <ql/methods/finitedifferences/solvers/fdmbackwardsolver.hpp>
 #include <ql/methods/montecarlo/lsmbasissystem.hpp>
 #include <ql/position.hpp>
+#include <ql/termstructures/bootstraphelper.hpp>
 #include <ql/time/businessdayconvention.hpp>
 #include <ql/time/calendar.hpp>
 #include <ql/time/date.hpp>
@@ -49,12 +62,6 @@
 #include <ql/time/daycounter.hpp>
 #include <ql/time/period.hpp>
 #include <ql/types.hpp>
-
-#include <qle/cashflows/commoditycashflow.hpp>
-#include <qle/instruments/cdsoption.hpp>
-#include <qle/models/crossassetmodel.hpp>
-#include <qle/methods/multipathgeneratorbase.hpp>
-#include <qle/currencies/configurablecurrency.hpp>
 
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/tokenizer.hpp>
@@ -75,6 +82,12 @@ QuantLib::Date parseDate(const string& s);
   \ingroup utilities
 */
 QuantLib::Real parseReal(const string& s);
+
+//! Convert text to Real, empty string to Null<Real>()
+/*!
+  \ingroup utilities
+*/
+Real parseRealOrNull(const string& s);
 
 //! Attempt to convert text to Real
 /*! Attempts to convert text to Real
@@ -136,6 +149,12 @@ QuantLib::DayCounter parseDayCounter(const string& s);
  */
 QuantLib::Currency parseCurrency(const string& s);
 
+//! Convert text to QuantExt::ConfigurableCurrency::Type (Major, Minor, Metal, Crypto)
+/*!
+  \ingroup utilities
+ */
+QuantExt::ConfigurableCurrency::Type parseCurrencyType(const string& s);
+
 //! Convert text to QuantLib::Currency for minor currencies e.g GBp -> GBPCurrency()
 /*!
   \ingroup utilities
@@ -147,6 +166,12 @@ QuantLib::Currency parseMinorCurrency(const string& s);
   \ingroup utilities
  */
 QuantLib::Currency parseCurrencyWithMinors(const string& s);
+
+//! Convert text to std::pair<QuantLib::Currency, QuantLib::Currency>
+/*!
+  \ingroup utilities
+ */
+std::pair<QuantLib::Currency, QuantLib::Currency> parseCurrencyPair(const string& s, const string& delimiters);
 
 //! check for vaid currency code, including minors and pseudo currencies
 /*!
@@ -250,11 +275,17 @@ boost::variant<QuantLib::Date, QuantLib::Period> parseDateOrPeriod(const string&
 */
 void parseDateOrPeriod(const string& s, QuantLib::Date& d, QuantLib::Period& p, bool& isDate);
 
-//! Convert text to QuantLib::LsmBasisSystem::PolynomType
+//! Convert text to QuantLib::LsmBasisSystem::PolynomialType
 /*!
 \ingroup utilities
 */
-QuantLib::LsmBasisSystem::PolynomType parsePolynomType(const std::string& s);
+QuantLib::LsmBasisSystem::PolynomialType parsePolynomType(const std::string& s);
+
+//! Write QuantLib::LsmBasisSystem::PolynomialType to stream
+/*!
+\ingroup utilities
+*/
+std::ostream& operator<<(std::ostream& os, QuantLib::LsmBasisSystem::PolynomialType a);
 
 //! Convert text to QuantLib::SobolBrownianGenerator::Ordering
 /*!
@@ -372,6 +403,18 @@ QuantLib::DeltaVolQuote::DeltaType parseDeltaType(const std::string& s);
 */
 QuantLib::Rounding::Type parseRoundingType(const std::string& s);
   
+//! Convert std::string to QuantLib::BarrierType
+/*!
+  \ingroup utilities
+*/
+QuantLib::Barrier::Type parseBarrierType(const string& s);
+
+//! Convert std::string to QuantLib::DoubleBarrierType
+/*!
+  \ingroup utilities
+*/
+QuantLib::DoubleBarrier::Type parseDoubleBarrierType(const string& s);
+
 /*! Attempt to parse string \p str to \p obj of type \c T using \p parser
     \param[in]  str    The string we wish to parse.
     \param[out] obj    The resulting object if the parsing was successful.
@@ -381,7 +424,7 @@ QuantLib::Rounding::Type parseRoundingType(const std::string& s);
 
     \ingroup utilities
 */
-template <class T> bool tryParse(const std::string& str, T& obj, std::function<T(std::string)> parser) {
+template <class T> bool tryParse(const std::string& str, T& obj, std::function<T(const std::string&)> parser) {
     DLOG("tryParse: attempting to parse " << str);
     try {
         obj = parser(str);
@@ -430,7 +473,7 @@ QuantLib::YoYInflationCapFloor::Type parseYoYInflationCapFloorType(const std::st
 /*! Convert text to QuantExt::CrossAssetModelTypes::AssetType
     \ingroup utilities
 */
-QuantExt::CrossAssetModelTypes::AssetType parseCamAssetType(const std::string& s);
+QuantExt::CrossAssetModel::AssetType parseCamAssetType(const std::string& s);
 
 /*! Convert boost::any to pair<string,string>, including the valueType and the value
     \ingroup utilities
@@ -462,7 +505,7 @@ std::ostream& operator<<(std::ostream& os, SobolBrownianGenerator::Ordering t);
 std::ostream& operator<<(std::ostream& os, SobolRsg::DirectionIntegers t);
     
 //! Enum to string used in ScenarioGeneratorData's toXML
-std::ostream& operator<<(std::ostream& os, QuantExt::CrossAssetStateProcess::discretization type);
+std::ostream& operator<<(std::ostream& os, QuantExt::CrossAssetModel::Discretization type);
 
 //! Convert text to CommodityFutureConvention::AveragingData::CalculationPeriod
 CommodityFutureConvention::AveragingData::CalculationPeriod parseAveragingDataPeriod(const std::string& s);
@@ -492,8 +535,87 @@ QuantExt::CdsOption::StrikeType parseCdsOptionStrikeType(const std::string& s);
 */
 QuantLib::Average::Type parseAverageType(const std::string& s);
 
+/*! Convert text to QuantExt::BondData::PriceQuoteMethod
+\ingroup utilities
+ */
+QuantExt::BondIndex::PriceQuoteMethod parsePriceQuoteMethod(const std::string& s);
+
+//! Write PriceQuoteMethod to stream
+std::ostream& operator<<(std::ostream& os, QuantExt::BondIndex::PriceQuoteMethod);
+
 //! Helper function to get the two tokens in a correlation name Index2:Index1
 std::vector<std::string> getCorrelationTokens(const std::string& name);
+
+//! Convert FX pair to market standard dominance
+/*!
+ Convert FX pair to market standard dominance, e.g. "USD" & "GBP" -> "GBPUSD", "USD" & "JPY" -> "USDJPY"
+  \ingroup utilities
+*/
+string fxDominance(const string& s1, const string& s2);
+
+//! Convert FX index name to market standard dominance
+string normaliseFxIndex(const std::string& indexName);
+
+enum class MomentType { Variance, Volatility };
+
+//! Convert text to ore::data::MomentType
+/*!
+\ingroup utilities
+*/
+MomentType parseMomentType(const std::string& s);
+
+//! Enumeration CreditPortfolioSensitivityDecomposition
+enum class CreditPortfolioSensitivityDecomposition { Underlying, NotionalWeighted, LossWeighted, DeltaWeighted };
+
+//! Convert text to CreditPortfolioSensitivitiyDecomposition
+CreditPortfolioSensitivityDecomposition parseCreditPortfolioSensitivityDecomposition(const std::string& s);
+
+//! Output operator for CreditPortfolioSensitivityDecomposition
+std::ostream& operator<<(std::ostream& os, const CreditPortfolioSensitivityDecomposition d);
+
+//! Convert text to QuantLib::Pillar::Choice
+/*!
+\ingroup utilities
+*/
+QuantLib::Pillar::Choice parsePillarChoice(const std::string& s);
+
+//! Convert text to QuantExt::McMultiLegBaseEngine::RegressorModel
+/*!
+\ingroup utilities
+*/
+QuantExt::McMultiLegBaseEngine::RegressorModel parseRegressorModel(const std::string& s);
+
+enum MporCashFlowMode { Unspecified, NonePay, BothPay, WePay, TheyPay };
+
+//! Convert text to MporCashFlowMode
+/*!
+\ingroup utilities
+*/
+MporCashFlowMode parseMporCashFlowMode(const std::string& s);
+
+//! Write MporCashFlowMode to stream
+/*!
+\ingroup utilities
+*/
+std::ostream& operator<<(std::ostream& os, MporCashFlowMode t);
+
+//! Parse SabrParametricVolatility::ModelVariant
+/*!
+\ingroup utilities
+*/
+QuantExt::SabrParametricVolatility::ModelVariant parseSabrParametricVolatilityModelVariant(const std::string& s);
+
+//! Write SabrParametricVolatility::ModelVariant
+/*!
+\ingroup utilities
+*/
+std::ostream& operator<<(std::ostream& out, QuantExt::SabrParametricVolatility::ModelVariant m);
+
+//! Write QuantLib::Exercise::Type
+/*!
+\ingroup utilities
+*/
+std::ostream& operator<<(std::ostream& os, QuantLib::Exercise::Type type);
 
 } // namespace data
 } // namespace ore

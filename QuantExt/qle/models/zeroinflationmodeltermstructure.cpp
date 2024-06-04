@@ -26,7 +26,13 @@ using QuantLib::Time;
 
 namespace QuantExt {
 
-ZeroInflationModelTermStructure::ZeroInflationModelTermStructure(const boost::shared_ptr<CrossAssetModel>& model,
+QL_DEPRECATED_DISABLE_WARNING
+ZeroInflationModelTermStructure::ZeroInflationModelTermStructure(const QuantLib::ext::shared_ptr<CrossAssetModel>& model,
+                                                                 Size index)
+    : ZeroInflationModelTermStructure(model, index, false) {}
+
+
+ZeroInflationModelTermStructure::ZeroInflationModelTermStructure(const QuantLib::ext::shared_ptr<CrossAssetModel>& model,
                                                                  Size index, bool indexIsInterpolated)
     : ZeroInflationTermStructure(
           inflationTermStructure(model, index)->dayCounter(), inflationTermStructure(model, index)->baseRate(),
@@ -36,6 +42,7 @@ ZeroInflationModelTermStructure::ZeroInflationModelTermStructure(const boost::sh
     registerWith(model_);
     update();
 }
+QL_DEPRECATED_ENABLE_WARNING
 
 void ZeroInflationModelTermStructure::update() {
     notifyObservers();
@@ -56,11 +63,13 @@ const Date& ZeroInflationModelTermStructure::referenceDate() const {
 }
 
 Date ZeroInflationModelTermStructure::baseDate() const {
+    QL_DEPRECATED_DISABLE_WARNING
     if (indexIsInterpolated_) {
         return referenceDate_ - observationLag_;
     } else {
         return inflationPeriod(referenceDate_ - observationLag_, frequency()).first;
     }
+    QL_DEPRECATED_ENABLE_WARNING
 }
 
 void ZeroInflationModelTermStructure::referenceDate(const Date& d) {

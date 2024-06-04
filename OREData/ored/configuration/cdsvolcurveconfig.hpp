@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <boost/shared_ptr.hpp>
+#include <ql/shared_ptr.hpp>
 #include <ored/configuration/curveconfig.hpp>
 #include <ored/configuration/volatilityconfig.hpp>
 
@@ -41,16 +41,15 @@ public:
 
     //! Detailed constructor
     CDSVolatilityCurveConfig(const std::string& curveId, const std::string& curveDescription,
-                             const boost::shared_ptr<VolatilityConfig>& volatilityConfig,
+                             const QuantLib::ext::shared_ptr<VolatilityConfig>& volatilityConfig,
                              const std::string& dayCounter = "A365", const std::string& calendar = "NullCalendar",
                              const std::string& strikeType = "", const std::string& quoteName = "",
                              QuantLib::Real strikeFactor = 1.0, const std::vector<QuantLib::Period>& terms = {},
-                             const std::vector<std::string>& termCurves = {},
-			     const std::string& smileDynamics = "");
+                             const std::vector<std::string>& termCurves = {});
 
     //! \name Inspectors
     //@{
-    const boost::shared_ptr<VolatilityConfig>& volatilityConfig() const;
+    const QuantLib::ext::shared_ptr<VolatilityConfig>& volatilityConfig() const;
     const std::string& dayCounter() const;
     const std::string& calendar() const;
     const std::string& strikeType() const;
@@ -58,17 +57,16 @@ public:
     QuantLib::Real strikeFactor() const;
     const std::vector<QuantLib::Period>& terms() const;
     const std::vector<std::string>& termCurves() const;
-    const std::string& smileDynamics() const { return smileDynamics_; }
     //@}
 
     //! \name Serialisation
     //@{
     void fromXML(XMLNode* node) override;
-    ore::data::XMLNode* toXML(ore::data::XMLDocument& doc) override;
+    ore::data::XMLNode* toXML(ore::data::XMLDocument& doc) const override;
     //@}
 
 private:
-    boost::shared_ptr<VolatilityConfig> volatilityConfig_;
+    QuantLib::ext::shared_ptr<VolatilityConfig> volatilityConfig_;
     std::string dayCounter_;
     std::string calendar_;
     std::string strikeType_;
@@ -76,7 +74,6 @@ private:
     QuantLib::Real strikeFactor_;
     std::vector<QuantLib::Period> terms_;
     std::vector<std::string> termCurves_;
-    std::string smileDynamics_;
 
     //! Populate CurveConfig::quotes_ with the required quotes.
     void populateQuotes();

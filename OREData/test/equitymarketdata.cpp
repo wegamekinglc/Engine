@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(testMarketDatumParser) {
         Real value = ore::data::parseReal(tokens[2]);
 
         BOOST_CHECK_NO_THROW(ore::data::parseMarketDatum(quoteDate, key, value));
-        boost::shared_ptr<ore::data::MarketDatum> md = ore::data::parseMarketDatum(quoteDate, key, value);
+        QuantLib::ext::shared_ptr<ore::data::MarketDatum> md = ore::data::parseMarketDatum(quoteDate, key, value);
         BOOST_CHECK(md);
         BOOST_CHECK_EQUAL(md->name(), key);
         BOOST_CHECK_EQUAL(md->asofDate(), quoteDate);
@@ -169,7 +169,7 @@ BOOST_AUTO_TEST_CASE(testEqCurveConfigLoad) {
 
     ore::data::CurveConfigurations cc;
     BOOST_CHECK_NO_THROW(cc.fromXML(node));
-    boost::shared_ptr<ore::data::EquityCurveConfig> ec = cc.equityCurveConfig("SP5");
+    QuantLib::ext::shared_ptr<ore::data::EquityCurveConfig> ec = cc.equityCurveConfig("SP5");
     BOOST_CHECK(ec);
     BOOST_CHECK_EQUAL("SP5", ec->curveID());
     BOOST_CHECK_EQUAL("SP 500 equity price projection curve", 
@@ -190,7 +190,7 @@ BOOST_AUTO_TEST_CASE(testEqCurveConfigLoad) {
     vector<string> actualQuotes = ec->quotes();
     BOOST_CHECK_EQUAL_COLLECTIONS(anticipatedQuotes.begin(), anticipatedQuotes.end(),
         actualQuotes.begin(), actualQuotes.end());
-    BOOST_CHECK(ec->extrapolation());
+    BOOST_CHECK(!ec->extrapolation());
 
     // now test the toXML member function
     ore::data::XMLDocument testDumpDoc;
@@ -206,10 +206,9 @@ BOOST_AUTO_TEST_CASE(testEqCurveConfigBadLoad) {
     // check that the root node is as expected
     ore::data::XMLNode* badNode = testBadDoc.getFirstNode("CurveConfiguration");
     BOOST_CHECK_NO_THROW(ore::data::XMLUtils::checkNode(badNode, "CurveConfiguration"));
-    ore::data::CurveConfigurations cc;
+    ore::data::CurveConfigurations cc;    
     BOOST_CHECK_NO_THROW(cc.fromXML(badNode)); // the spot price is missing, but the correct behaviour is to log error and move on
-    boost::shared_ptr<ore::data::EquityCurveConfig> ec = cc.equityCurveConfig("SP5Mini");
-    BOOST_CHECK(!ec); // this checks that the XML did not actually get loaded
+    BOOST_CHECK_THROW(cc.equityCurveConfig("SP5Mini"), QuantLib::Error); // this checks that the XML throws when we try to load
 }
 
 BOOST_AUTO_TEST_SUITE_END()

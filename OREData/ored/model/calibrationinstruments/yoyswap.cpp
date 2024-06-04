@@ -25,8 +25,6 @@ using QuantLib::Period;
 namespace ore {
 namespace data {
 
-CalibrationInstrumentRegister<YoYSwap> YoYSwap::reg_("YoYSwap");
-
 YoYSwap::YoYSwap() : CalibrationInstrument("YoYSwap") {}
 
 YoYSwap::YoYSwap(const Period& tenor)
@@ -42,7 +40,7 @@ void YoYSwap::fromXML(XMLNode* node) {
     tenor_ = parsePeriod(XMLUtils::getChildValue(node, "Tenor", true));
 }
 
-XMLNode* YoYSwap::toXML(XMLDocument& doc) {
+XMLNode* YoYSwap::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode(instrumentType_);
     XMLUtils::addChild(doc, node, "Tenor", to_string(tenor_));
     return node;

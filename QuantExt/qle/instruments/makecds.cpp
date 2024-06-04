@@ -57,11 +57,11 @@ MakeCreditDefaultSwap::MakeCreditDefaultSwap(const Date& termDate, const Real co
       paysAtDefaultTime_(true), rebatesAccrual_(true) {}
 
 MakeCreditDefaultSwap::operator CreditDefaultSwap() const {
-    boost::shared_ptr<CreditDefaultSwap> swap = *this;
+    QuantLib::ext::shared_ptr<CreditDefaultSwap> swap = *this;
     return *swap;
 }
 
-    MakeCreditDefaultSwap::operator boost::shared_ptr<QuantExt::CreditDefaultSwap>() const {
+    MakeCreditDefaultSwap::operator QuantLib::ext::shared_ptr<QuantExt::CreditDefaultSwap>() const {
 
     Date tradeDate = Settings::instance().evaluationDate();
     Date upfrontDate = WeekendsOnly().advance(tradeDate, cashSettlementDays_, Days);
@@ -86,13 +86,13 @@ MakeCreditDefaultSwap::operator CreditDefaultSwap() const {
 
     Schedule schedule(protectionStart, end, couponTenor_, WeekendsOnly(), Following, Unadjusted, rule_, false);
 
-    QuantExt::CreditDefaultSwap::ProtectionPaymentTime timing = paysAtDefaultTime_ ?
-        QuantExt::CreditDefaultSwap::ProtectionPaymentTime::atDefault :
-        QuantExt::CreditDefaultSwap::ProtectionPaymentTime::atPeriodEnd;
-    boost::shared_ptr<QuantExt::CreditDefaultSwap> cds = boost::make_shared<QuantExt::CreditDefaultSwap>(
+    CreditDefaultSwap::ProtectionPaymentTime timing = paysAtDefaultTime_ ?
+        CreditDefaultSwap::ProtectionPaymentTime::atDefault :
+        CreditDefaultSwap::ProtectionPaymentTime::atPeriodEnd;
+    QuantLib::ext::shared_ptr<CreditDefaultSwap> cds = QuantLib::ext::make_shared<CreditDefaultSwap>(
         side_, nominal_, upfrontRate_, couponRate_, schedule, Following, dayCounter_, settlesAccrual_,
-        timing, protectionStart, upfrontDate, boost::shared_ptr<Claim>(),
-        lastPeriodDayCounter_, tradeDate, cashSettlementDays_); // FIXME: QLE CDS missing rebatesAccrual_
+        timing, protectionStart, upfrontDate, QuantLib::ext::shared_ptr<Claim>(),
+        lastPeriodDayCounter_, rebatesAccrual_, tradeDate, cashSettlementDays_); 
 
     cds->setPricingEngine(engine_);
     return cds;
@@ -138,7 +138,7 @@ MakeCreditDefaultSwap& MakeCreditDefaultSwap::withCashSettlementDays(Natural cas
     return *this;
 }
 
-MakeCreditDefaultSwap& MakeCreditDefaultSwap::withPricingEngine(const boost::shared_ptr<PricingEngine>& engine) {
+MakeCreditDefaultSwap& MakeCreditDefaultSwap::withPricingEngine(const QuantLib::ext::shared_ptr<PricingEngine>& engine) {
     engine_ = engine;
     return *this;
 }

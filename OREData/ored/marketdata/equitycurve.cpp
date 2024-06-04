@@ -26,6 +26,7 @@
 #include <ql/termstructures/yield/flatforward.hpp>
 #include <ql/termstructures/yield/zerocurve.hpp>
 #include <qle/termstructures/equityforwardcurvestripper.hpp>
+#include <qle/termstructures/flatforwarddividendcurve.hpp>
 #include <qle/termstructures/optionpricesurface.hpp>
 
 #include <ored/utilities/parsers.hpp>
@@ -41,12 +42,12 @@ namespace ore {
 namespace data {
 
 EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, const CurveConfigurations& curveConfigs,
-                         const map<string, boost::shared_ptr<YieldCurve>>& requiredYieldCurves,
+                         const map<string, QuantLib::ext::shared_ptr<YieldCurve>>& requiredYieldCurves,
                          const bool buildCalibrationInfo) {
 
     try {
 
-        const boost::shared_ptr<EquityCurveConfig>& config = curveConfigs.equityCurveConfig(spec.curveConfigID());
+        const QuantLib::ext::shared_ptr<EquityCurveConfig>& config = curveConfigs.equityCurveConfig(spec.curveConfigID());
 
         dc_ = Actual365Fixed();
         if (config->dayCountID() == "") {
@@ -85,7 +86,7 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
         auto itr = requiredYieldCurves.find(ycspec.name());
         QL_REQUIRE(itr != requiredYieldCurves.end(),
                    "Yield Curve Spec - " << ycspec.name() << " - not found during equity curve build");
-        boost::shared_ptr<YieldCurve> yieldCurve = itr->second;
+        QuantLib::ext::shared_ptr<YieldCurve> yieldCurve = itr->second;
         forecastYieldTermStructure = yieldCurve->handle();
 
         // Set the interpolation variables
@@ -96,8 +97,8 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
         // until we found the whole set of quotes or do not have more quotes in the
         // market data
 
-        vector<boost::shared_ptr<EquityForwardQuote>> qt; // for sorting quotes_/terms_ pairs
-        vector<boost::shared_ptr<EquityOptionQuote>> oqt; // store any equity vol quotes
+        vector<QuantLib::ext::shared_ptr<EquityForwardQuote>> qt; // for sorting quotes_/terms_ pairs
+        vector<QuantLib::ext::shared_ptr<EquityOptionQuote>> oqt; // store any equity vol quotes
         Size quotesRead = 0;
         Size quotesExpired = 0;
         // in case of wild-card in config
@@ -107,7 +108,7 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
              config->type() == EquityCurveConfig::Type::ForwardDividendPrice ||
              config->type() == EquityCurveConfig::Type::OptionPremium) &&
             wildcard) {
-            LOG("Wild card quote specified for " << config->curveID())
+            DLOG("Wild card quote specified for " << config->curveID())
         } else {
             if (config->type() == EquityCurveConfig::Type::OptionPremium) {
                 oqt.reserve(config->fwdQuotes().size());
@@ -117,118 +118,100 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
             }
         }
 
-        for (auto& md : loader.loadQuotes(asof)) {
+        // load the quotes
 
-            if (md->asofDate() == asof && md->instrumentType() == MarketDatum::InstrumentType::EQUITY_SPOT &&
-                md->quoteType() == MarketDatum::QuoteType::PRICE) {
+        auto q = QuantLib::ext::dynamic_pointer_cast<EquitySpotQuote>(loader.get(config->equitySpotQuoteID(), asof));
+        QL_REQUIRE(q != nullptr, "expected '" << config->equitySpotQuoteID() << "' to be an EquitySpotQuote");
+        Real spot = convertMinorToMajorCurrency(q->ccy(), q->quote()->value());
+        // convert quote from minor to major currency if needed
+        equitySpot = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(spot));
 
-                boost::shared_ptr<EquitySpotQuote> q = boost::dynamic_pointer_cast<EquitySpotQuote>(md);
-
-                if (q->name() == config->equitySpotQuoteID()) {
-                    QL_REQUIRE(equitySpot.empty(), "duplicate equity spot quote " << q->name() << " found.");
-                    // convert quote from minor to major currency if needed
-                    Real spot = convertMinorToMajorCurrency(q->ccy(), q->quote()->value());
-                    equitySpot = Handle<Quote>(boost::make_shared<SimpleQuote>(spot));
-                }
-            }
-
-            if ((config->type() == EquityCurveConfig::Type::ForwardPrice ||
-                 config->type() == EquityCurveConfig::Type::ForwardDividendPrice) &&
-                md->asofDate() == asof && md->instrumentType() == MarketDatum::InstrumentType::EQUITY_FWD &&
-                md->quoteType() == MarketDatum::QuoteType::PRICE) {
-
-                boost::shared_ptr<EquityForwardQuote> q = boost::dynamic_pointer_cast<EquityForwardQuote>(md);
-
-                if (wildcard) {
-                    // is the quote 'in' the config? (also check expiry not before asof)
-                    if ((*wildcard).matches(q->name()) && asof < q->expiryDate()) {
-                        QL_REQUIRE(find(qt.begin(), qt.end(), q) == qt.end(),
-                                   "duplicate market datum found for " << q->name());
+        if ((config->type() == EquityCurveConfig::Type::ForwardPrice ||
+             config->type() == EquityCurveConfig::Type::ForwardDividendPrice)) {
+            if (wildcard) {
+                for (auto const& md : loader.get(*wildcard, asof)) {
+                    auto q = QuantLib::ext::dynamic_pointer_cast<EquityForwardQuote>(md);
+                    QL_REQUIRE(q != nullptr, "expected '" << md->name() << "' to be an EquityForwardQuote");
+                    QL_REQUIRE(find(qt.begin(), qt.end(), q) == qt.end(),
+                               "duplicate market datum found for " << q->name());
+                    if (asof < q->expiryDate()) {
                         DLOG("EquityCurve Forward Price found for quote: " << q->name());
                         qt.push_back(q); // terms_ and quotes_
                         quotesRead++;
-                    } else if ((*wildcard).matches(q->name())) {
+                    } else {
                         ++quotesExpired;
                         DLOG("Ignore expired ForwardPrice/ForwardDividendPrice quote "
                              << q->name() << ", expired at " << io::iso_date(q->expiryDate()));
                     }
-                } else {
-                    vector<string>::const_iterator it1 =
-                        std::find(config->fwdQuotes().begin(), config->fwdQuotes().end(), q->name());
-
-                    // is the quote one of the list in the config ?
-                    if (it1 != config->fwdQuotes().end() && asof < q->expiryDate()) {
+                }
+            } else {
+                for (auto const& md :
+                     loader.get(std::set<std::string>(config->fwdQuotes().begin(), config->fwdQuotes().end()), asof)) {
+                    auto q = QuantLib::ext::dynamic_pointer_cast<EquityForwardQuote>(md);
+                    QL_REQUIRE(q != nullptr, "expected '" << md->name() << "' to be an EquityForwardQuote");
+                    if (asof < q->expiryDate()) {
                         bool isUnique = find(terms_.begin(), terms_.end(), q->expiryDate()) == terms_.end();
                         QL_REQUIRE(isUnique, "duplicate market datum found for " << q->name());
                         terms_.push_back(q->expiryDate());
                         // convert quote from minor to major currency if needed
                         quotes_.push_back(convertMinorToMajorCurrency(q->ccy(), q->quote()->value()));
                         quotesRead++;
-                    } else if (it1 != config->fwdQuotes().end()) {
+                    } else {
                         DLOG("Ignore expired ForwardPrice/ForwardDividendPrice quote "
                              << q->name() << ", expired at " << io::iso_date(q->expiryDate()));
                         ++quotesExpired;
                     }
                 }
             }
+        }
 
-            if (config->type() == EquityCurveConfig::Type::OptionPremium && md->asofDate() == asof &&
-                md->instrumentType() == MarketDatum::InstrumentType::EQUITY_OPTION &&
-                md->quoteType() == MarketDatum::QuoteType::PRICE) {
-
-                boost::shared_ptr<EquityOptionQuote> q = boost::dynamic_pointer_cast<EquityOptionQuote>(md);
-                Date expiryDate = getDateFromDateOrPeriod(q->expiry(), asof);
-
-                if (wildcard) {
-                    // is the quote 'in' the config? (also check expiry not before asof)
-                    if ((*wildcard).matches(q->name()) && asof < expiryDate) {
-                        QL_REQUIRE(find(oqt.begin(), oqt.end(), q) == oqt.end(),
-                                   "duplicate market datum found for " << q->name());
+        if (config->type() == EquityCurveConfig::Type::OptionPremium) {
+            if (wildcard) {
+                for (auto const& md : loader.get(*wildcard, asof)) {
+                    auto q = QuantLib::ext::dynamic_pointer_cast<EquityOptionQuote>(md);
+                    QL_REQUIRE(q != nullptr, "expected '" << md->name() << "' to be an EquityOptionQuote");
+                    QL_REQUIRE(find(oqt.begin(), oqt.end(), q) == oqt.end(),
+                               "duplicate market datum found for " << q->name());
+                    if (asof < parseDate(q->expiry())) {
                         DLOG("EquityCurve Volatility Price found for quote: " << q->name());
                         oqt.push_back(q);
                         quotesRead++;
-                    } else if ((*wildcard).matches(q->name())) {
+                    } else {
                         ++quotesExpired;
-                        DLOG("Ignore expired OptionPremium  quote " << q->name() << ", expired at "
-                                                                    << io::iso_date(expiryDate));
+                        DLOG("Ignore expired OptionPremium  quote " << q->name() << ", expired at " << q->expiry());
                     }
-                } else {
-                    vector<string>::const_iterator it1 =
-                        std::find(config->fwdQuotes().begin(), config->fwdQuotes().end(), q->name());
-
-                    // is the quote one of the list in the config ?
-                    if (it1 != config->fwdQuotes().end() && asof < expiryDate) {
-                        QL_REQUIRE(find(oqt.begin(), oqt.end(), q) == oqt.end(),
-                                   "duplicate market datum found for " << q->name());
+                }
+            } else {
+                for (auto const& md :
+                     loader.get(std::set<std::string>(config->fwdQuotes().begin(), config->fwdQuotes().end()), asof)) {
+                    auto q = QuantLib::ext::dynamic_pointer_cast<EquityOptionQuote>(md);
+                    QL_REQUIRE(q != nullptr, "expected '" << md->name() << "' to be an EquityOptionQuote");
+                    if (asof < parseDate(q->expiry())) {
+                        DLOG("EquityCurve Volatility Price found for quote: " << q->name());
                         oqt.push_back(q);
                         quotesRead++;
-                    } else if (it1 != config->fwdQuotes().end()) {
-                        DLOG("Ignore expired OptionPremium quote " << q->name() << ", expired at "
-                                                                   << io::iso_date(expiryDate));
+                    } else {
                         ++quotesExpired;
+                        DLOG("Ignore expired OptionPremium  quote " << q->name() << ", expired at " << q->expiry());
                     }
                 }
             }
+        }
 
-            if (config->type() == EquityCurveConfig::Type::DividendYield && md->asofDate() == asof &&
-                md->instrumentType() == MarketDatum::InstrumentType::EQUITY_DIVIDEND &&
-                md->quoteType() == MarketDatum::QuoteType::RATE) {
-
-                boost::shared_ptr<EquityDividendYieldQuote> q =
-                    boost::dynamic_pointer_cast<EquityDividendYieldQuote>(md);
-
-                vector<string>::const_iterator it1 =
-                    std::find(config->fwdQuotes().begin(), config->fwdQuotes().end(), q->name());
-
-                // is the quote one of the list in the config ?
-                if (it1 != config->fwdQuotes().end() && q->tenorDate() > asof) {
+        if (config->type() == EquityCurveConfig::Type::DividendYield) {
+            for (auto const& md :
+                 loader.get(std::set<std::string>(config->fwdQuotes().begin(), config->fwdQuotes().end()), asof)) {
+                QuantLib::ext::shared_ptr<EquityDividendYieldQuote> q =
+                    QuantLib::ext::dynamic_pointer_cast<EquityDividendYieldQuote>(md);
+                QL_REQUIRE(q != nullptr, "expected '" << md->name() << "' to be an EquityDividendYieldQuote");
+                if (q->tenorDate() > asof) {
                     bool isUnique = find(terms_.begin(), terms_.end(), q->tenorDate()) == terms_.end();
                     QL_REQUIRE(isUnique, "duplicate market datum found for " << q->name());
                     DLOG("EquityCurve Dividend Yield found for quote: " << q->name());
                     terms_.push_back(q->tenorDate());
                     quotes_.push_back(q->quote()->value());
                     quotesRead++;
-                } else if (it1 != config->fwdQuotes().end()) {
+                } else {
                     DLOG("Ignore expired DividendYield quote " << q->name() << ", expired at "
                                                                << io::iso_date(q->tenorDate()));
                     ++quotesExpired;
@@ -237,9 +220,8 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
         }
 
         // some checks on the quotes read
-        LOG("EquityCurve: read " << quotesRead + quotesExpired << " quotes of type " << config->type());
-        LOG("EquityCurve: ignored " << quotesExpired << " expired quotes.");
-        QL_REQUIRE(!equitySpot.empty(), "Equity spot quote not found for " << config->curveID());
+        DLOG("EquityCurve: read " << quotesRead + quotesExpired << " quotes of type " << config->type());
+        DLOG("EquityCurve: ignored " << quotesExpired << " expired quotes.");
 
         if (!wildcard) {
             QL_REQUIRE(quotesRead + quotesExpired == config->fwdQuotes().size(),
@@ -289,8 +271,8 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
 
                     // sort
                     std::sort(qt.begin(), qt.end(),
-                              [](const boost::shared_ptr<EquityForwardQuote>& a,
-                                 const boost::shared_ptr<EquityForwardQuote>& b) -> bool {
+                              [](const QuantLib::ext::shared_ptr<EquityForwardQuote>& a,
+                                 const QuantLib::ext::shared_ptr<EquityForwardQuote>& b) -> bool {
                                   return a->expiryDate() < b->expiryDate();
                               });
 
@@ -303,19 +285,19 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
                 }
             }
             if (quotes_.size() == 0) {
-                LOG("No Equity Forward quotes provided for " << config->curveID()
-                                                             << ", continuing without dividend curve.");
+                DLOG("No Equity Forward quotes provided for " << config->curveID()
+                                                              << ", continuing without dividend curve.");
                 buildCurveType = EquityCurveConfig::Type::NoDividends;
             }
         } else if (curveType_ == EquityCurveConfig::Type::OptionPremium) {
 
             if (oqt.size() == 0) {
-                LOG("No Equity Option quotes provided for " << config->curveID()
-                                                            << ", continuing without dividend curve.");
+                DLOG("No Equity Option quotes provided for " << config->curveID()
+                                                             << ", continuing without dividend curve.");
                 buildCurveType = EquityCurveConfig::Type::NoDividends;
             } else {
                 DLOG("Building Equity Dividend Yield curve from Option Volatilities");
-                vector<boost::shared_ptr<EquityOptionQuote>> calls, puts;
+                vector<QuantLib::ext::shared_ptr<EquityOptionQuote>> calls, puts;
                 vector<Date> callDates, putDates;
                 vector<Real> callStrikes, putStrikes;
                 vector<Real> callPremiums, putPremiums;
@@ -337,8 +319,8 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
                 for (Size i = 0; i < calls.size(); i++) {
                     for (Size j = 0; j < puts.size(); j++) {
                         if (calls[i]->expiry() == puts[j]->expiry()) {
-                            auto callAbsoluteStrike = boost::dynamic_pointer_cast<AbsoluteStrike>(calls[i]->strike());
-                            auto putAbsoluteStrike = boost::dynamic_pointer_cast<AbsoluteStrike>(puts[j]->strike());
+                            auto callAbsoluteStrike = QuantLib::ext::dynamic_pointer_cast<AbsoluteStrike>(calls[i]->strike());
+                            auto putAbsoluteStrike = QuantLib::ext::dynamic_pointer_cast<AbsoluteStrike>(puts[j]->strike());
                             QL_REQUIRE(callAbsoluteStrike, "Expected absolute strike for quote " << calls[i]->name());
                             QL_REQUIRE(putAbsoluteStrike, "Expected absolute strike for quote " << puts[j]->name());
                             if (*calls[i]->strike() == *puts[j]->strike()) {
@@ -369,14 +351,14 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
 
                     DLOG("Building a Sparse Volatility surface for calls and puts");
                     // Build a Black Variance Sparse matrix
-                    boost::shared_ptr<OptionPriceSurface> callSurface =
-                        boost::make_shared<OptionPriceSurface>(asof, callDates, callStrikes, callPremiums, dc_);
-                    boost::shared_ptr<OptionPriceSurface> putSurface =
-                        boost::make_shared<OptionPriceSurface>(asof, putDates, putStrikes, putPremiums, dc_);
+                    QuantLib::ext::shared_ptr<OptionPriceSurface> callSurface =
+                        QuantLib::ext::make_shared<OptionPriceSurface>(asof, callDates, callStrikes, callPremiums, dc_);
+                    QuantLib::ext::shared_ptr<OptionPriceSurface> putSurface =
+                        QuantLib::ext::make_shared<OptionPriceSurface>(asof, putDates, putStrikes, putPremiums, dc_);
                     DLOG("CallSurface contains " << callSurface->expiries().size() << " expiries.");
 
                     DLOG("Stripping equity forwards from the option premium surfaces");
-                    boost::shared_ptr<EquityForwardCurveStripper> efcs = boost::make_shared<EquityForwardCurveStripper>(
+                    QuantLib::ext::shared_ptr<EquityForwardCurveStripper> efcs = QuantLib::ext::make_shared<EquityForwardCurveStripper>(
                         callSurface, putSurface, forecastYieldTermStructure, equitySpot, config->exerciseStyle());
 
                     // set terms and quotes from the stripper
@@ -411,9 +393,9 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
         } else if (buildCurveType == EquityCurveConfig::Type::NoDividends) {
             DLOG("Building flat Equity Dividend Yield curve as no quotes provided");
             // Return a flat curve @ 0%
-            dividendYieldTermStructure = Handle<YieldTermStructure>(boost::make_shared<FlatForward>(asof, 0.0, dc_));
+            dividendYieldTermStructure = Handle<YieldTermStructure>(QuantLib::ext::make_shared<FlatForward>(asof, 0.0, dc_));
             equityIndex_ =
-                boost::make_shared<EquityIndex>(spec.curveConfigID(), calendar, parseCurrency(config->currency()),
+                QuantLib::ext::make_shared<EquityIndex2>(spec.curveConfigID(), calendar, parseCurrency(config->currency()),
                                                 equitySpot, forecastYieldTermStructure, dividendYieldTermStructure);
             return;
         } else
@@ -431,11 +413,11 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
             dividendDiscountFactors.push_back(std::exp(-dividendRates[i] * t));
         }
 
-        boost::shared_ptr<YieldTermStructure> divCurve;
+        QuantLib::ext::shared_ptr<YieldTermStructure> baseDivCurve;
         // Build Dividend Term Structure
         if (dividendRates.size() == 1) {
             // We only have 1 quote so we build a flat curve
-            divCurve.reset(new FlatForward(asof, dividendRates[0], dc_));
+            baseDivCurve.reset(new FlatForward(asof, dividendRates[0], dc_));
         } else {
             // Build a ZeroCurve
             Size n = terms_.size();
@@ -458,25 +440,36 @@ EquityCurve::EquityCurve(Date asof, EquityCurveSpec spec, const Loader& loader, 
                     std::exp(-rates.back() * maxTime)); // flat zero extrapolation used to imply dividend DF
             }
             if (dividendInterpVariable_ == YieldCurve::InterpolationVariable::Zero) {
-                divCurve = zerocurve(dates, rates, dc_, dividendInterpMethod_);
+                baseDivCurve = zerocurve(dates, rates, dc_, dividendInterpMethod_);
             } else if (dividendInterpVariable_ == YieldCurve::InterpolationVariable::Discount) {
-                divCurve = discountcurve(dates, discounts, dc_, dividendInterpMethod_);
+                baseDivCurve = discountcurve(dates, discounts, dc_, dividendInterpMethod_);
             } else {
                 QL_FAIL("Unsupported interpolation variable for dividend yield curve");
             }
-            divCurve->enableExtrapolation();
         }
+        
+        QuantLib::ext::shared_ptr<YieldTermStructure> divCurve;
+        if (config->extrapolation()) {
+            divCurve = baseDivCurve;
+            divCurve->enableExtrapolation();
+        } else {
+            divCurve = QuantLib::ext::make_shared<FlatForwardDividendCurve>(
+                asof, Handle<YieldTermStructure>(baseDivCurve), forecastYieldTermStructure);
+            if (config->dividendExtrapolation())
+                divCurve->enableExtrapolation();
+        }
+
         dividendYieldTermStructure = Handle<YieldTermStructure>(divCurve);
 
         equityIndex_ =
-            boost::make_shared<EquityIndex>(spec.curveConfigID(), calendar, parseCurrency(config->currency()),
+            QuantLib::ext::make_shared<EquityIndex2>(spec.curveConfigID(), calendar, parseCurrency(config->currency()),
                                             equitySpot, forecastYieldTermStructure, dividendYieldTermStructure);
 
         if (buildCalibrationInfo) {
 
             // set calibration info
 
-            calibrationInfo_ = boost::make_shared<YieldCurveCalibrationInfo>();
+            calibrationInfo_ = QuantLib::ext::make_shared<YieldCurveCalibrationInfo>();
             calibrationInfo_->dayCounter = dc_.name();
             calibrationInfo_->currency = config->currency();
             for (auto const& p : YieldCurveCalibrationInfo::defaultPeriods) {

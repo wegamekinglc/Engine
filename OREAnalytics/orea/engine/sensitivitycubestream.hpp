@@ -36,10 +36,10 @@ namespace analytics {
  */
 class SensitivityCubeStream : public SensitivityStream {
 public:
-    /*! Constructor providing the sensitivity \p cube and currency of the
-        sensitivities
-    */
-    SensitivityCubeStream(const boost::shared_ptr<SensitivityCube>& cube, const std::string& currency);
+    /*! Constructor providing the sensitivity \p cube and currency of the sensitivities */
+    SensitivityCubeStream(const QuantLib::ext::shared_ptr<SensitivityCube>& cube, const std::string& currency);
+    /*! Constructor providing the sensitivity \p cubes and currency of the sensitivities */
+    SensitivityCubeStream(const std::vector<QuantLib::ext::shared_ptr<SensitivityCube>>& cubes, const std::string& currency);
 
     /*! Returns the next SensitivityRecord in the stream
 
@@ -51,20 +51,26 @@ public:
     void reset() override;
 
 private:
-    //! Handle on the SensitivityCube
-    boost::shared_ptr<SensitivityCube> cube_;
-    //! Currency of the sensitivities in the SensitivityCube
+    void updateForNewTrade();
+
+    //! Handle on the SensitivityCubes
+    std::vector<QuantLib::ext::shared_ptr<SensitivityCube>> cubes_;
+    //! Currency of the sensitivities in the SensitivityCubes
     std::string currency_;
 
-    //! Iterator to risk factor keys in the cube
-    boost::bimap<RiskFactorKey, ore::analytics::SensitivityCube::FactorData>::const_iterator upRiskFactor_;
-    std::map<RiskFactorKey, ore::analytics::SensitivityCube::FactorData>::const_iterator downRiskFactor_;
-    //! Iterator to cross factors in the cube
-    std::map<ore::analytics::SensitivityCube::crossPair,
-             std::tuple<ore::analytics::SensitivityCube::FactorData, ore::analytics::SensitivityCube::FactorData,
-                        QuantLib::Size>>::const_iterator itCrossPair_;
-    //! Index of current trade Id in the cube
+    //! Current cube index in vector
+    Size currentCubeIdx_;
+
+    //! Current delta risk factor keys to process and iterators
+    std::set<RiskFactorKey> currentDeltaKeys_;
+    std::set<std::pair<RiskFactorKey,RiskFactorKey>> currentCrossGammaKeys_;
+
+    std::set<RiskFactorKey>::const_iterator currentDeltaKey_;
+    std::set<std::pair<RiskFactorKey,RiskFactorKey>>::const_iterator currentCrossGammaKey_;
+
+    //! Current trade iterator
     std::map<std::string, QuantLib::Size>::const_iterator tradeIdx_;
+
     //! Can only compute gamma if the up and down risk factors align
     bool canComputeGamma_;
 };

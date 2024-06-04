@@ -40,6 +40,7 @@
 #include <orea/scenario/simplescenariofactory.hpp>
 #include <ored/model/crossassetmodelbuilder.hpp>
 #include <ored/model/lgmdata.hpp>
+#include <ored/model/irlgmdata.hpp>
 #include <ored/portfolio/builders/swap.hpp>
 #include <ored/portfolio/portfolio.hpp>
 #include <ored/portfolio/swap.hpp>
@@ -52,7 +53,8 @@
 #include <ql/time/daycounters/actualactual.hpp>
 #include <qle/methods/multipathgeneratorbase.hpp>
 #include <test/oreatoplevelfixture.hpp>
-#include <test/testmarket.hpp>
+
+#include "testmarket.hpp"
 
 using namespace std;
 using namespace QuantLib;
@@ -64,7 +66,7 @@ using namespace ore::analytics;
 
 using testsuite::TestMarket;
 
-BOOST_FIXTURE_TEST_SUITE(OREAnalyticsPerformanceTestSuite, ore::test::OreaTopLevelFixture)
+BOOST_FIXTURE_TEST_SUITE(OREAnalyticsTestSuite, ore::test::OreaTopLevelFixture)
 
 BOOST_AUTO_TEST_SUITE(SwapPerformaceTest, *boost::unit_test::disabled())
 
@@ -79,14 +81,14 @@ inline const string& randString(MersenneTwisterUniformRng& rng, const vector<str
 
 inline bool randBoolean(MersenneTwisterUniformRng& rng) { return randInt(rng, 0, 1) == 1; }
 
-boost::shared_ptr<data::Conventions> convs() {
-    boost::shared_ptr<data::Conventions> conventions(new data::Conventions());
+QuantLib::ext::shared_ptr<data::Conventions> convs() {
+    QuantLib::ext::shared_ptr<data::Conventions> conventions(new data::Conventions());
 
-    boost::shared_ptr<data::Convention> swapIndexConv(
+    QuantLib::ext::shared_ptr<data::Convention> swapIndexConv(
         new data::SwapIndexConvention("EUR-CMS-2Y", "EUR-6M-SWAP-CONVENTIONS"));
     conventions->add(swapIndexConv);
 
-    boost::shared_ptr<data::Convention> swapConv(
+    QuantLib::ext::shared_ptr<data::Convention> swapConv(
         new data::IRSwapConvention("EUR-6M-SWAP-CONVENTIONS", "TARGET", "Annual", "MF", "30/360", "EUR-EURIBOR-6M"));
     conventions->add(swapConv);
 
@@ -95,9 +97,9 @@ boost::shared_ptr<data::Conventions> convs() {
     return conventions;
 }
 
-boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_ptr<EngineFactory>& factory) {
+QuantLib::ext::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, QuantLib::ext::shared_ptr<EngineFactory>& factory) {
 
-    boost::shared_ptr<Portfolio> portfolio(new Portfolio());
+    QuantLib::ext::shared_ptr<Portfolio> portfolio(new Portfolio());
 
     vector<string> ccys = {"EUR", "USD", "GBP", "JPY", "CHF"};
 
@@ -170,15 +172,15 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
         bool isPayer = randBoolean(rng);
 
         // fixed Leg - with dummy rate
-        LegData fixedLeg(boost::make_shared<FixedLegData>(vector<double>(1, fixedRate)), isPayer, ccy, fixedSchedule,
+        LegData fixedLeg(QuantLib::ext::make_shared<FixedLegData>(vector<double>(1, fixedRate)), isPayer, ccy, fixedSchedule,
                          fixDC, notional);
 
         // float Leg
         vector<double> spreads(1, 0);
-        LegData floatingLeg(boost::make_shared<FloatingLegData>(index, days, false, spread), !isPayer, ccy,
+        LegData floatingLeg(QuantLib::ext::make_shared<FloatingLegData>(index, days, false, spread), !isPayer, ccy,
                             floatSchedule, floatDC, notional);
 
-        boost::shared_ptr<Trade> swap(new data::Swap(env, floatingLeg, fixedLeg));
+        QuantLib::ext::shared_ptr<Trade> swap(new data::Swap(env, floatingLeg, fixedLeg));
 
         // id
         oss.clear();
@@ -200,12 +202,11 @@ boost::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, boost::shared_pt
     DayCounter dc = ActualActual(ActualActual::ISDA);
     map<string, Size> fixedFreqs;
     map<string, Size> floatFreqs;
-    for (Size i = 0; i < portfolioSize; ++i) {
-        boost::shared_ptr<Trade> trade = portfolio->trades()[i];
+    for (const auto& [tradeId, trade] : portfolio->trades()) {
         maturity += dc.yearFraction(today, trade->maturity());
 
         // fixed Freq
-        boost::shared_ptr<data::Swap> swap = boost::dynamic_pointer_cast<data::Swap>(trade);
+        QuantLib::ext::shared_ptr<data::Swap> swap = QuantLib::ext::dynamic_pointer_cast<data::Swap>(trade);
         string floatFreq = swap->legData()[0].schedule().rules().front().tenor();
         string fixFreq = swap->legData()[1].schedule().rules().front().tenor();
         QL_REQUIRE(swap->legData()[0].legType() == "Floating" && swap->legData()[1].legType() == "Fixed", "Leg mixup");
@@ -249,7 +250,7 @@ void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZe
     ObservationMode::Mode backupOm = ObservationMode::instance().mode();
     ObservationMode::instance().setMode(om);
 
-    // Log::instance().registerLogger(boost::make_shared<StderrLogger>());
+    // Log::instance().registerLogger(QuantLib::ext::make_shared<StderrLogger>());
     // Log::instance().switchOn();
 
     Date today = Date(14, April, 2016); // Settings::instance().evaluationDate();
@@ -258,7 +259,7 @@ void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZe
     BOOST_TEST_MESSAGE("Today is " << today);
 
     string dateGridStr = "80,3M"; // 20 years
-    boost::shared_ptr<DateGrid> dg = boost::make_shared<DateGrid>(dateGridStr);
+    QuantLib::ext::shared_ptr<DateGrid> dg = QuantLib::ext::make_shared<DateGrid>(dateGridStr);
     Size samples = 1000;
 
     BOOST_TEST_MESSAGE("Date Grid : " << dateGridStr);
@@ -275,10 +276,10 @@ void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZe
     ccys.push_back("JPY");
 
     // Init market
-    boost::shared_ptr<Market> initMarket = boost::make_shared<TestMarket>(today);
+    QuantLib::ext::shared_ptr<Market> initMarket = QuantLib::ext::make_shared<TestMarket>(today);
 
     // build scenario sim market parameters
-    boost::shared_ptr<analytics::ScenarioSimMarketParameters> parameters(new analytics::ScenarioSimMarketParameters());
+    QuantLib::ext::shared_ptr<analytics::ScenarioSimMarketParameters> parameters(new analytics::ScenarioSimMarketParameters());
     parameters->baseCcy() = "EUR";
     parameters->setDiscountCurveNames({"EUR", "GBP", "USD", "CHF", "JPY"});
     parameters->setYieldCurveTenors("",
@@ -317,35 +318,35 @@ void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZe
     vector<Time> hTimes = {};
     vector<Time> aTimes = {};
 
-    std::vector<boost::shared_ptr<IrLgmData>> irConfigs;
+    std::vector<QuantLib::ext::shared_ptr<IrModelData>> irConfigs;
 
     vector<Real> hValues = {0.02};
     vector<Real> aValues = {0.008};
-    irConfigs.push_back(boost::make_shared<IrLgmData>(
+    irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
         "EUR", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.03};
     aValues = {0.009};
-    irConfigs.push_back(boost::make_shared<IrLgmData>(
+    irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
         "USD", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<IrLgmData>(
+    irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
         "GBP", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<IrLgmData>(
+    irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
         "CHF", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
     hValues = {0.04};
     aValues = {0.01};
-    irConfigs.push_back(boost::make_shared<IrLgmData>(
+    irConfigs.push_back(QuantLib::ext::make_shared<IrLgmData>(
         "JPY", calibrationType, revType, volType, false, ParamType::Constant, hTimes, hValues, true,
         ParamType::Piecewise, aTimes, aValues, 0.0, 1.0, swaptionExpiries, swaptionTerms, swaptionStrikes));
 
@@ -354,61 +355,63 @@ void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZe
     vector<string> optionStrikes(optionExpiries.size(), "ATMF");
     vector<Time> sigmaTimes = {};
 
-    std::vector<boost::shared_ptr<FxBsData>> fxConfigs;
+    std::vector<QuantLib::ext::shared_ptr<FxBsData>> fxConfigs;
 
     vector<Real> sigmaValues = {0.15};
-    fxConfigs.push_back(boost::make_shared<FxBsData>("USD", "EUR", calibrationType, true, ParamType::Piecewise,
+    fxConfigs.push_back(QuantLib::ext::make_shared<FxBsData>("USD", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
     sigmaValues = {0.20};
-    fxConfigs.push_back(boost::make_shared<FxBsData>("GBP", "EUR", calibrationType, true, ParamType::Piecewise,
+    fxConfigs.push_back(QuantLib::ext::make_shared<FxBsData>("GBP", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
     sigmaValues = {0.20};
-    fxConfigs.push_back(boost::make_shared<FxBsData>("CHF", "EUR", calibrationType, true, ParamType::Piecewise,
+    fxConfigs.push_back(QuantLib::ext::make_shared<FxBsData>("CHF", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
     sigmaValues = {0.20};
-    fxConfigs.push_back(boost::make_shared<FxBsData>("JPY", "EUR", calibrationType, true, ParamType::Piecewise,
+    fxConfigs.push_back(QuantLib::ext::make_shared<FxBsData>("JPY", "EUR", calibrationType, true, ParamType::Piecewise,
                                                      sigmaTimes, sigmaValues, optionExpiries, optionStrikes));
 
     map<CorrelationKey, Handle<Quote>> corr;
-    CorrelationFactor f_1{ CrossAssetModelTypes::IR, "EUR", 0 };
-    CorrelationFactor f_2{ CrossAssetModelTypes::IR, "USD", 0 };
-    corr[make_pair(f_1, f_2)] = Handle<Quote>(boost::make_shared<SimpleQuote>(0.6));
+    CorrelationFactor f_1{ CrossAssetModel::AssetType::IR, "EUR", 0 };
+    CorrelationFactor f_2{ CrossAssetModel::AssetType::IR, "USD", 0 };
+    corr[make_pair(f_1, f_2)] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.6));
 
-    boost::shared_ptr<CrossAssetModelData> config(boost::make_shared<CrossAssetModelData>(irConfigs, fxConfigs, corr));
+    QuantLib::ext::shared_ptr<CrossAssetModelData> config(QuantLib::ext::make_shared<CrossAssetModelData>(irConfigs, fxConfigs, corr));
 
     // Model Builder & Model
     // model builder
-    boost::shared_ptr<CrossAssetModelBuilder> modelBuilder(new CrossAssetModelBuilder(initMarket, config));
-    boost::shared_ptr<QuantExt::CrossAssetModel> model = *modelBuilder->model();
+    QuantLib::ext::shared_ptr<CrossAssetModelBuilder> modelBuilder(new CrossAssetModelBuilder(initMarket, config));
+    QuantLib::ext::shared_ptr<QuantExt::CrossAssetModel> model = *modelBuilder->model();
     modelBuilder = NULL;
 
     // Path generator
     Size seed = 5;
     bool antithetic = false;
-    boost::shared_ptr<QuantExt::MultiPathGeneratorBase> pathGen =
-        boost::make_shared<MultiPathGeneratorMersenneTwister>(model->stateProcess(), dg->timeGrid(), seed, antithetic);
+    if (auto tmp = QuantLib::ext::dynamic_pointer_cast<CrossAssetStateProcess>(model->stateProcess())) {
+        tmp->resetCache(dg->timeGrid().size() - 1);
+    }
+    QuantLib::ext::shared_ptr<QuantExt::MultiPathGeneratorBase> pathGen =
+        QuantLib::ext::make_shared<MultiPathGeneratorMersenneTwister>(model->stateProcess(), dg->timeGrid(), seed, antithetic);
 
     // build scenario generator
-    boost::shared_ptr<ScenarioFactory> scenarioFactory(new SimpleScenarioFactory);
-    boost::shared_ptr<ScenarioGenerator> scenarioGenerator = boost::make_shared<CrossAssetModelScenarioGenerator>(
+    QuantLib::ext::shared_ptr<ScenarioFactory> scenarioFactory = QuantLib::ext::make_shared<SimpleScenarioFactory>(true);
+    QuantLib::ext::shared_ptr<ScenarioGenerator> scenarioGenerator = QuantLib::ext::make_shared<CrossAssetModelScenarioGenerator>(
         model, pathGen, scenarioFactory, parameters, today, dg, initMarket);
 
     // build scenario sim market
     convs();
-    auto simMarket = boost::make_shared<analytics::ScenarioSimMarket>(initMarket, parameters);
+    auto simMarket = QuantLib::ext::make_shared<analytics::ScenarioSimMarket>(initMarket, parameters);
     simMarket->scenarioGenerator() = scenarioGenerator;
 
     // Build Portfolio
-    boost::shared_ptr<EngineData> data = boost::make_shared<EngineData>();
+    QuantLib::ext::shared_ptr<EngineData> data = QuantLib::ext::make_shared<EngineData>();
     data->model("Swap") = "DiscountedCashflows";
     data->engine("Swap") = "DiscountingSwapEngine";
-    boost::shared_ptr<EngineFactory> factory = boost::make_shared<EngineFactory>(data, simMarket);
-    factory->registerBuilder(boost::make_shared<SwapEngineBuilder>());
+    QuantLib::ext::shared_ptr<EngineFactory> factory = QuantLib::ext::make_shared<EngineFactory>(data, simMarket);
 
-    boost::shared_ptr<Portfolio> portfolio = buildPortfolio(portfolioSize, factory);
+    QuantLib::ext::shared_ptr<Portfolio> portfolio = buildPortfolio(portfolioSize, factory);
 
     BOOST_TEST_MESSAGE("Portfolio size after build: " << portfolio->size());
 
@@ -417,10 +420,10 @@ void test_performance(Size portfolioSize, ObservationMode::Mode om, double nonZe
 
     // Calculate Cube
     boost::timer::cpu_timer t;
-    boost::shared_ptr<NPVCube> cube =
-        boost::make_shared<DoublePrecisionInMemoryCube>(today, portfolio->ids(), dg->dates(), samples);
-    vector<boost::shared_ptr<ValuationCalculator>> calculators;
-    calculators.push_back(boost::make_shared<NPVCalculator>(baseCcy));
+    QuantLib::ext::shared_ptr<NPVCube> cube =
+        QuantLib::ext::make_shared<DoublePrecisionInMemoryCube>(today, portfolio->ids(), dg->dates(), samples);
+    vector<QuantLib::ext::shared_ptr<ValuationCalculator>> calculators;
+    calculators.push_back(QuantLib::ext::make_shared<NPVCalculator>(baseCcy));
     valEngine.buildCube(portfolio, cube, calculators);
     t.stop();
     double elapsed = t.elapsed().wall * 1e-9;

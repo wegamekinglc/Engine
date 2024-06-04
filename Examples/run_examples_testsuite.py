@@ -4,11 +4,15 @@ import sys
 import logging
 import unittest
 from pathlib import Path
+import nose
+import collections
+#collections.Callable = collections.abc.Callable
 
 # Pull in some shared utilities
 script_dir = Path(__file__).parents[0]
 sys.path.append(os.path.join(script_dir, '../'))
 from Examples.ore_examples_helper import get_list_of_examples  # noqa
+from Examples.ore_examples_helper import get_list_ore_academy  # noqa
 from Examples.ore_examples_helper import run_example  # noqa
 from Tools.PythonTools.compare_files import compare_files  # noqa
 from Tools.PythonTools.setup_logging import setup_logging  # noqa
@@ -46,7 +50,8 @@ class TestExamples(unittest.TestCase):
             self.logger.warning('No ExpectedOutput folder detected, skipped.')
 
     def runAndRegressExample(self, name):
-        os.environ['OVERWRITE_SCENARIOGENERATOR_SAMPLES'] = '50'
+        if not name.endswith('Example_54'):
+            os.environ['OVERWRITE_SCENARIOGENERATOR_SAMPLES'] = '50'
         self.logger.info('{}: run {}'.format(self._testMethodName, name))
         ret = run_example(name)
         os.environ['OVERWRITE_SCENARIOGENERATOR_SAMPLES'] = ''
@@ -92,11 +97,12 @@ def add_utest(name):
 # https://stackoverflow.com/questions/2798956/python-unittest-generate-multiple-tests-programmatically
 def regress_all_utests():
     i = 1
-    for name in get_list_of_examples():
-        test_method = add_utest(name)
-        test_method.__name__ = 'test{}_{}'.format(str(i).zfill(2), name)
-        setattr(TestExamples, test_method.__name__, test_method)
-        i += 1
+    for name in (get_list_of_examples() + get_list_ore_academy()):
+        testable_name = 'test_{0}'.format(name)
+        testable = add_utest(name)
+        testable.__name__ = testable_name
+        class_name = 'Test_{0}'.format(name)
+        globals()[class_name] = type(class_name, (TestExamples,), {testable_name: testable})
 
 
 # First point in the code that is hit so set up logging here.
@@ -106,4 +112,4 @@ setup_logging()
 regress_all_utests()
 
 if __name__ == '__main__':
-    unittest.main()
+    nose.runmodule(name='__main__')

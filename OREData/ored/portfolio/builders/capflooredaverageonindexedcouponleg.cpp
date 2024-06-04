@@ -18,20 +18,41 @@
 
 #include <ored/portfolio/builders/capflooredaverageonindexedcouponleg.hpp>
 #include <ored/utilities/log.hpp>
+#include <ored/utilities/to_string.hpp>
 
 #include <qle/cashflows/blackovernightindexedcouponpricer.hpp>
+#include <qle/termstructures/proxyoptionletvolatility.hpp>
 
 #include <boost/make_shared.hpp>
 
 namespace ore {
 namespace data {
 
-boost::shared_ptr<FloatingRateCouponPricer>
-CapFlooredAverageONIndexedCouponLegEngineBuilder::engineImpl(const std::string& index) {
+QuantLib::ext::shared_ptr<FloatingRateCouponPricer>
+CapFlooredAverageONIndexedCouponLegEngineBuilder::engineImpl(const std::string& index,
+                                                             const QuantLib::Period& rateComputationPeriod) {
     std::string ccyCode = parseIborIndex(index)->currency().code();
     Handle<YieldTermStructure> yts = market_->discountCurve(ccyCode, configuration(MarketContext::pricing));
     Handle<OptionletVolatilityStructure> ovs = market_->capFloorVol(index, configuration(MarketContext::pricing));
-    return boost::make_shared<QuantExt::BlackAverageONIndexedCouponPricer>(ovs);
+
+    /* if we are pricing an overnight index coupon with rate computation period different from the one on which the
+       market vol surface is based, we apply a moneyness adjustment accounting for this difference */
+    auto [volIndex, volRateComputationPeriod] =
+        market_->capFloorVolIndexBase(index, configuration(MarketContext::pricing));
+    if (volIndex == index && volRateComputationPeriod != rateComputationPeriod &&
+        volRateComputationPeriod != 0 * Days && rateComputationPeriod != 0 * Days) {
+        ovs = Handle<OptionletVolatilityStructure>(QuantLib::ext::make_shared<QuantExt::ProxyOptionletVolatility>(
+            ovs, *market_->iborIndex(volIndex, configuration(MarketContext::pricing)),
+            *market_->iborIndex(index, configuration(MarketContext::pricing)), volRateComputationPeriod,
+            rateComputationPeriod));
+    }
+
+    return QuantLib::ext::make_shared<QuantExt::BlackAverageONIndexedCouponPricer>(ovs);
+}
+
+string CapFlooredAverageONIndexedCouponLegEngineBuilder::keyImpl(const string& index,
+                                                                 const QuantLib::Period& rateComputationPeriod) {
+    return index + "_" + ore::data::to_string(rateComputationPeriod);
 }
 
 } // namespace data

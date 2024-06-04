@@ -35,15 +35,16 @@
 #include <qle/calendars/ireland.hpp>
 #include <qle/calendars/islamicweekendsonly.hpp>
 #include <qle/calendars/israel.hpp>
-#include <qle/calendars/largejointcalendar.hpp>
 #include <qle/calendars/luxembourg.hpp>
 #include <qle/calendars/malaysia.hpp>
+#include <qle/calendars/mauritius.hpp>
 #include <qle/calendars/netherlands.hpp>
 #include <qle/calendars/peru.hpp>
 #include <qle/calendars/philippines.hpp>
 #include <qle/calendars/russia.hpp>
 #include <qle/calendars/spain.hpp>
 #include <qle/calendars/switzerland.hpp>
+#include <qle/calendars/unitedarabemirates.hpp>
 #include <qle/calendars/wmr.hpp>
 
 #include <boost/algorithm/string.hpp>
@@ -86,7 +87,7 @@ QuantLib::Calendar CalendarParser::parseCalendar(const std::string& name) const 
                 QL_FAIL("Cannot convert \"" << name << "\" to Calendar [unhandled exception]");
             }
         }
-        return QuantExt::LargeJointCalendar(calendars);
+        return QuantLib::JointCalendar(calendars);
     }
 }
 
@@ -127,6 +128,7 @@ void CalendarParser::reset() {
         {"US-NERC", UnitedStates(UnitedStates::NERC)},
         {"US-NYSE", UnitedStates(UnitedStates::NYSE)},
         {"US-SET", UnitedStates(UnitedStates::Settlement)},
+        {"US-SOFR", UnitedStates(UnitedStates::SOFR)},
 
         // Country full name to Settlement/Default
         {"Australia", Australia()},
@@ -319,15 +321,21 @@ void CalendarParser::reset() {
         {"GBX", UnitedKingdom()},
         {"ILa", QuantLib::Israel()},
         {"ILX", QuantLib::Israel()},
+        {"ILs", QuantLib::Israel()},
+        {"ILA", QuantLib::Israel()},
         {"ZAc", SouthAfrica()},
         {"ZAC", SouthAfrica()},
         {"ZAX", SouthAfrica()},
 
         // fallback to IslamicWeekendsOnly for these ccys and use amendmends
-        {"AED", AmendedCalendar(IslamicWeekendsOnly(), "AED")},
-        {"AE", AmendedCalendar(IslamicWeekendsOnly(), "AED")},
-        {"ARE", AmendedCalendar(IslamicWeekendsOnly(), "AED")},
+        {"AED", AmendedCalendar(UnitedArabEmirates(), "AED")},
+        {"AE", AmendedCalendar(UnitedArabEmirates(), "AED")},
+        {"ARE", AmendedCalendar(UnitedArabEmirates(), "AED")},
 
+        // fallback to amended Mauritius calendar.
+        {"MU", AmendedCalendar(Mauritius(), "MUR")},
+        {"MUR", AmendedCalendar(Mauritius(), "MUR")},
+        {"MUS", AmendedCalendar(Mauritius(), "MUR")},
         // fallback to WeekendsOnly for these emerging ccys
         {"BHD", AmendedCalendar(WeekendsOnly(), "BHD")},
         {"CLF", AmendedCalendar(WeekendsOnly(), "CLF")},
@@ -353,13 +361,13 @@ void CalendarParser::reset() {
         {"JOD", AmendedCalendar(WeekendsOnly(), "JOD")},
         {"KES", AmendedCalendar(WeekendsOnly(), "KES")},
         {"LKR", AmendedCalendar(WeekendsOnly(), "LKR")},
-        {"MUR", AmendedCalendar(WeekendsOnly(), "MUR")},
         {"RSD", AmendedCalendar(WeekendsOnly(), "RSD")},
         {"UGX", AmendedCalendar(WeekendsOnly(), "UGX")},
         {"XOF", AmendedCalendar(WeekendsOnly(), "XOF")},
         {"ZMW", AmendedCalendar(WeekendsOnly(), "ZMW")},
 
         // ISO 10383 MIC Exchange
+        {"XASX", Australia(Australia::ASX)},
         {"BVMF", Brazil(Brazil::Exchange)},
         {"XTSE", Canada(Canada::TSX)},
         {"XSHG", China(China::SSE)},
@@ -378,6 +386,7 @@ void CalendarParser::reset() {
         {"XLME", UnitedKingdom(UnitedKingdom::Metals)},
         {"XNYS", UnitedStates(UnitedStates::NYSE)},
         {"XDUB", Ireland()},
+        {"XPAR", QuantLib::France(QuantLib::France::Exchange)},
 
         // Other / Legacy
         {"DEN", Denmark()}, // TODO: consider remove it, not ISO
@@ -385,6 +394,7 @@ void CalendarParser::reset() {
         {"London stock exchange", UnitedKingdom(UnitedKingdom::Exchange)},
         {"LNB", UnitedKingdom()},
         {"New York stock exchange", UnitedStates(UnitedStates::NYSE)},
+        {"SOFR fixing calendar", UnitedStates(UnitedStates::SOFR)},
         {"NGL", Netherlands()},
         {"NYB", UnitedStates(UnitedStates::Settlement)},
         {"SA", SouthAfrica()}, // TODO: consider remove it, not ISO & confuses with Saudi Arabia

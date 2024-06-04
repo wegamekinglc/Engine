@@ -24,7 +24,7 @@
 #pragma once
 
 #include <boost/make_shared.hpp>
-#include <boost/shared_ptr.hpp>
+#include <ql/shared_ptr.hpp>
 #include <ored/portfolio/enginefactory.hpp>
 #include <ored/portfolio/tradefactory.hpp>
 #include <ql/time/date.hpp>
@@ -40,13 +40,14 @@ class ReferenceDataManager;
 /*!
   \ingroup portfolio
 */
-class Portfolio {
+class Portfolio : public XMLSerializable {
 public:
     //! Default constructor
-    explicit Portfolio(bool buildFailedTrades = true) : buildFailedTrades_(buildFailedTrades) {}
+    explicit Portfolio(bool buildFailedTrades = true, bool ignoreTradeBuildFail = false)
+        : buildFailedTrades_(buildFailedTrades), ignoreTradeBuildFail_(ignoreTradeBuildFail) {}
 
     //! Add a trade to the portfolio
-    void add(const boost::shared_ptr<Trade>& trade, const bool checkForDuplicateIds = true);
+    void add(const QuantLib::ext::shared_ptr<Trade>& trade);
 
     //! Check if a trade id is already in the portfolio
     bool has(const string& id);
@@ -55,10 +56,10 @@ public:
 
         \remark returns a `nullptr` if no trade found with the given \p id
     */
-    boost::shared_ptr<Trade> get(const std::string& id) const;
+    QuantLib::ext::shared_ptr<Trade> get(const std::string& id) const;
 
     //! Clear the portfolio
-    void clear() { trades_.clear(); }
+    void clear();
 
     //! Reset all trade data
     void reset();
@@ -66,25 +67,11 @@ public:
     //! Portfolio size
     QuantLib::Size size() const { return trades_.size(); }
 
-    //! Load using a default or user supplied TradeFactory, existing trades are kept
-    void load(const std::string& fileName,
-              const boost::shared_ptr<TradeFactory>& tf = boost::make_shared<TradeFactory>(),
-              const bool checkForDuplicateIds = true);
+    bool empty() const { return trades_.empty(); }
 
-    //! Load from an XML string using a default or user supplied TradeFactory, existing trades are kept
-    void loadFromXMLString(const std::string& xmlString,
-                           const boost::shared_ptr<TradeFactory>& tf = boost::make_shared<TradeFactory>(),
-                           const bool checkForDuplicateIds = true);
-
-    //! Load from XML Node
-    void fromXML(XMLNode* node, const boost::shared_ptr<TradeFactory>& tf = boost::make_shared<TradeFactory>(),
-                 const bool checkForDuplicateIds = true);
-
-    //! Save portfolio to an XML file
-    void save(const std::string& fileName) const;
-
-    //! Save portfolio to an XML string
-    string saveToXMLString() const;
+    //! XMLSerializable interface
+    void fromXML(XMLNode* node) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
 
     //! Remove specified trade from the portfolio
     bool remove(const std::string& tradeID);
@@ -93,22 +80,23 @@ public:
     void removeMatured(const QuantLib::Date& asof);
 
     //! Call build on all trades in the portfolio, the context is included in error messages
-    void build(const boost::shared_ptr<EngineFactory>&, const std::string& context = "unspecified");
+    void build(const QuantLib::ext::shared_ptr<EngineFactory>&, const std::string& context = "unspecified",
+               const bool emitStructuredError = true);
 
     //! Calculates the maturity of the portfolio
     QuantLib::Date maturity() const;
 
-    //! Return trade list
-    const std::vector<boost::shared_ptr<Trade>>& trades() const { return trades_; }
+    //! Return the map tradeId -> trade
+    const std::map<std::string, QuantLib::ext::shared_ptr<Trade>>& trades() const;
 
-    //! Build a vector of tradeIds
-    std::vector<std::string> ids() const;
+    //! Build a set of tradeIds
+    std::set<std::string> ids() const;
 
     //! Build a map from trade Ids to NettingSet
     std::map<std::string, std::string> nettingSetMap() const;
 
-    //! Build a vector of unique counterparties
-    std::vector<std::string> counterparties() const;
+    //! Build a set of all counterparties in the portfolio
+    std::set<std::string> counterparties() const;
 
     //! Build a map from counterparty to NettingSet
     std::map<std::string, std::set<std::string>> counterpartyNettingSets() const;
@@ -119,27 +107,38 @@ public:
     //! Check if at least one trade in the portfolio uses the NettingSetDetails node, and not just NettingSetId
     bool hasNettingSetDetails() const;
 
+    //! Does this portfolio build failed trades?
+    bool buildFailedTrades() const { return buildFailedTrades_; }
+
+    //! Keep trade in the portfolio even after build fail
+    bool ignoreTradeBuildFail() const { return ignoreTradeBuildFail_; }
+
     /*! Return the fixings that will be requested in order to price every Trade in this Portfolio given
         the \p settlementDate. The map key is the ORE name of the index and the map value is the set of fixing dates.
 
         \warning This method will return an empty map if the Portfolio has not been built.
     */
-    std::map<std::string, std::set<QuantLib::Date>>
+    std::map<std::string, RequiredFixings::FixingDates>
     fixings(const QuantLib::Date& settlementDate = QuantLib::Date()) const;
 
     /*! Returns the names of the underlying instruments for each asset class */
     std::map<AssetClass, std::set<std::string>>
-    underlyingIndices(const boost::shared_ptr<ReferenceDataManager>& referenceDataManager = nullptr);
+    underlyingIndices(const QuantLib::ext::shared_ptr<ReferenceDataManager>& referenceDataManager = nullptr);
     std::set<std::string>
     underlyingIndices(AssetClass assetClass,
-                      const boost::shared_ptr<ReferenceDataManager>& referenceDataManager = nullptr);
+                      const QuantLib::ext::shared_ptr<ReferenceDataManager>& referenceDataManager = nullptr);
 
 private:
-    // get representation as XMLDocument
-    void doc(XMLDocument& doc) const;
-    bool buildFailedTrades_;
-    std::vector<boost::shared_ptr<Trade>> trades_;
+    bool buildFailedTrades_, ignoreTradeBuildFail_;
+    std::map<std::string, QuantLib::ext::shared_ptr<Trade>> trades_;
     std::map<AssetClass, std::set<std::string>> underlyingIndicesCache_;
 };
+
+std::pair<QuantLib::ext::shared_ptr<Trade>, bool> buildTrade(
+    QuantLib::ext::shared_ptr<Trade>& trade,
+    const QuantLib::ext::shared_ptr<EngineFactory>& engineFactory,
+    const std::string& context, const bool ignoreTradeBuildFail,
+    const bool buildFailedTrades, const bool emitStructuredError);
+
 } // namespace data
 } // namespace ore

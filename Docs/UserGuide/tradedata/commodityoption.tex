@@ -1,4 +1,3 @@
-
 \subsubsection{Commodity Option}
 \label{ss:input_commodity_option}
 
@@ -101,3 +100,93 @@ and \emph{Put}, respectively, the digital call/put is constructed as
 \mbox{Digital Put} = \frac{\mbox{Payoff}}{\Delta}  \times \left( \mbox{Put}(K+ \Delta/2) - \mbox{Put}(K- \Delta/2)  \right)
 \end{align*}
 so that the long digital option has positive value in both cases. The strike spread $\Delta$ used here is set to 1\% of strike $K$.
+
+\subsubsection{Commodity Spread Option}
+\label{ss:input_commodity_spread_option}
+
+A commodity Spread Option is represented with trade type  \emph{CommoditySpreadOption} and a corresponding
+\lstinline!CommoditySpreadOptionData! node.
+
+The \lstinline!CommoditySpreadOptionData! node is the trade data container for the \emph{CommoditySpreadOption} trade type.
+The structure of a \lstinline!CommoditySpreadOptionData! node for a commodity option is shown in Listing \ref{lst:com_s_option_data}.
+
+The \lstinline!CommoditySpreadOptionData! include exactly two \lstinline!LegData! nodes of type \emph{CommodityFloating}.
+Details on these are described in \ref{ss:commodityfloatingleg}.
+The resulting Legs must produce the same amount of cashflows (i.e.~the number of \emph{calculation period}s must be the same for the long and short positions).
+If the number of cashflows per leg is 1, this trade represents a vanilla commodity spread option.
+If is greater than 1, it represents a multi-period commodity spread option.
+Exactly one payer and one receiver leg are required, the leg with \lstinline!isPayer! setto \emph{true} is the long (positive) position in the spread payoff. 
+
+Within the two \lstinline!LegData!, the \lstinline!Quantity! node has must be equal.
+If the underlying contracts are quoted using different units (e.g. barrels vs liters), the \lstinline!Gearing! node must be used to account for this difference. The gearing could also be used for the heat rate factor in spark / heat rate options.
+
+Other than the two legs, the following nodes complete the \lstinline!CommoditySpreadOptionData! container:
+\begin{itemize}
+    \item \lstinline!SpreadStrike!: The strike value for the spread. Allowable values: Any real number.
+    \item \lstinline!OptionData!: This is a trade component sub-node outlined in section \ref{ss:option_data}. 
+The relevant fields in the \lstinline!OptionData! node for an CommoditySpreadOption are
+	\begin{itemize}
+		\item \lstinline!LongShort! The allowable values are \emph{Long} or \emph{Short}.
+
+		\item \lstinline!OptionType! The allowable values are \emph{Call} or \emph{Put}. 
+
+		\item A \lstinline!PaymentData! [Optional] node can be added which defines the settlement date of the option payoff.
+
+		\item \lstinline!Premiums! [Optional]: Option premium amounts paid by the option buyer to the option seller. See section \ref{ss:premiums}
+	\end{itemize}
+	\item \lstinline!OptionStripPaymentDates! [Optional]: If the number of cashflows per leg is greater than 1, we can group options by their expiry date into strips. All option in a strip will have the same payment date as defined in this node. The payment date will be \emph{lag} business days after the latest expiry date in the strip. The node has following sub-nodes:
+	\begin{itemize}
+	\item \lstinline!OptionStripDefinition! A schedule node \ref{ss:schedule_data} defining the option strips. The $n$ dates in the schedule defining $n-1$ strips, each strip include the period's start date and excludes period's end date. All options with expiry within start and end of a period are falling in the same strip. The schedule has to cover all option expiries. The first date in the schedule has to be before or on the first expiry date of the options and the last date in the schedule has to be after last expiry date of the options. 
+	\item \lstinline!PaymentCalendar! Calendar defining valid business days for the payment date.
+	\item \lstinline!PaymentLag! number of business days.
+	\item \lstinline!PaymentConvention! business day convention for the option strip payment date.
+	\end{itemize}
+\end{itemize}
+
+\begin{listing}[H]
+%\hrule\medskip
+    \begin{minted}[fontsize=\footnotesize]{xml}
+<CommoditySpreadOptionData>
+  <LegData>
+   <LegType>CommodityFloating</LegType>
+   <IsPayer>true<IsPayer>
+   ...
+  </LegData>
+  <LegData>
+   <LegType>CommodityFloating</LegType>
+   <IsPayer>false<IsPayer>
+   ...
+  </LegData>
+  <OptionData>
+    <LongShort>Long</LongShort>
+    <OptionType>Call</OptionType>
+     <Premiums>
+       <Premium>
+         <Amount>10900</Amount>
+         <Currency>EUR</Currency>
+         <PayDate>2020-03-01</PayDate>
+       </Premium>
+     </Premiums>
+  </OptionData>
+  <SpreadStrike>2.3</SpreadStrike>
+  <OptionStripPaymentDates>
+  	<OptionStripDefinition>
+          <Rules>
+	    <StartDate>2023-07-01</StartDate>
+            <EndDate>2023-10-01</EndDate>
+            <Tenor>1M</Tenor>
+            <Calendar>NullCalendar</Calendar>
+            <Convention>Unadjusted</Convention>
+            <TermConvention>Unadjusted</TermConvention>
+            <Rule>Backward</Rule>
+          </Rules>
+  	</OptionStripDefinition>
+    <PaymentCalendar>ICE_FuturesUS,US-NERC</PaymentCalendar>
+    <PaymentLag>5</PaymentLag>
+    <PaymentConvention>MF</PaymentConvention>
+  </OptionStripPaymentDates>
+</CommoditySpreadOptionData>
+    \end{minted}
+    \caption{Commodity Spread Option data}
+    \label{lst:com_s_option_data}
+\end{listing}

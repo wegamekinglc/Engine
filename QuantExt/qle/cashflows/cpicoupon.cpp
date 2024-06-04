@@ -31,11 +31,11 @@
 
 namespace QuantExt {
 
-    Rate CPICoupon::rate() const {
+Rate CPICoupon::rate() const {
     Rate r = QuantLib::CPICoupon::rate() ;
         if (subtractInflationNominal_) {
-            Rate adjusted_r = r / fixedRate_ - spread_;
-            r = (adjusted_r - 1) * fixedRate_ + spread_;
+            Rate adjusted_r = r / fixedRate_;
+            r = (adjusted_r - 1) * fixedRate_;
         }
         return r;
     }
@@ -72,9 +72,9 @@ void CappedFlooredCPICoupon::setCommon(Rate cap, Rate floor) {
 CappedFlooredCPICoupon::CappedFlooredCPICoupon(const ext::shared_ptr<CPICoupon>& underlying, Date startDate, Rate cap,
                                                Rate floor)
     : CPICoupon(underlying->baseCPI(), underlying->baseDate(), underlying->date(), underlying->nominal(), underlying->accrualStartDate(),
-                underlying->accrualEndDate(), underlying->fixingDays(), underlying->cpiIndex(),
+                underlying->accrualEndDate(), underlying->cpiIndex(),
                 underlying->observationLag(), underlying->observationInterpolation(), underlying->dayCounter(),
-                underlying->fixedRate(), underlying->spread(), underlying->referencePeriodStart(),
+                underlying->fixedRate(), underlying->referencePeriodStart(),
                 underlying->referencePeriodEnd(), underlying->exCouponDate(), underlying->subtractInflationNotional()),
       underlying_(underlying), startDate_(startDate), isFloored_(false), isCapped_(false) {
 
@@ -86,9 +86,9 @@ CappedFlooredCPICoupon::CappedFlooredCPICoupon(const ext::shared_ptr<CPICoupon>&
 
     if (isCapped_) {
         Rate effectiveCap = cap_;
-        cpiCap_ = boost::make_shared<CPICapFloor>(
+        cpiCap_ = QuantLib::ext::make_shared<CPICapFloor>(
             Option::Call, underlying_->nominal(), startDate_, underlying_->baseCPI(), underlying_->date(), cal, conv,
-            cal, conv, effectiveCap, Handle<ZeroInflationIndex>(underlying_->cpiIndex()), underlying_->observationLag(),
+            cal, conv, effectiveCap, underlying_->cpiIndex(), underlying_->observationLag(),
             underlying_->observationInterpolation());
         // std::cout << "Capped/Floored CPI Coupon" << std::endl
         // 	  << "  nominal = " << underlying_->nominal() << std::endl
@@ -100,18 +100,19 @@ CappedFlooredCPICoupon::CappedFlooredCPICoupon(const ext::shared_ptr<CPICoupon>&
     }
     if (isFloored_) {
         Rate effectiveFloor = floor_;
-        cpiFloor_ = boost::make_shared<CPICapFloor>(
+        cpiFloor_ = QuantLib::ext::make_shared<CPICapFloor>(
             Option::Put, underlying_->nominal(), startDate_, underlying_->baseCPI(), underlying_->date(), cal, conv,
-            cal, conv, effectiveFloor, Handle<ZeroInflationIndex>(underlying_->cpiIndex()),
+            cal, conv, effectiveFloor, underlying_->cpiIndex(),
             underlying_->observationLag(),
             underlying_->observationInterpolation());
     }
 }
 
 Rate CappedFlooredCPICoupon::rate() const {
-    // rate = spread + fixedRate * capped/floored index
-    boost::shared_ptr<BlackCPICouponPricer> blackPricer = boost::dynamic_pointer_cast<BlackCPICouponPricer>(pricer_);
-    QL_REQUIRE(blackPricer, "BlackCPICouponPricer expected");
+    // rate =  fixedRate * capped/floored index
+    QuantLib::ext::shared_ptr<CappedFlooredCPICouponPricer> blackPricer =
+        QuantLib::ext::dynamic_pointer_cast<CappedFlooredCPICouponPricer>(pricer_);
+    QL_REQUIRE(blackPricer, "BlackCPICouponPricer or BachelierCPICouponPricer expected");
     Real capValue = 0.0, floorValue = 0.0;
     if (isCapped_) {
         cpiCap_->setPricingEngine(blackPricer->engine());
@@ -149,28 +150,30 @@ void CappedFlooredCPICoupon::accept(AcyclicVisitor& v) {
 
 CappedFlooredCPICashFlow::CappedFlooredCPICashFlow(const ext::shared_ptr<CPICashFlow>& underlying, Date startDate,
                                                    Period observationLag, Rate cap, Rate floor)
-    : CPICashFlow(underlying->notional(), boost::dynamic_pointer_cast<ZeroInflationIndex>(underlying->index()),
-                  startDate - observationLag, underlying->baseFixing(), underlying->fixingDate(), underlying->date(),
-                  underlying->growthOnly(), underlying->interpolation(), underlying->frequency()),
+    : CPICashFlow(underlying->notional(), underlying->cpiIndex(),
+                  startDate - observationLag, underlying->baseFixing(), underlying->observationDate(),
+                  underlying->observationLag(), underlying->interpolation(), 
+                  underlying->date(),
+                  underlying->growthOnly()),
       underlying_(underlying), startDate_(startDate), observationLag_(observationLag), isFloored_(false),
       isCapped_(false) {
 
     setCommon(cap, floor);
     registerWith(underlying);
 
-    Handle<ZeroInflationIndex> ih(boost::dynamic_pointer_cast<ZeroInflationIndex>(underlying->index()));
-    Calendar cal = ih->fixingCalendar();     // not used by the CPICapFloor engine
+    auto index = QuantLib::ext::dynamic_pointer_cast<ZeroInflationIndex>(underlying->index());
+    Calendar cal = index->fixingCalendar();     // not used by the CPICapFloor engine
     BusinessDayConvention conv = Unadjusted; // not used by the CPICapFloor engine
 
     if (isCapped_) {
-        cpiCap_ = boost::make_shared<CPICapFloor>(Option::Call, underlying_->notional(), startDate_,
+        cpiCap_ = QuantLib::ext::make_shared<CPICapFloor>(Option::Call, underlying_->notional(), startDate_,
                                                   underlying_->baseFixing(), underlying_->date(), cal, conv, cal, conv,
-                                                  cap_, ih, observationLag_, underlying_->interpolation());
+                                                  cap_, index, observationLag_, underlying_->interpolation());
     }
     if (isFloored_) {
-        cpiFloor_ = boost::make_shared<CPICapFloor>(Option::Put, underlying_->notional(), startDate_,
+        cpiFloor_ = QuantLib::ext::make_shared<CPICapFloor>(Option::Put, underlying_->notional(), startDate_,
                                                     underlying_->baseFixing(), underlying_->date(), cal, conv, cal,
-                                                    conv, floor_, ih, observationLag_, underlying_->interpolation());
+                                                    conv, floor_, index, observationLag_, underlying_->interpolation());
     }
 }
 
@@ -202,18 +205,16 @@ void CappedFlooredCPICashFlow::setPricer(const ext::shared_ptr<InflationCashFlow
 
 Real CappedFlooredCPICashFlow::amount() const {
     QL_REQUIRE(pricer_, "pricer not set for capped/floored CPI cashflow");
-    boost::shared_ptr<BlackCPICashFlowPricer> blackPricer =
-        boost::dynamic_pointer_cast<BlackCPICashFlowPricer>(pricer_);
     Real capValue = 0.0, floorValue = 0.0;
     if (isCapped_) {
-        cpiCap_->setPricingEngine(blackPricer->engine());
+        cpiCap_->setPricingEngine(pricer_->engine());
         capValue = cpiCap_->NPV();
     }
     if (isFloored_) {
-        cpiFloor_->setPricingEngine(blackPricer->engine());
+        cpiFloor_->setPricingEngine(pricer_->engine());
         floorValue = cpiFloor_->NPV();
     }
-    Real discount = blackPricer->yieldCurve()->discount(underlying_->date());
+    Real discount = pricer_->yieldCurve()->discount(underlying_->date());
     Real capAmount = capValue / discount;
     Real floorAmount = floorValue / discount;
     Real underlyingAmount = underlying_->amount();
@@ -226,7 +227,7 @@ CPILeg::CPILeg(const Schedule& schedule, const ext::shared_ptr<ZeroInflationInde
     : schedule_(schedule), index_(index), rateCurve_(rateCurve), baseCPI_(baseCPI), observationLag_(observationLag),
       paymentDayCounter_(Thirty360(Thirty360::BondBasis)), paymentAdjustment_(ModifiedFollowing), paymentCalendar_(schedule.calendar()),
       fixingDays_(std::vector<Natural>(1, 0)), observationInterpolation_(CPI::AsIndex), subtractInflationNominal_(true),
-      spreads_(std::vector<Real>(1, 0)), finalFlowCap_(Null<Real>()), finalFlowFloor_(Null<Real>()), subtractInflationNominalAllCoupons_(false),
+      finalFlowCap_(Null<Real>()), finalFlowFloor_(Null<Real>()), subtractInflationNominalAllCoupons_(false),
       startDate_(schedule_.dates().front()) {
     QL_REQUIRE(schedule_.dates().size() > 0, "empty schedule passed to CPILeg");
 }
@@ -276,6 +277,11 @@ CPILeg& CPILeg::withPaymentCalendar(const Calendar& cal) {
     return *this;
 }
 
+CPILeg& CPILeg::withPaymentLag(Natural lag) {
+    paymentLag_ = lag;
+    return *this;
+}
+
 CPILeg& CPILeg::withFixingDays(Natural fixingDays) {
     fixingDays_ = std::vector<Natural>(1, fixingDays);
     return *this;
@@ -283,16 +289,6 @@ CPILeg& CPILeg::withFixingDays(Natural fixingDays) {
 
 CPILeg& CPILeg::withFixingDays(const std::vector<Natural>& fixingDays) {
     fixingDays_ = fixingDays;
-    return *this;
-}
-
-CPILeg& CPILeg::withSpreads(Spread spread) {
-    spreads_ = std::vector<Spread>(1, spread);
-    return *this;
-}
-
-CPILeg& CPILeg::withSpreads(const std::vector<Spread>& spreads) {
-    spreads_ = spreads;
     return *this;
 }
 
@@ -358,14 +354,14 @@ CPILeg::operator Leg() const {
     leg.reserve(n + 1); // +1 for notional, we always have some sort ...
     Date baseDate = baseDate_ == Date() ? startDate_ - observationLag_ : baseDate_;
     if (n > 0) {
-        QL_REQUIRE(!fixedRates_.empty() || !spreads_.empty(), "no fixedRates or spreads given");
+        QL_REQUIRE(!fixedRates_.empty(), "no fixedRates given");
 
         Date refStart, start, refEnd, end;
 
         for (Size i = 0; i < n; ++i) {
             refStart = start = schedule_.date(i);
             refEnd = end = schedule_.date(i + 1);
-            Date paymentDate = paymentCalendar_.adjust(end, paymentAdjustment_);
+            Date paymentDate = paymentCalendar_.advance(end, paymentLag_, Days, paymentAdjustment_);
 
             Date exCouponDate;
             if (exCouponPeriod_ != Period()) {
@@ -381,44 +377,37 @@ CPILeg::operator Leg() const {
                 BusinessDayConvention bdc = schedule_.businessDayConvention();
                 refEnd = schedule_.calendar().adjust(start + schedule_.tenor(), bdc);
             }
-            if (detail::get(fixedRates_, i, 1.0) == 0.0) { // fixed coupon
-                leg.push_back(ext::shared_ptr<CashFlow>(
-                    new FixedRateCoupon(paymentDate, detail::get(notionals_, i, 0.0),
-                                        detail::effectiveFixedRate(spreads_, caps_, floors_, i), paymentDayCounter_,
-                                        start, end, refStart, refEnd, exCouponDate)));
-            } else { // zero inflation coupon
-                ext::shared_ptr<CPICoupon> coup;
 
-                coup = ext::make_shared<CPICoupon>(
-                    baseCPI_, // all have same base for ratio
-                    baseDate,
-                    paymentDate, detail::get(notionals_, i, 0.0), start, end, detail::get(fixingDays_, i, 0.0), index_,
-                    observationLag_, observationInterpolation_, paymentDayCounter_, detail::get(fixedRates_, i, 0.0),
-                    detail::get(spreads_, i, 0.0), refStart, refEnd, exCouponDate, subtractInflationNominalAllCoupons_);
+            auto coup = ext::make_shared<CPICoupon>(
+                baseCPI_, // all have same base for ratio
+                baseDate, paymentDate, detail::get(notionals_, i, 0.0), start, end, index_, observationLag_,
+                observationInterpolation_, paymentDayCounter_, detail::get(fixedRates_, i, 0.0),
+                refStart, refEnd, exCouponDate, subtractInflationNominalAllCoupons_);
 
-                // set a pricer for the underlying coupon straight away because it only provides computation - not data
-                ext::shared_ptr<CPICouponPricer> pricer(new CPICouponPricer(Handle<YieldTermStructure>(rateCurve_)));
-                coup->setPricer(pricer);
+            // set a pricer for the underlying coupon straight away because it only provides computation - not data
+            auto pricer = ext::make_shared<CPICouponPricer>(Handle<YieldTermStructure>(rateCurve_));
+            coup->setPricer(pricer);
 
-                if (detail::noOption(caps_, floors_, i)) { // just swaplet
-                    leg.push_back(ext::dynamic_pointer_cast<CashFlow>(coup));
-                } else { // cap/floorlet
-                    ext::shared_ptr<CappedFlooredCPICoupon> cfCoup = ext::make_shared<CappedFlooredCPICoupon>(
-                        coup, startDate_, detail::get(caps_, i, Null<Rate>()), detail::get(floors_, i, Null<Rate>()));
-                    // in this case we need to set the "outer" pricer later that handles cap and floor
-                    leg.push_back(ext::dynamic_pointer_cast<CashFlow>(cfCoup));
-                }
+            if (detail::noOption(caps_, floors_, i)) { // just swaplet
+                leg.push_back(coup);
+            } else { // cap/floorlet
+                auto cfCoup = ext::make_shared<CappedFlooredCPICoupon>(
+                    coup, startDate_, detail::get(caps_, i, Null<Rate>()), detail::get(floors_, i, Null<Rate>()));
+                // in this case we need to set the "outer" pricer later that handles cap and floor
+                leg.push_back(cfCoup);
             }
         }
     }
 
     // in CPI legs you always have a notional flow of some sort
-    Date paymentDate = paymentCalendar_.adjust(schedule_.date(n), paymentAdjustment_);
-    Date fixingDate = paymentDate - observationLag_;
+    
+    // Previous implementations didn't differentiate the observation and payment dates
+    Date observationDate = paymentCalendar_.adjust(schedule_.date(n), paymentAdjustment_);
+    Date paymentDate = paymentCalendar_.advance(schedule_.date(n), paymentLag_, Days, paymentAdjustment_);
 
     ext::shared_ptr<CPICashFlow> xnl = ext::make_shared<CPICashFlow>(
-        detail::get(notionals_, n, 0.0), index_, baseDate, baseCPI_, fixingDate, paymentDate,
-        subtractInflationNominal_, observationInterpolation_, index_->frequency());
+        detail::get(notionals_, n, 0.0), index_, baseDate, baseCPI_, observationDate, observationLag_,
+        observationInterpolation_, paymentDate, subtractInflationNominal_);
 
     if (finalFlowCap_ == Null<Real>() && finalFlowFloor_ == Null<Real>()) {
         leg.push_back(xnl);

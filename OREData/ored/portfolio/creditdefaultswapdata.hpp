@@ -27,13 +27,13 @@
 #include <ored/portfolio/legdata.hpp>
 #include <ored/portfolio/trade.hpp>
 
-#include <qle/instruments/creditdefaultswap.hpp>
+#include <ql/instruments/creditdefaultswap.hpp>
 
 namespace ore {
 namespace data {
 
 //! CDS debt tier enumeration
-enum class CdsTier { SNRFOR, SUBLT2, SNRLAC, SECDOM, JRSUBUT2, PREFT1 };
+enum class CdsTier { SNRFOR, SUBLT2, SNRLAC, SECDOM, JRSUBUT2, PREFT1, LIEN1, LIEN2, LIEN3 };
 CdsTier parseCdsTier(const std::string& s);
 std::ostream& operator<<(std::ostream& out, const CdsTier& cdsTier);
 
@@ -80,12 +80,12 @@ public:
 
     //! Detailed constructor
     CdsReferenceInformation(const std::string& referenceEntityId, CdsTier tier, const QuantLib::Currency& currency,
-                            CdsDocClause docClause);
+                            boost::optional<CdsDocClause> docClause = boost::none);
 
     //! \name XMLSerializable interface
     //@{
     void fromXML(XMLNode* node) override;
-    XMLNode* toXML(XMLDocument& doc) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 
     //! \name Inspectors
@@ -93,7 +93,8 @@ public:
     const std::string& referenceEntityId() const { return referenceEntityId_; }
     CdsTier tier() const { return tier_; }
     const QuantLib::Currency& currency() const { return currency_; }
-    CdsDocClause docClause() const { return docClause_; }
+    bool hasDocClause() const;
+    CdsDocClause docClause() const;
     //@}
 
     /*! Give back the ID for the CdsReferenceInformation object. The id is the concatenation of the string
@@ -105,7 +106,7 @@ private:
     std::string referenceEntityId_;
     CdsTier tier_;
     QuantLib::Currency currency_;
-    CdsDocClause docClause_;
+    boost::optional<CdsDocClause> docClause_;
     std::string id_;
 
     //! Populate the \c id_ member
@@ -120,11 +121,11 @@ private:
 
     If the function receives a \p strInfo of the form `ID|TIER|CCY|DOCCLAUSE` with `CCY` being a valid ISO currency
     code, `TIER` being a valid CDS debt tier and `DOCCLAUSE` being a valid CDS documentation clause, the parsing
-    should be successful.
+    should be successful. Here, DOCCLAUSE is optional.
 
     \ingroup utilities
 */
-bool tryParseCdsInformation(const std::string& strInfo, CdsReferenceInformation& cdsInfo);
+bool tryParseCdsInformation(std::string strInfo, CdsReferenceInformation& cdsInfo);
 
 /*! Serializable credit default swap data
     \ingroup tradedata
@@ -134,7 +135,7 @@ public:
     //! Default constructor
     CreditDefaultSwapData();
 
-    using PPT = QuantExt::CreditDefaultSwap::ProtectionPaymentTime;
+    using PPT = QuantLib::CreditDefaultSwap::ProtectionPaymentTime;
 
     //! Constructor that takes an explicit \p creditCurveId
     CreditDefaultSwapData(const string& issuerId, const string& creditCurveId, const LegData& leg,
@@ -145,7 +146,8 @@ public:
                           QuantLib::Real recoveryRate = QuantLib::Null<QuantLib::Real>(),
                           const std::string& referenceObligation = "",
                           const Date& tradeDate = Date(),
-                          const std::string& cashSettlementDays = "");
+                          const std::string& cashSettlementDays = "",
+			  const bool rebatesAccrual = true);
 
     //! Constructor that takes a \p referenceInformation object
     CreditDefaultSwapData(const std::string& issuerId, const CdsReferenceInformation& referenceInformation,
@@ -157,10 +159,11 @@ public:
                           QuantLib::Real recoveryRate = QuantLib::Null<QuantLib::Real>(),
                           const std::string& referenceObligation = "",
                           const Date& tradeDate = Date(),
-                          const std::string& cashSettlementDays = "");
+                          const std::string& cashSettlementDays = "",
+			  const bool rebatesAccrual = true);
 
     void fromXML(XMLNode* node) override;
-    XMLNode* toXML(XMLDocument& doc) override;
+    XMLNode* toXML(XMLDocument& doc) const override;
 
     const string& issuerId() const { return issuerId_; }
     const string& creditCurveId() const;
@@ -170,6 +173,7 @@ public:
     const Date& protectionStart() const { return protectionStart_; }
     const Date& upfrontDate() const { return upfrontDate_; }
     Real upfrontFee() const { return upfrontFee_; }
+    bool rebatesAccrual() const { return rebatesAccrual_; }
 
     /*! If the CDS is a fixed recovery CDS, this returns the recovery rate.
         For a standard CDS, it returns Null<Real>().
@@ -199,6 +203,7 @@ private:
     QuantLib::Date protectionStart_;
     QuantLib::Date upfrontDate_;
     QuantLib::Real upfrontFee_;
+    bool rebatesAccrual_;
 
     //! Populated if the CDS is a fixed recovery rate CDS, otherwise \c Null<Real>()
     QuantLib::Real recoveryRate_;

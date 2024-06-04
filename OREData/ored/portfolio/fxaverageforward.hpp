@@ -13,8 +13,8 @@
   FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
  */
 
- /*! \file portfolio/fxasianoption.hpp
-     \brief Fx Asian Option data model and serialization
+ /*! \file portfolio/fxaverageforward.hpp
+     \brief Fx Average Forward data model and serialization
      \ingroup tradedata
  */
 
@@ -25,7 +25,7 @@
  namespace ore {
  namespace data {
 
- //! Serializable Fx Asian Option
+ //! Serializable Fx Average Forward
  /*!
    Payoff: (fixedPayer ? 1 : -1) * (referenceNotional * averageFX - settlementNotional)
    \ingroup tradedata
@@ -39,15 +39,15 @@
 		      bool fixedPayer,
 		      const std::string& referenceCurrency, double referenceNotional,
 		      const std::string settlementCurrency, double settlementNotional,
-		      const std::string& fxIndex)
+		      const std::string& fxIndex, const string& settlement = "Cash")
        : Trade("FxAverageForward", env),
 	 observationDates_(observationDates), paymentDate_(paymentDate), fixedPayer_(fixedPayer),
 	 referenceCurrency_(referenceCurrency), referenceNotional_(referenceNotional),
 	 settlementCurrency_(settlementCurrency), settlementNotional_(settlementNotional),
-	 fxIndex_(fxIndex) {}
+	 fxIndex_(fxIndex), settlement_(settlement) {}
 
      //! Build QuantLib/QuantExt instrument, link pricing engine
-     void build(const boost::shared_ptr<EngineFactory>&) override;
+     void build(const QuantLib::ext::shared_ptr<EngineFactory>&) override;
 
      //! \name Inspectors
      //@{
@@ -59,13 +59,16 @@
      const string& settlementCurrency() const { return settlementCurrency_; }
      double settlementNotional() const { return settlementNotional_; }
      const std::string& fxIndex() const { return fxIndex_; }
+     const string& settlement() const { return settlement_; }
      //@}
 
      //! \name Serialisation
      //@{
      virtual void fromXML(XMLNode* node) override;
-     virtual XMLNode* toXML(XMLDocument& doc) override;
+     virtual XMLNode* toXML(XMLDocument& doc) const override;
      //@}
+
+     const std::map<std::string,boost::any>& additionalData() const override;
 
  private:
      ScheduleData observationDates_;
@@ -77,6 +80,8 @@
      double settlementNotional_;
      //! Needed for past fixings
      std::string fxIndex_;
+     std::string settlement_;
+     bool inverted_ = false; // set during build()
  };
 
  } // namespace data

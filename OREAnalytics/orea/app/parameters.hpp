@@ -44,12 +44,14 @@ public:
     void clear();
     void fromFile(const string&);
     virtual void fromXML(XMLNode* node) override;
-    virtual XMLNode* toXML(XMLDocument& doc) override;
+    virtual XMLNode* toXML(XMLDocument& doc) const override;
 
     bool hasGroup(const string& groupName) const;
     bool has(const string& groupName, const string& paramName) const;
-    string get(const string& groupName, const string& paramName) const;
-
+    string get(const string& groupName, const string& paramName, bool fail = true) const;
+    const map<string, string>& data(const string& groupName) const;
+    const map<string, string>& markets() const;
+    
     void log();
 
 private:

@@ -83,7 +83,7 @@ public:
     //! \name Serialisation
     //@{
     virtual void fromXML(XMLNode* node) override;
-    virtual XMLNode* toXML(XMLDocument& doc) override;
+    virtual XMLNode* toXML(XMLDocument& doc) const override;
     //@}
 private:
     std::string swapIndex_;
@@ -99,8 +99,6 @@ private:
     std::vector<double> gearings_;
     std::vector<std::string> gearingDates_;
     bool nakedOption_;
-
-    static LegDataRegister<DurationAdjustedCmsLegData> reg_;
 };
 
 } // namespace data

@@ -25,6 +25,7 @@
 #define quantext_lgm_model_hpp
 
 #include <qle/models/irlgm1fparametrization.hpp>
+#include <qle/models/irmodel.hpp>
 #include <qle/models/lgmcalibrationinfo.hpp>
 #include <qle/models/linkablecalibratedmodel.hpp>
 
@@ -37,20 +38,48 @@
 namespace QuantExt {
 using namespace QuantLib;
 
-//! Linear Gauss Markov Model
+//! Linear Gauss Morkov Model
 /*! LGM 1f interest rate model
     Basically the same remarks as for CrossAssetModel hold
     \ingroup models
 */
-class LinearGaussMarkovModel : public LinkableCalibratedModel {
-
+class LinearGaussMarkovModel : public IrModel {
 public:
-    LinearGaussMarkovModel(const boost::shared_ptr<IrLgm1fParametrization>& parametrization,
-                           const boost::shared_ptr<Integrator>& integrator = boost::make_shared<SimpsonIntegral>(1.0E-8,
+    enum class Discretization { Euler, Exact };
+
+    LinearGaussMarkovModel(const QuantLib::ext::shared_ptr<IrLgm1fParametrization>& parametrization,
+                           const Measure measure = Measure::LGM, const Discretization = Discretization::Euler,
+                           const bool evaluateBankAccount = true,
+                           const QuantLib::ext::shared_ptr<Integrator>& integrator = QuantLib::ext::make_shared<SimpsonIntegral>(1.0E-8,
                                                                                                                  100));
 
-    const boost::shared_ptr<StochasticProcess1D> stateProcess() const;
-    const boost::shared_ptr<IrLgm1fParametrization> parametrization() const;
+    //! IrModel interface
+
+    Measure measure() const override { return measure_; }
+    const QuantLib::ext::shared_ptr<Parametrization> parametrizationBase() const override { return parametrization_; }
+    Handle<YieldTermStructure> termStructure() const override { return parametrization_->termStructure(); }
+    Size n() const override;
+    Size m() const override;
+    Size n_aux() const override;
+    Size m_aux() const override;
+    QuantLib::ext::shared_ptr<StochasticProcess> stateProcess() const override;
+
+    QuantLib::Real discountBond(const QuantLib::Time t, const QuantLib::Time T, const QuantLib::Array& x,
+                                const QuantLib::Handle<QuantLib::YieldTermStructure>& discountCurve =
+                                    Handle<YieldTermStructure>()) const override;
+
+    QuantLib::Real
+    numeraire(const QuantLib::Time t, const QuantLib::Array& x,
+              const QuantLib::Handle<QuantLib::YieldTermStructure>& discountCurve = Handle<YieldTermStructure>(),
+              const QuantLib::Array& aux = Array()) const override;
+
+    QuantLib::Real shortRate(const QuantLib::Time t, const QuantLib::Array& x,
+                             const QuantLib::Handle<QuantLib::YieldTermStructure>& discountCurve =
+                                 Handle<YieldTermStructure>()) const override;
+
+    //! LGM specific methods
+
+    const QuantLib::ext::shared_ptr<IrLgm1fParametrization> parametrization() const;
 
     Real numeraire(const Time t, const Real x,
                    const Handle<YieldTermStructure> discountCurve = Handle<YieldTermStructure>()) const;
@@ -71,26 +100,26 @@ public:
 
     /*! calibrate volatilities to a sequence of ir options with
         expiry times equal to step times in the parametrization */
-    void calibrateVolatilitiesIterative(const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers,
+    void calibrateVolatilitiesIterative(const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
                                         OptimizationMethod& method, const EndCriteria& endCriteria,
                                         const Constraint& constraint = Constraint(),
                                         const std::vector<Real>& weights = std::vector<Real>());
 
     /*! calibrate reversion to a sequence of ir options with
         maturities equal to step times in the parametrization */
-    void calibrateReversionsIterative(const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers,
+    void calibrateReversionsIterative(const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
                                       OptimizationMethod& method, const EndCriteria& endCriteria,
                                       const Constraint& constraint = Constraint(),
                                       const std::vector<Real>& weights = std::vector<Real>());
 
     /*! calibrate volatilities globally */
-    void calibrateVolatilities(const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers,
+    void calibrateVolatilities(const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
                                OptimizationMethod& method, const EndCriteria& endCriteria,
                                const Constraint& constraint = Constraint(),
                                const std::vector<Real>& weights = std::vector<Real>());
 
     /*! calibrate volatilities globally */
-    void calibrateReversions(const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers,
+    void calibrateReversions(const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
                              OptimizationMethod& method, const EndCriteria& endCriteria,
                              const Constraint& constraint = Constraint(),
                              const std::vector<Real>& weights = std::vector<Real>());
@@ -101,7 +130,7 @@ public:
 
     /*! calibration constraints, these can be used directly, or
         through the customized calibrate methods above */
-    Disposable<std::vector<bool>> MoveVolatility(const Size i) {
+    std::vector<bool> MoveVolatility(const Size i) {
         QL_REQUIRE(i < parametrization_->parameter(0)->size(),
                    "volatility index (" << i << ") out of range 0..." << parametrization_->parameter(0)->size() - 1);
         std::vector<bool> res(parametrization_->parameter(0)->size() + parametrization_->parameter(1)->size(), true);
@@ -109,7 +138,7 @@ public:
         return res;
     }
 
-    Disposable<std::vector<bool>> MoveReversion(const Size i) {
+    std::vector<bool> MoveReversion(const Size i) {
         QL_REQUIRE(i < parametrization_->parameter(1)->size(),
                    "reversion index (" << i << ") out of range 0..." << parametrization_->parameter(1)->size() - 1);
         std::vector<bool> res(parametrization_->parameter(0)->size() + parametrization_->parameter(1)->size(), true);
@@ -123,9 +152,12 @@ public:
     const LgmCalibrationInfo& getCalibrationInfo() const { return calibrationInfo_; }
 
 private:
-    boost::shared_ptr<IrLgm1fParametrization> parametrization_;
-    boost::shared_ptr<Integrator> integrator_;
-    boost::shared_ptr<StochasticProcess1D> stateProcess_;
+    QuantLib::ext::shared_ptr<IrLgm1fParametrization> parametrization_;
+    QuantLib::ext::shared_ptr<Integrator> integrator_;
+    Measure measure_;
+    Discretization discretization_;
+    bool evaluateBankAccount_;
+    QuantLib::ext::shared_ptr<StochasticProcess1D> stateProcess_;
     LgmCalibrationInfo calibrationInfo_;
 };
 
@@ -140,11 +172,33 @@ inline void LinearGaussMarkovModel::update() {
 
 inline void LinearGaussMarkovModel::generateArguments() { update(); }
 
-inline const boost::shared_ptr<StochasticProcess1D> LinearGaussMarkovModel::stateProcess() const {
+inline QuantLib::ext::shared_ptr<StochasticProcess> LinearGaussMarkovModel::stateProcess() const {
+    QL_REQUIRE(measure_ == Measure::LGM, "LinearGaussMarkovModel::stateProcess() only supports measure = LGM");
     return stateProcess_;
 }
 
-inline const boost::shared_ptr<IrLgm1fParametrization> LinearGaussMarkovModel::parametrization() const {
+inline QuantLib::Real
+LinearGaussMarkovModel::discountBond(const QuantLib::Time t, const QuantLib::Time T, const QuantLib::Array& x,
+                                     const QuantLib::Handle<QuantLib::YieldTermStructure>& discountCurve) const {
+    QL_REQUIRE(x.size() == n(), "LinearGaussMarkovModel::discountBond() requires input state of dimension " << n());
+    return discountBond(t, T, x[0], discountCurve);
+}
+
+inline QuantLib::Real
+LinearGaussMarkovModel::numeraire(const QuantLib::Time t, const QuantLib::Array& x,
+                                  const QuantLib::Handle<QuantLib::YieldTermStructure>& discountCurve,
+                                  const QuantLib::Array& aux) const {
+    QL_REQUIRE(x.size() == n(), "LinearGaussMarkovModel::numeraire() requires input state of dimension " << n());
+    QL_REQUIRE(aux.size() == n_aux(),
+               "LinearGaussMarkovModel::numeraire() requires aux input state of dimension " << n_aux());
+    if (measure() == Measure::LGM) {
+        return numeraire(t, x[0], discountCurve);
+    } else {
+        return bankAccountNumeraire(t, x[0], aux[0], discountCurve);
+    }
+}
+
+inline const QuantLib::ext::shared_ptr<IrLgm1fParametrization> LinearGaussMarkovModel::parametrization() const {
     return parametrization_;
 }
 
@@ -169,6 +223,12 @@ inline Real LinearGaussMarkovModel::discountBond(const Time t, const Time T, con
            std::exp(-(HT - Ht) * x - 0.5 * (HT * HT - Ht * Ht) * parametrization_->zeta(t));
 }
 
+inline QuantLib::Real
+LinearGaussMarkovModel::shortRate(const QuantLib::Time t, const QuantLib::Array& x,
+                                  const QuantLib::Handle<QuantLib::YieldTermStructure>& discountCurve) const {
+    QL_FAIL("LGM does not provide short rate.");
+}
+
 inline Real LinearGaussMarkovModel::reducedDiscountBond(const Time t, const Time T, const Real x,
                                                         const Handle<YieldTermStructure> discountCurve) const {
     if (QuantLib::close_enough(t, T))
@@ -190,48 +250,52 @@ inline Real LinearGaussMarkovModel::discountBondOption(Option::Type type, const 
     // slight generalization of Lichters, Stamm, Gallagher 11.2.1
     // with t < S, SSRN: https://ssrn.com/abstract=2246054
     Real sigma = std::sqrt(parametrization_->zeta(t)) * (parametrization_->H(T) - parametrization_->H(S));
-    Real dp = (std::log(pT / (K * pS)) / sigma + 0.5 * sigma);
+    Real dp = std::log(pT / (K * pS)) / sigma + 0.5 * sigma * sigma;
     Real dm = dp - sigma;
     CumulativeNormalDistribution N;
     return w * (pT * N(w * dp) - pS * K * N(w * dm));
 }
 
 inline void LinearGaussMarkovModel::calibrateVolatilitiesIterative(
-    const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers, OptimizationMethod& method,
+    const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers, OptimizationMethod& method,
     const EndCriteria& endCriteria, const Constraint& constraint, const std::vector<Real>& weights) {
     for (Size i = 0; i < helpers.size(); ++i) {
-        std::vector<boost::shared_ptr<BlackCalibrationHelper>> h(1, helpers[i]);
+        std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>> h(1, helpers[i]);
         calibrate(h, method, endCriteria, constraint, weights, MoveVolatility(i));
     }
+    update();
 }
 
 inline void LinearGaussMarkovModel::calibrateReversionsIterative(
-    const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers, OptimizationMethod& method,
+    const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers, OptimizationMethod& method,
     const EndCriteria& endCriteria, const Constraint& constraint, const std::vector<Real>& weights) {
     for (Size i = 0; i < helpers.size(); ++i) {
-        std::vector<boost::shared_ptr<BlackCalibrationHelper>> h(1, helpers[i]);
+        std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>> h(1, helpers[i]);
         calibrate(h, method, endCriteria, constraint, weights, MoveReversion(i));
     }
+    update();
 }
 
 inline void
-LinearGaussMarkovModel::calibrateVolatilities(const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers,
+LinearGaussMarkovModel::calibrateVolatilities(const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
                                               OptimizationMethod& method, const EndCriteria& endCriteria,
                                               const Constraint& constraint, const std::vector<Real>& weights) {
     std::vector<bool> moveVols(parametrization_->parameter(0)->size() + parametrization_->parameter(1)->size(), true);
     for (Size i = 0; i < parametrization_->parameter(0)->size(); ++i)
         moveVols[i] = false;
     calibrate(helpers, method, endCriteria, constraint, weights, moveVols);
+    update();
 }
 
 inline void
-LinearGaussMarkovModel::calibrateReversions(const std::vector<boost::shared_ptr<BlackCalibrationHelper>>& helpers,
+LinearGaussMarkovModel::calibrateReversions(const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
                                             OptimizationMethod& method, const EndCriteria& endCriteria,
                                             const Constraint& constraint, const std::vector<Real>& weights) {
     std::vector<bool> moveRevs(parametrization_->parameter(0)->size() + parametrization_->parameter(1)->size(), true);
     for (Size i = 0; i < parametrization_->parameter(1)->size(); ++i)
         moveRevs[parametrization_->parameter(0)->size() + i] = false;
     calibrate(helpers, method, endCriteria, constraint, weights, moveRevs);
+    update();
 }
 
 } // namespace QuantExt

@@ -18,6 +18,10 @@ from math import log
 def get_list_of_examples():
     return sorted([e for e in os.listdir(os.getcwd())
                    if e[:8] == 'Example_'], key=lambda e: int(e.split('_')[1]))
+#                   if e == 'Example_39'], key=lambda e: int(e.split('_')[1]))
+
+def get_list_ore_academy():
+    return sorted([e for e in os.listdir(os.getcwd()) if e[:11] == 'OREAcademy_'])
 
 
 def print_on_console(line):
@@ -32,7 +36,12 @@ class OreExample(object):
         self.dry = dry
         self.ax = None
         self.plot_name = ""
-        self._locate_ore_exe()
+        if 'ORE_EXAMPLES_USE_PYTHON' in os.environ.keys():
+            self.use_python = os.environ['ORE_EXAMPLES_USE_PYTHON']=="1"
+            self.ore_exe = ""
+        else:
+            self.use_python = False
+            self._locate_ore_exe()
 
     def _locate_ore_exe(self):
         if os.name == 'nt':
@@ -41,6 +50,12 @@ class OreExample(object):
                     self.ore_exe = "..\\..\\App\\bin\\x64\\Release\\ore.exe"
                 elif os.path.isfile("..\\..\\build\\App\\ore.exe"):
                     self.ore_exe = "..\\..\\build\\App\\ore.exe"
+                elif os.path.isfile("..\\..\\..\\build\\ore\\App\\ore.exe"):
+                    self.ore_exe = "..\..\\..\\build\\ore\\App\\ore.exe"
+                elif os.path.isfile("..\\..\\..\\build\\ore\\App\\RelWithDebInfo\\ore.exe"):
+                    self.ore_exe = "..\\..\\..\\build\\ore\\App\\RelWithDebInfo\\ore.exe"
+                elif os.path.isfile("..\\..\\build\\App\\Release\\ore.exe"):
+                    self.ore_exe = "..\\..\\build\\App\\Release\\ore.exe"
                 else:
                     print_on_console("ORE executable not found.")
                     quit()
@@ -59,9 +74,13 @@ class OreExample(object):
                 self.ore_exe = "../../build/App/ore"
             elif os.path.isfile("../../App/ore"):
                 self.ore_exe = "../../App/ore"
+            elif os.path.isfile("../../../build/ore/App/ore"):
+                self.ore_exe = "../../../build/ore/App/ore"
+                self.ore_plus_exe = "../../../build/AppPlus/ore_plus"
             else:
                 print_on_console("ORE executable not found.")
                 quit()
+        print_on_console("Using ORE executable " + (os.path.abspath(self.ore_exe)))
 
     def print_headline(self, headline):
         self.headlinecounter += 1
@@ -77,12 +96,14 @@ class OreExample(object):
                 for time in times:
                     print_on_console("\t" + time.split()[0] + ": " + time.split()[1])
 
-    def get_output_data_from_column(self, csv_name, colidx, offset=1):
+    def get_output_data_from_column(self, csv_name, colidx, offset=1, filter='', filterCol=0):
         f = open(os.path.join(os.path.join(os.getcwd(), "Output"), csv_name))
         data = []
         for line in f:
+            tokens = line.split(',')
             if colidx < len(line.split(',')):
-                data.append(line.split(',')[colidx])
+                if (filter == '' or tokens[filterCol] == filter):
+                    data.append(line.split(',')[colidx])
             else:
                 data.append("Error")
         return [float(i) for i in data[offset:]]
@@ -93,9 +114,9 @@ class OreExample(object):
         for file in files:
             shutil.copy(os.path.join("Output", file), os.path.join("Output", subdir))
 
-    def plot(self, filename, colIdxTime, colIdxVal, color, label, offset=1, marker='', linestyle='-'):
-        self.ax.plot(self.get_output_data_from_column(filename, colIdxTime, offset),
-                     self.get_output_data_from_column(filename, colIdxVal, offset),
+    def plot(self, filename, colIdxTime, colIdxVal, color, label, offset=1, marker='', linestyle='-', filter='', filterCol=0):
+        self.ax.plot(self.get_output_data_from_column(filename, colIdxTime, offset, filter, filterCol),
+                     self.get_output_data_from_column(filename, colIdxVal, offset, filter, filterCol),
                      linewidth=2,
                      linestyle=linestyle,
                      color=color,
@@ -219,13 +240,16 @@ class OreExample(object):
         self.ax.legend(loc="upper left", shadow=True)
         self.ax.set_title(title)
 
-    def decorate_plot(self, title, ylabel="Exposure", xlabel="Time / Years", legend_loc="upper right"):
+    def decorate_plot(self, title, ylabel="Exposure", xlabel="Time / Years", legend_loc="upper right", y_format_as_int = True, display_grid = False):
         self.ax.set_title(title)
         self.ax.set_xlabel(xlabel)
         self.ax.set_ylabel(ylabel)
         self.ax.legend(loc=legend_loc, shadow=True)
-        self.ax.get_yaxis().set_major_formatter(
-            matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+        if y_format_as_int:
+            self.ax.get_yaxis().set_major_formatter(
+                matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+        if display_grid:
+            self.ax.grid()
 
     def plot_line(self, xvals, yvals, color, label):
         self.ax.plot(xvals, yvals, color=color, label=label, linewidth=2)
@@ -246,9 +270,17 @@ class OreExample(object):
 
     def run(self, xml):
         if not self.dry:
-            if subprocess.call([self.ore_exe, xml]) != 0:
+            if(self.use_python):
+                res = subprocess.call([sys.executable, os.path.join(os.pardir, "ore_wrapper.py"), xml])
+            else:
+                res = subprocess.call([self.ore_exe, xml])
+            if res != 0:
                 raise Exception("Return Code was not Null.")
 
+    def run_plus(self, xml):
+        if not self.dry:
+            if subprocess.call([self.ore_plus_exe, xml]) != 0:
+                raise Exception("Return Code was not Null.")
 
 def run_example(example):
     current_dir = os.getcwd()
@@ -269,5 +301,5 @@ def run_example(example):
 
 
 if __name__ == "__main__":
-    for example in get_list_of_examples():
+    for example in (get_list_of_examples() + get_list_ore_academy()):
         run_example(example)

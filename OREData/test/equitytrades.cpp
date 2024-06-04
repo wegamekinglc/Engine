@@ -43,7 +43,7 @@ namespace {
 
 class TestMarket : public MarketImpl {
 public:
-    TestMarket() {
+    TestMarket() : MarketImpl(false) {
         asof_ = Date(3, Feb, 2016);
 
         // build discount
@@ -51,18 +51,16 @@ public:
         yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "USD")] = flatRateYts(0.075);
 
         // add fx rates
-        fxIndices_[Market::defaultConfiguration].addIndex("EURUSD", 
-            Handle<QuantExt::FxIndex>(boost::make_shared<QuantExt::FxIndex>(
-                asof_, "EURUSD", 0, parseCurrency("EUR"), parseCurrency("USD"), parseCalendar("EUR,USD"),
-                Handle<Quote>(boost::make_shared<SimpleQuote>(1.2)), discountCurve("EUR"),
-                discountCurve("USD"), false)));
+        std::map<std::string, QuantLib::Handle<QuantLib::Quote>> quotes;
+        quotes["EURUSD"] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(1.2));
+        fx_ = QuantLib::ext::make_shared<FXTriangulation>(quotes);
 
         // build fx vols
         fxVols_[make_pair(Market::defaultConfiguration, "EURUSD")] = flatRateFxv(0.10);
 
         // add equity spots
         equitySpots_[make_pair(Market::defaultConfiguration, "zzzCorp")] =
-            Handle<Quote>(boost::make_shared<SimpleQuote>(100));
+            Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(100));
 
         // add dividend yield
         yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::EquityDividend, "zzzCorp")] =
@@ -70,7 +68,7 @@ public:
 
         // add equity curve
         equityCurves_[make_pair(Market::defaultConfiguration, "zzzCorp")] =
-            Handle<EquityIndex>(boost::make_shared<EquityIndex>(
+            Handle<EquityIndex2>(QuantLib::ext::make_shared<EquityIndex2>(
                 "zzzCorp", TARGET(), parseCurrency("EUR"), equitySpot("zzzCorp"),
                 yieldCurve(YieldCurveType::Discount, "EUR"), yieldCurve(YieldCurveType::EquityDividend, "zzzCorp")));
 
@@ -80,11 +78,11 @@ public:
 
 private:
     Handle<YieldTermStructure> flatRateYts(Real forward) {
-        boost::shared_ptr<YieldTermStructure> yts(new FlatForward(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
+        QuantLib::ext::shared_ptr<YieldTermStructure> yts(new FlatForward(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
         return Handle<YieldTermStructure>(yts);
     }
     Handle<BlackVolTermStructure> flatRateFxv(Volatility forward) {
-        boost::shared_ptr<BlackVolTermStructure> fxv(new BlackConstantVol(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
+        QuantLib::ext::shared_ptr<BlackVolTermStructure> fxv(new BlackConstantVol(0, NullCalendar(), forward, ActualActual(ActualActual::ISDA)));
         return Handle<BlackVolTermStructure>(fxv);
     }
 };
@@ -102,7 +100,7 @@ BOOST_AUTO_TEST_CASE(testEquityTradePrices) {
     Date today = Settings::instance().evaluationDate();
 
     // build market
-    boost::shared_ptr<Market> market = boost::make_shared<TestMarket>();
+    QuantLib::ext::shared_ptr<Market> market = QuantLib::ext::make_shared<TestMarket>();
     Settings::instance().evaluationDate() = market->asofDate();
     Date expiry = market->asofDate() + 6 * Months + 1 * Days;
     ostringstream o;
@@ -128,14 +126,12 @@ BOOST_AUTO_TEST_CASE(testEquityTradePrices) {
     Real expectedNPV_Put_Premium = -1.513558; // less negative due to received premium of 1 EUR at expiry
 
     // Build and price
-    boost::shared_ptr<EngineData> engineData = boost::make_shared<EngineData>();
+    QuantLib::ext::shared_ptr<EngineData> engineData = QuantLib::ext::make_shared<EngineData>();
     engineData->model("EquityOption") = "BlackScholesMerton";
     engineData->engine("EquityOption") = "AnalyticEuropeanEngine";
     engineData->model("EquityForward") = "DiscountedCashflows";
     engineData->engine("EquityForward") = "DiscountingEquityForwardEngine";
-    boost::shared_ptr<EngineFactory> engineFactory = boost::make_shared<EngineFactory>(engineData, market);
-    engineFactory->registerBuilder(boost::make_shared<EquityEuropeanOptionEngineBuilder>());
-    engineFactory->registerBuilder(boost::make_shared<EquityForwardEngineBuilder>());
+    QuantLib::ext::shared_ptr<EngineFactory> engineFactory = QuantLib::ext::make_shared<EngineFactory>(engineData, market);
 
     eqCall.build(engineFactory);
     eqCallPremium.build(engineFactory);
@@ -168,14 +164,14 @@ BOOST_AUTO_TEST_CASE(testEquityFutureOptionPrices) {
     Date today = Settings::instance().evaluationDate();
 
     // build market
-    boost::shared_ptr<Market> market = boost::make_shared<TestMarket>();
+    QuantLib::ext::shared_ptr<Market> market = QuantLib::ext::make_shared<TestMarket>();
     Settings::instance().evaluationDate() = market->asofDate();
     Date expiry = market->asofDate() + 6 * Months + 1 * Days;
     ostringstream o;
     o << QuantLib::io::iso_date(expiry);
     string exp_str = o.str();
 
-    boost::shared_ptr<ore::data::Underlying> underlying = boost::make_shared<ore::data::EquityUnderlying>("zzzCorp");
+    QuantLib::ext::shared_ptr<ore::data::Underlying> underlying = QuantLib::ext::make_shared<ore::data::EquityUnderlying>("zzzCorp");
     // build EquityOption - expiry in 1 Year
     OptionData callData("Long", "Call", "European", true, vector<string>(1, exp_str));
     OptionData callDataPremium("Long", "Call", "European", true, vector<string>(1, exp_str), "Physical", "",
@@ -197,15 +193,12 @@ BOOST_AUTO_TEST_CASE(testEquityFutureOptionPrices) {
     EquityOption eqPutPremium(env, putDataPremium, EquityUnderlying("zzzCorp"), "EUR", 1.0, tradeStrike);
     
     // Build and price
-    boost::shared_ptr<EngineData> engineData = boost::make_shared<EngineData>();
+    QuantLib::ext::shared_ptr<EngineData> engineData = QuantLib::ext::make_shared<EngineData>();
     engineData->model("EquityOption") = "BlackScholesMerton";
     engineData->engine("EquityOption") = "AnalyticEuropeanEngine";
     engineData->model("EquityFutureOption") = "BlackScholes";
     engineData->engine("EquityFutureOption") = "AnalyticEuropeanForwardEngine";
-    boost::shared_ptr<EngineFactory> engineFactory = boost::make_shared<EngineFactory>(engineData, market);
-    engineFactory->registerBuilder(boost::make_shared<EquityEuropeanOptionEngineBuilder>());
-    engineFactory->registerBuilder(boost::make_shared<EquityFutureEuropeanOptionEngineBuilder>());
-    engineFactory->registerBuilder(boost::make_shared<EquityForwardEngineBuilder>());
+    QuantLib::ext::shared_ptr<EngineFactory> engineFactory = QuantLib::ext::make_shared<EngineFactory>(engineData, market);
 
     eqFwdCall.build(engineFactory);
     eqFwdCallPremium.build(engineFactory);
@@ -232,7 +225,7 @@ BOOST_AUTO_TEST_CASE(testEquityFutureParity) {
     Date today = Settings::instance().evaluationDate();
 
     // build market
-    boost::shared_ptr<Market> market = boost::make_shared<TestMarket>();
+    QuantLib::ext::shared_ptr<Market> market = QuantLib::ext::make_shared<TestMarket>();
     Settings::instance().evaluationDate() = market->asofDate();
     Date expiry = market->asofDate() + 6 * Months + 1 * Days;
     ostringstream o;
@@ -244,7 +237,7 @@ BOOST_AUTO_TEST_CASE(testEquityFutureParity) {
     o_2 << QuantLib::io::iso_date(futureExpiry);
     string f_exp_str = o_2.str();
     
-    boost::shared_ptr<ore::data::Underlying> underlying = boost::make_shared<ore::data::EquityUnderlying>("zzzCorp");
+    QuantLib::ext::shared_ptr<ore::data::Underlying> underlying = QuantLib::ext::make_shared<ore::data::EquityUnderlying>("zzzCorp");
     double spot = 100;
     // build EquityOption - expiry in 1 Year
     OptionData callData("Long", "Call", "European", true, vector<string>(1, exp_str));
@@ -262,17 +255,14 @@ BOOST_AUTO_TEST_CASE(testEquityFutureParity) {
     ore::data::EquityForward eqFwd(env, "Long", EquityUnderlying("zzzCorp"), "EUR", 1.0, f_exp_str, 0);
 
     // Build and price
-    boost::shared_ptr<EngineData> engineData = boost::make_shared<EngineData>();
+    QuantLib::ext::shared_ptr<EngineData> engineData = QuantLib::ext::make_shared<EngineData>();
     engineData->model("EquityFutureOption") = "BlackScholes";
     engineData->engine("EquityFutureOption") = "AnalyticEuropeanForwardEngine";
     engineData->model("EquityOption") = "BlackScholesMerton";
     engineData->engine("EquityOption") = "AnalyticEuropeanEngine";
     engineData->model("EquityForward") = "DiscountedCashflows";
     engineData->engine("EquityForward") = "DiscountingEquityForwardEngine";
-    boost::shared_ptr<EngineFactory> engineFactory = boost::make_shared<EngineFactory>(engineData, market);
-    engineFactory->registerBuilder(boost::make_shared<EquityEuropeanOptionEngineBuilder>());
-    engineFactory->registerBuilder(boost::make_shared<EquityFutureEuropeanOptionEngineBuilder>());
-    engineFactory->registerBuilder(boost::make_shared<EquityForwardEngineBuilder>());
+    QuantLib::ext::shared_ptr<EngineFactory> engineFactory = QuantLib::ext::make_shared<EngineFactory>(engineData, market);
 
     eqCall.build(engineFactory);
     eqCallPremium.build(engineFactory);

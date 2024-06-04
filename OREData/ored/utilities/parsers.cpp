@@ -26,13 +26,13 @@
 #include <map>
 #include <ored/utilities/calendarparser.hpp>
 #include <ored/utilities/currencyparser.hpp>
+#include <ored/utilities/indexparser.hpp>
 #include <ored/utilities/parsers.hpp>
 #include <ored/utilities/to_string.hpp>
 #include <ql/errors.hpp>
 #include <ql/indexes/all.hpp>
 #include <ql/time/daycounters/all.hpp>
 #include <ql/utilities/dataparsers.hpp>
-#include <ql/version.hpp>
 #include <qle/instruments/cashflowresults.hpp>
 #include <qle/time/yearcounter.hpp>
 
@@ -117,6 +117,12 @@ Real parseReal(const string& s) {
     }
 }
 
+Real parseRealOrNull(const string& s) {
+    if(s.empty())
+        return Null<Real>();
+    return parseReal(s);
+}
+
 bool tryParseReal(const string& s, QuantLib::Real& result) {
     try {
         result = std::stod(s);
@@ -148,9 +154,7 @@ bool parseBool(const string& s) {
     }
 }
 
-Calendar parseCalendar(const string& s) {
-    return CalendarParser::instance().parseCalendar(s);
-}
+Calendar parseCalendar(const string& s) { return CalendarParser::instance().parseCalendar(s); }
 
 bool isOnePeriod(const string& s) {
     if (s.empty())
@@ -185,6 +189,11 @@ BusinessDayConvention parseBusinessDayConvention(const string& s) {
                                                    {"U", Unadjusted},
                                                    {"Unadjusted", Unadjusted},
                                                    {"INDIFF", Unadjusted},
+                                                   {"HalfMonthModifiedFollowing", HalfMonthModifiedFollowing},
+                                                   {"HMMF", HalfMonthModifiedFollowing},
+                                                   {"Half Month Modified Following", HalfMonthModifiedFollowing},
+                                                   {"HALFMONTHMF", HalfMonthModifiedFollowing},
+                                                   {"HalfMonthMF", HalfMonthModifiedFollowing},
                                                    {"NEAREST", Nearest},
                                                    {"NONE", Unadjusted},
                                                    {"NotApplicable", Unadjusted}};
@@ -241,6 +250,7 @@ DayCounter parseDayCounter(const string& s) {
                                         {"Actual/Actual (ISDA)", ActualActual(ActualActual::ISDA)},
                                         {"ActualActual (ISDA)", ActualActual(ActualActual::ISDA)},
                                         {"ACT/ACT", ActualActual(ActualActual::ISDA)},
+                                        {"Act/Act", ActualActual(ActualActual::ISDA)},
                                         {"ACT29", ActualActual(ActualActual::AFB)},
                                         {"ACT", ActualActual(ActualActual::ISDA)},
                                         {"ActActISMA", ActualActual(ActualActual::ISMA)},
@@ -271,7 +281,7 @@ DayCounter parseDayCounter(const string& s) {
     auto it = m.find(s);
     if (it != m.end()) {
         return it->second;
-        
+
     } else {
         QL_FAIL("DayCounter \"" << s << "\" not recognized");
     }
@@ -279,9 +289,29 @@ DayCounter parseDayCounter(const string& s) {
 
 Currency parseCurrency(const string& s) { return CurrencyParser::instance().parseCurrency(s); }
 
+QuantExt::ConfigurableCurrency::Type parseCurrencyType(const string& s) {
+    static map<string, QuantExt::ConfigurableCurrency::Type> m = {
+        {"Major", QuantExt::ConfigurableCurrency::Type::Major}, {"Fiat Currency", QuantExt::ConfigurableCurrency::Type::Major},
+        {"Fiat", QuantExt::ConfigurableCurrency::Type::Major}, {"Metal", QuantExt::ConfigurableCurrency::Type::Metal}, 
+        {"Precious Metal", QuantExt::ConfigurableCurrency::Type::Metal}, {"Crypto", QuantExt::ConfigurableCurrency::Type::Crypto},
+        {"Cryptocurrency", QuantExt::ConfigurableCurrency::Type::Crypto}};
+
+    auto it = m.find(s);
+    if (it != m.end()) {
+        return it->second;
+    } else {
+        QL_FAIL("Currency type \"" << s << "\" not recognised");
+    }
+}
+
+
 Currency parseMinorCurrency(const string& s) { return CurrencyParser::instance().parseMinorCurrency(s); }
 
 Currency parseCurrencyWithMinors(const string& s) { return CurrencyParser::instance().parseCurrencyWithMinors(s); }
+
+pair<Currency, Currency> parseCurrencyPair(const string& s, const string& delimiters) {
+    return CurrencyParser::instance().parseCurrencyPair(s, delimiters);
+}
 
 bool checkCurrency(const string& code) { return CurrencyParser::instance().isValidCurrency(code); }
 
@@ -360,10 +390,8 @@ Compounding parseCompounding(const string& s) {
 }
 
 QuantLib::Bond::Price::Type parseBondPriceType(const string& s) {
-    static map<string, QuantLib::Bond::Price::Type> m = {
-        {"Clean", QuantLib::Bond::Price::Type::Clean},
-        {"Dirty", QuantLib::Bond::Price::Type::Dirty}
-    };
+    static map<string, QuantLib::Bond::Price::Type> m = {{"Clean", QuantLib::Bond::Price::Type::Clean},
+                                                         {"Dirty", QuantLib::Bond::Price::Type::Dirty}};
 
     auto it = m.find(s);
     if (it != m.end()) {
@@ -496,15 +524,15 @@ void parseDateOrPeriod(const string& s, Date& d, Period& p, bool& isDate) {
     boost::apply_visitor(legacy_date_or_period_visitor(d, p, isDate), r);
 }
 
-QuantLib::LsmBasisSystem::PolynomType parsePolynomType(const std::string& s) {
-    static map<string, LsmBasisSystem::PolynomType> poly = {
-        {"Monomial", LsmBasisSystem::PolynomType::Monomial},
-        {"Laguerre", LsmBasisSystem::PolynomType::Laguerre},
-        {"Hermite", LsmBasisSystem::PolynomType::Hermite},
-        {"Hyperbolic", LsmBasisSystem::PolynomType::Hyperbolic},
-        {"Legendre", LsmBasisSystem::PolynomType::Legendre},
-        {"Chebyshev", LsmBasisSystem::PolynomType::Chebyshev},
-        {"Chebyshev2nd", LsmBasisSystem::PolynomType::Chebyshev2nd},
+QuantLib::LsmBasisSystem::PolynomialType parsePolynomType(const std::string& s) {
+    static map<string, LsmBasisSystem::PolynomialType> poly = {
+        {"Monomial", LsmBasisSystem::PolynomialType::Monomial},
+        {"Laguerre", LsmBasisSystem::PolynomialType::Laguerre},
+        {"Hermite", LsmBasisSystem::PolynomialType::Hermite},
+        {"Hyperbolic", LsmBasisSystem::PolynomialType::Hyperbolic},
+        {"Legendre", LsmBasisSystem::PolynomialType::Legendre},
+        {"Chebyshev", LsmBasisSystem::PolynomialType::Chebyshev},
+        {"Chebyshev2nd", LsmBasisSystem::PolynomialType::Chebyshev2nd},
     };
 
     auto it = poly.find(s);
@@ -512,6 +540,27 @@ QuantLib::LsmBasisSystem::PolynomType parsePolynomType(const std::string& s) {
         return it->second;
     } else {
         QL_FAIL("Polynom type \"" << s << "\" not recognized");
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, QuantLib::LsmBasisSystem::PolynomialType a) {
+    switch (a) {
+    case LsmBasisSystem::PolynomialType::Monomial:
+        return os << "Monomial";
+    case LsmBasisSystem::PolynomialType::Laguerre:
+        return os << "Laguerre";
+    case LsmBasisSystem::PolynomialType::Hermite:
+        return os << "Hermite";
+    case LsmBasisSystem::PolynomialType::Hyperbolic:
+        return os << "Hyperbolic";
+    case LsmBasisSystem::PolynomialType::Legendre:
+        return os << "Legendre";
+    case LsmBasisSystem::PolynomialType::Chebyshev:
+        return os << "Chebychev";
+    case LsmBasisSystem::PolynomialType::Chebyshev2nd:
+        return os << "Chebychev2nd";
+    default:
+        QL_FAIL("unknown LsmBasisSystem::PolynomialType '" << static_cast<int>(a) << "'");
     }
 }
 
@@ -576,16 +625,15 @@ Month parseMonth(const string& s) {
     }
 }
 
-PaymentLag parsePaymentLag(const string& s) {   
-    Natural pl = 0;
-    if (!tryParse<Natural>(s, pl, parseInteger)) {
-        Period p;
-        if (tryParse<Period>(s, p, parsePeriod)) {
-            QL_REQUIRE(p.units() == Days, "parsePaymentLag: PaymentLag must be given in Days");
-            pl = p.length();
-        }
-    }
-    return pl;
+PaymentLag parsePaymentLag(const string& s) {
+    Period p;
+    Natural n;
+    if (tryParse<Period>(s, p, parsePeriod))
+        return p;
+    else if (tryParse<Natural>(s, n, parseInteger))
+        return n;
+    else
+        return 0;
 }
 
 std::vector<string> parseListOfValues(string s, const char escape, const char delim, const char quote) {
@@ -618,10 +666,12 @@ AmortizationType parseAmortizationType(const std::string& s) {
 }
 
 SequenceType parseSequenceType(const std::string& s) {
-    static map<string, SequenceType> seq = {{"MersenneTwister", SequenceType::MersenneTwister},
-                                            {"MersenneTwisterAntithetic", SequenceType::MersenneTwisterAntithetic},
-                                            {"Sobol", SequenceType::Sobol},
-                                            {"SobolBrownianBridge", SequenceType::SobolBrownianBridge}};
+    static map<string, SequenceType> seq = {
+        {"MersenneTwister", SequenceType::MersenneTwister},
+        {"MersenneTwisterAntithetic", SequenceType::MersenneTwisterAntithetic},
+        {"Sobol", SequenceType::Sobol},
+        {"SobolBrownianBridge", SequenceType::SobolBrownianBridge},
+        {"Burley2020SobolBrownianBridge", SequenceType::Burley2020SobolBrownianBridge}};
     auto it = seq.find(s);
     if (it != seq.end())
         return it->second;
@@ -640,11 +690,15 @@ QuantLib::CPI::InterpolationType parseObservationInterpolation(const std::string
 }
 
 FdmSchemeDesc parseFdmSchemeDesc(const std::string& s) {
-    static std::map<std::string, FdmSchemeDesc> m = {
-        {"Hundsdorfer", FdmSchemeDesc::Hundsdorfer()},     {"Douglas", FdmSchemeDesc::Douglas()},
-        {"CraigSneyd", FdmSchemeDesc::CraigSneyd()},       {"ModifiedCraigSneyd", FdmSchemeDesc::ModifiedCraigSneyd()},
-        {"ImplicitEuler", FdmSchemeDesc::ImplicitEuler()}, {"ExplicitEuler", FdmSchemeDesc::ExplicitEuler()},
-        {"MethodOfLines", FdmSchemeDesc::MethodOfLines()}, {"TrBDF2", FdmSchemeDesc::TrBDF2()}};
+    static std::map<std::string, FdmSchemeDesc> m = {{"CrankNicolson", FdmSchemeDesc::CrankNicolson()},
+                                                     {"Hundsdorfer", FdmSchemeDesc::Hundsdorfer()},
+                                                     {"Douglas", FdmSchemeDesc::Douglas()},
+                                                     {"CraigSneyd", FdmSchemeDesc::CraigSneyd()},
+                                                     {"ModifiedCraigSneyd", FdmSchemeDesc::ModifiedCraigSneyd()},
+                                                     {"ImplicitEuler", FdmSchemeDesc::ImplicitEuler()},
+                                                     {"ExplicitEuler", FdmSchemeDesc::ExplicitEuler()},
+                                                     {"MethodOfLines", FdmSchemeDesc::MethodOfLines()},
+                                                     {"TrBDF2", FdmSchemeDesc::TrBDF2()}};
 
     auto it = m.find(s);
     if (it != m.end())
@@ -654,9 +708,10 @@ FdmSchemeDesc parseFdmSchemeDesc(const std::string& s) {
 }
 
 AssetClass parseAssetClass(const std::string& s) {
-    static map<string, AssetClass> assetClasses = {
-        {"EQ", AssetClass::EQ},   {"FX", AssetClass::FX}, {"COM", AssetClass::COM},  {"IR", AssetClass::IR},
-        {"INF", AssetClass::INF}, {"CR", AssetClass::CR}, {"BOND", AssetClass::BOND}, {"BOND_INDEX", AssetClass::BOND_INDEX}};
+    static map<string, AssetClass> assetClasses = {{"EQ", AssetClass::EQ},     {"FX", AssetClass::FX},
+                                                   {"COM", AssetClass::COM},   {"IR", AssetClass::IR},
+                                                   {"INF", AssetClass::INF},   {"CR", AssetClass::CR},
+                                                   {"BOND", AssetClass::BOND}, {"BOND_INDEX", AssetClass::BOND_INDEX}};
     auto it = assetClasses.find(s);
     if (it != assetClasses.end()) {
         return it->second;
@@ -781,18 +836,21 @@ YoYInflationCapFloor::Type parseYoYInflationCapFloorType(const string& s) {
     }
 }
 
-QuantExt::CrossAssetModelTypes::AssetType parseCamAssetType(const string& s) {
-    namespace CT = QuantExt::CrossAssetModelTypes;
+QuantExt::CrossAssetModel::AssetType parseCamAssetType(const string& s) {
     if (s == "IR") {
-        return CT::IR;
+        return QuantExt::CrossAssetModel::AssetType::IR;
     } else if (s == "FX") {
-        return CT::FX;
+        return QuantExt::CrossAssetModel::AssetType::FX;
     } else if (s == "INF") {
-        return CT::INF;
+        return QuantExt::CrossAssetModel::AssetType::INF;
     } else if (s == "CR") {
-        return CT::CR;
+        return QuantExt::CrossAssetModel::AssetType::CR;
     } else if (s == "EQ") {
-        return CT::EQ;
+        return QuantExt::CrossAssetModel::AssetType::EQ;
+    } else if (s == "COM") {
+        return QuantExt::CrossAssetModel::AssetType::COM;
+    } else if (s == "CrState") {
+        return QuantExt::CrossAssetModel::AssetType::CrState;
     } else {
         QL_FAIL("Unknown cross asset model type " << s);
     }
@@ -813,7 +871,8 @@ pair<string, string> parseBoostAny(const boost::any& anyType, Size precision) {
     } else if (anyType.type() == typeid(double)) {
         resultType = "double";
         double r = boost::any_cast<double>(anyType);
-        oss << std::fixed << std::setprecision(precision) << r;
+        if (r != Null<Real>())
+            oss << std::fixed << std::setprecision(precision) << r;
     } else if (anyType.type() == typeid(std::string)) {
         resultType = "string";
         std::string r = boost::any_cast<std::string>(anyType);
@@ -842,12 +901,16 @@ pair<string, string> parseBoostAny(const boost::any& anyType, Size precision) {
         if (r.size() == 0) {
             oss << "";
         } else {
-            oss << std::fixed << std::setprecision(precision) << "\"" << r[0];
+            oss << std::fixed << std::setprecision(precision) << "\"";
+            if (r[0] != Null<Real>())
+                oss << r[0];
             for (Size i = 1; i < r.size(); i++) {
-                oss << ", " << r[i];
+                oss << ", ";
+                if (r[i] != Null<Real>())
+                    oss << r[i];
             }
+            oss << "\"";
         }
-        oss << "\"";
     } else if (anyType.type() == typeid(std::vector<Date>)) {
         resultType = "vector_date";
         std::vector<Date> r = boost::any_cast<std::vector<Date>>(anyType);
@@ -889,6 +952,14 @@ pair<string, string> parseBoostAny(const boost::any& anyType, Size precision) {
         std::ostringstream tmp;
         tmp << std::setprecision(precision) << r;
         oss << std::fixed << std::regex_replace(tmp.str(), pattern, std::string(""));
+    } else if (anyType.type() == typeid(QuantLib::Array)) {
+        resultType = "array";
+        QuantLib::Array r = boost::any_cast<QuantLib::Array>(anyType);
+        oss << std::fixed << std::setprecision(precision) << r;
+    } else if (anyType.type() == typeid(QuantLib::Currency)) {
+        resultType = "currency";
+        QuantLib::Currency r = boost::any_cast<QuantLib::Currency>(anyType);
+        oss << r;
     } else {
         ALOG("Unsupported Boost::Any type");
         resultType = "unsupported_type";
@@ -968,6 +1039,41 @@ QuantLib::Rounding::Type parseRoundingType(const std::string& s) {
     }
 }
 
+Barrier::Type parseBarrierType(const std::string& s) {
+    static map<string, Barrier::Type> type = {{"DownAndIn", Barrier::Type::DownIn},
+                                              {"UpAndIn", Barrier::Type::UpIn},
+                                              {"DownAndOut", Barrier::Type::DownOut},
+                                              {"UpAndOut", Barrier::Type::UpOut},
+                                              // Maintain old versions for backwards compatibility
+                                              {"Down&In", Barrier::Type::DownIn},
+                                              {"Up&In", Barrier::Type::UpIn},
+                                              {"Down&Out", Barrier::Type::DownOut},
+                                              {"Up&Out", Barrier::Type::UpOut}};
+
+    auto it = type.find(s);
+    if (it != type.end()) {
+        return it->second;
+    } else {
+        QL_FAIL("Barrier type \"" << s << "\" not recognized");
+    }
+}
+
+DoubleBarrier::Type parseDoubleBarrierType(const std::string& s) {
+    static map<string, DoubleBarrier::Type> type = {
+        {"KnockIn", DoubleBarrier::Type::KnockIn},
+        {"KnockOut", DoubleBarrier::Type::KnockOut},
+        {"KIKO", DoubleBarrier::Type::KIKO},
+        {"KOKI", DoubleBarrier::Type::KOKI},
+    };
+
+    auto it = type.find(s);
+    if (it != type.end()) {
+        return it->second;
+    } else {
+        QL_FAIL("DoubleBarrier type \"" << s << "\" not recognized");
+    }
+}
+
 ostream& operator<<(ostream& os, InflationSwapConvention::PublicationRoll pr) {
     using IPR = InflationSwapConvention::PublicationRoll;
     if (pr == IPR::None) {
@@ -1015,11 +1121,11 @@ std::ostream& operator<<(std::ostream& os, SobolRsg::DirectionIntegers t) {
     }
 }
 
-std::ostream& operator<<(std::ostream& out, QuantExt::CrossAssetStateProcess::discretization dis) {
+std::ostream& operator<<(std::ostream& out, QuantExt::CrossAssetModel::Discretization dis) {
     switch (dis) {
-    case QuantExt::CrossAssetStateProcess::exact:
+    case QuantExt::CrossAssetModel::Discretization::Exact:
         return out << "Exact";
-    case QuantExt::CrossAssetStateProcess::euler:
+    case QuantExt::CrossAssetModel::Discretization::Euler:
         return out << "Euler";
     default:
         return out << "?";
@@ -1092,6 +1198,8 @@ CommodityQuantityFrequency parseCommodityQuantityFrequency(const string& s) {
         return CQF::PerPricingDay;
     } else if (iequals(s, "PerHour")) {
         return CQF::PerHour;
+    } else if (iequals(s, "PerHourAndCalendarDay")) {
+        return CQF::PerHourAndCalendarDay;
     } else {
         QL_FAIL("Could not parse " << s << " to CommodityQuantityFrequency");
     }
@@ -1106,6 +1214,8 @@ ostream& operator<<(ostream& os, CommodityQuantityFrequency cqf) {
         return os << "PerPricingDay";
     } else if (cqf == CQF::PerHour) {
         return os << "PerHour";
+    } else if (cqf == CQF::PerHourAndCalendarDay) {
+        return os << "PerHourAndCalendarDay";
     } else {
         QL_FAIL("Do not recognise CommodityQuantityFrequency " << static_cast<int>(cqf));
     }
@@ -1148,6 +1258,25 @@ Average::Type parseAverageType(const std::string& s) {
     }
 }
 
+QuantExt::BondIndex::PriceQuoteMethod parsePriceQuoteMethod(const std::string& s) {
+    if (s == "CurrencyPerUnit")
+        return QuantExt::BondIndex::PriceQuoteMethod::CurrencyPerUnit;
+    else if (s == "PercentageOfPar")
+        return QuantExt::BondIndex::PriceQuoteMethod::PercentageOfPar;
+    else {
+        QL_FAIL("PriceQuoteMethod '" << s << "' not recognized. Expected CurrencyPerUnit or PercentageOfPar.");
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, QuantExt::BondIndex::PriceQuoteMethod p) {
+    if (p == QuantExt::BondIndex::PriceQuoteMethod::PercentageOfPar)
+        os << "PercentageOfPar";
+    else if (p == QuantExt::BondIndex::PriceQuoteMethod::CurrencyPerUnit)
+        os << "CurrencyPerUnit";
+    else
+        os << "Unknown PriceQuoteMethod (" << static_cast<int>(p) << ")";
+    return os;
+}
 
 std::vector<std::string> getCorrelationTokens(const std::string& name) {
     // Look for & first as it avoids collisions with : which can be used in an index name
@@ -1162,6 +1291,223 @@ std::vector<std::string> getCorrelationTokens(const std::string& name) {
     QL_REQUIRE(tokens.size() == 2,
                "invalid correlation name '" << name << "', expected Index2:Index1 or Index2/Index1 or Index2&Index1");
     return tokens;
+}
+
+string fxDominance(const string& s1, const string& s2) {
+
+    // short cut for trivial inputs EUR,EUR => EUREUR
+
+    if (s1 == s2)
+        return s1 + s2;
+
+    // This should run even if we don't have s1 or s2 in our table, it should not throw
+    // It will also work if s1 == s2
+
+    static vector<string> dominance = {// Precious Metals (always are before currencies, Metal crosses are not
+                                       // common so the ordering of the actual 4 here is just the standard order we see
+                                       "XAU", "XAG", "XPT", "XPD",
+                                       // The majors (except JPY)
+                                       "EUR", "GBP", "AUD", "NZD", "USD", "CAD", "CHF", "ZAR",
+                                       // The rest - not really sure about some of these (MXNSEK anyone)
+                                       "MYR", "SGD",               // not sure of order here
+                                       "DKK", "NOK", "SEK",        // order here is correct
+                                       "HKD", "THB", "TWD", "MXN", // not sure of order here
+                                       "CNY", "CNH",
+
+                                       // JPY at the end (of majors)
+                                       "JPY",
+                                       // JPYIDR and JPYKRW - who knew!
+                                       "IDR", "KRW"};
+
+    auto p1 = std::find(dominance.begin(), dominance.end(), s1);
+    auto p2 = std::find(dominance.begin(), dominance.end(), s2);
+
+    // if both on the list - we return the first one first
+    if (p1 != dominance.end() && p2 != dominance.end()) {
+        if (p1 > p2)
+            return s2 + s1;
+        else
+            return s1 + s2;
+    }
+    // if nether on the list - we return s1+s2
+    if (p1 == dominance.end() && p2 == dominance.end()) {
+        WLOG("No dominance for either " << s1 << " or " << s2 << " assuming " << s1 + s2);
+        return s1 + s2;
+    }
+
+    // if one on the list - we return that first (unless it's JPY - in which case it's last)
+    if (s1 == "JPY")
+        return s2 + s1;
+    else if (s2 == "JPY")
+        return s1 + s2;
+    else {
+        if (p1 != dominance.end())
+            return s1 + s2;
+        else
+            return s2 + s1;
+    }
+}
+
+string normaliseFxIndex(const std::string& indexName) {
+    auto fx = ore::data::parseFxIndex(indexName);
+    std::string ccy1 = fx->sourceCurrency().code();
+    std::string ccy2 = fx->targetCurrency().code();
+    if (ore::data::fxDominance(ccy1, ccy2) != ccy1 + ccy2)
+        return ore::data::inverseFxIndex(indexName);
+    else
+        return indexName;
+}
+
+MomentType parseMomentType(const std::string& s) {
+    static map<string, MomentType> momentTypes = {
+        {"Variance", MomentType::Variance},
+        {"Volatility", MomentType::Volatility},
+    };
+    auto it = momentTypes.find(s);
+    if (it != momentTypes.end()) {
+        return it->second;
+    } else {
+        QL_FAIL("momentTypes \"" << s << "\" not recognized");
+    }
+}
+
+CreditPortfolioSensitivityDecomposition parseCreditPortfolioSensitivityDecomposition(const std::string& s) {
+    if (s == "Underlying") {
+        return CreditPortfolioSensitivityDecomposition::Underlying;
+    } else if (s == "NotionalWeighted") {
+        return CreditPortfolioSensitivityDecomposition::NotionalWeighted;
+    } else if (s == "LossWeighted") {
+        return CreditPortfolioSensitivityDecomposition::LossWeighted;
+    } else if (s == "DeltaWeighted") {
+        return CreditPortfolioSensitivityDecomposition::DeltaWeighted;
+    } else {
+        QL_FAIL("CreditPortfolioSensitivityDecomposition '"
+                << s << "' invalid, expected Underlying, NotionalWeighted, LossWeighted, DeltaWeighted");
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, const CreditPortfolioSensitivityDecomposition d) {
+    if (d == CreditPortfolioSensitivityDecomposition::Underlying) {
+        return os << "Underlying";
+    } else if (d == CreditPortfolioSensitivityDecomposition::NotionalWeighted) {
+        return os << "NotionalWeighted";
+    } else if (d == CreditPortfolioSensitivityDecomposition::LossWeighted) {
+        return os << "LossWeighted";
+    } else if (d == CreditPortfolioSensitivityDecomposition::DeltaWeighted) {
+        return os << "DeltaWeighted";
+    } else {
+        QL_FAIL("Unknonw CreditPortfolioSensitivitiyDecomposition value " << static_cast<std::size_t>(d));
+    }
+}
+
+QuantLib::Pillar::Choice parsePillarChoice(const std::string& s) {
+    /* we support
+       - the string corresponding to the enum label (preferred, first alternative below)
+       - the string generated by operator<<() in QuantLib */
+    if (s == "MaturityDate" || s == "MaturityPillarDate")
+        return QuantLib::Pillar::MaturityDate;
+    else if (s == "LastRelevantDate" || s == "LastRelevantPillarDate")
+        return QuantLib::Pillar::LastRelevantDate;
+    else if (s == "CustomDate" || s == "CustomPillarDate")
+        return QuantLib::Pillar::CustomDate;
+    else {
+        QL_FAIL("PillarChoice '" << s << "' not recognized, expected MaturityDate, LastRelevantDate, CustomDate");
+    }
+}
+
+QuantExt::McMultiLegBaseEngine::RegressorModel parseRegressorModel(const std::string& s) {
+    if (s == "Simple")
+        return McMultiLegBaseEngine::RegressorModel::Simple;
+    else if (s == "LaggedFX")
+        return McMultiLegBaseEngine::RegressorModel::LaggedFX;
+    else {
+        QL_FAIL("RegressorModel '" << s << "' not recognized, expected Simple, LaggedFX");
+    }
+}
+
+MporCashFlowMode parseMporCashFlowMode(const string& s){
+    static map<string, MporCashFlowMode> m = {{"Unspecified", MporCashFlowMode::Unspecified},
+                                              {"NonePay", MporCashFlowMode::NonePay},
+                                              {"BothPay", MporCashFlowMode::BothPay},
+                                              {"WePay", MporCashFlowMode::WePay},
+                                              {"TheyPay", MporCashFlowMode::TheyPay}};
+    auto it = m.find(s);
+    if (it != m.end()) {
+        return it->second;
+    } else {
+        QL_FAIL("Mpor cash flow mode \"" << s << "\" not recognized");
+    }
+}
+std::ostream& operator<<(std::ostream& out, MporCashFlowMode t) {
+    if (t == MporCashFlowMode::Unspecified)
+        out << "Unspecified";
+    else if (t == MporCashFlowMode::NonePay)
+        out << "NonePay";
+    else if (t == MporCashFlowMode::BothPay)
+        out << "BothPay";
+    else if (t == MporCashFlowMode::WePay)
+        out << "WePay";
+    else if (t == MporCashFlowMode::TheyPay)
+        out << "TheyPay";
+    else
+        QL_FAIL("Mpor cash flow mode not covered, expected one of 'Unspecified', 'NonePay', 'BothPay', 'WePay', "
+                "'TheyPay'.");
+    return out;
+}
+
+SabrParametricVolatility::ModelVariant parseSabrParametricVolatilityModelVariant(const std::string& s) {
+    static map<string, SabrParametricVolatility::ModelVariant> m = {
+        {"Hagan2002Lognormal", SabrParametricVolatility::ModelVariant::Hagan2002Lognormal},
+        {"Hagan2002Normal", SabrParametricVolatility::ModelVariant::Hagan2002Normal},
+        {"Hagan2002NormalZeroBeta", SabrParametricVolatility::ModelVariant::Hagan2002NormalZeroBeta},
+        {"Antonov2015FreeBoundaryNormal", SabrParametricVolatility::ModelVariant::Antonov2015FreeBoundaryNormal},
+        {"KienitzLawsonSwaynePde", SabrParametricVolatility::ModelVariant::KienitzLawsonSwaynePde},
+        {"FlochKennedy", SabrParametricVolatility::ModelVariant::FlochKennedy}};
+    auto it = m.find(s);
+    if (it != m.end()) {
+        return it->second;
+    } else {
+        QL_FAIL(
+            "SabrParametricVolatilityModelVariant '"
+            << s
+            << "' not recognized, expected one of 'Hagan2002Lognormal', 'Hagan2002Normal', 'Hagan2002NormalZeroBeta', "
+               "'Antonov2015FreeBoundaryNormal', 'KienitzLawsonSwaynePde', 'FlochKennedy'.");
+    }
+}
+
+std::ostream& operator<<(std::ostream& out, SabrParametricVolatility::ModelVariant m) {
+    if (m == SabrParametricVolatility::ModelVariant::Hagan2002Lognormal) {
+        out << "Hagan2002Lognormal";
+    } else if (m == SabrParametricVolatility::ModelVariant::Hagan2002Normal) {
+        out << "Hagan2002Normal";
+    } else if (m == SabrParametricVolatility::ModelVariant::Hagan2002NormalZeroBeta) {
+        out << "Hagan200NormalZeroBeta";
+    } else if (m == SabrParametricVolatility::ModelVariant::Antonov2015FreeBoundaryNormal) {
+        out << "AntonovNormalZeroBeta";
+    } else if (m == SabrParametricVolatility::ModelVariant::KienitzLawsonSwaynePde) {
+        out << "KienitzLawsonSwaynePde";
+    } else if (m == SabrParametricVolatility::ModelVariant::FlochKennedy) {
+        out << "FlochKennedy";
+    } else {
+        QL_FAIL("SabrParametricVolatility::ModelVariant (" << static_cast<int>(m)
+                                                           << ") not recognized. This is an internal error.");
+    }
+    return out;
+}
+
+std::ostream& operator<<(std::ostream& os, Exercise::Type type) {
+    if (type == Exercise::European) {
+        os << "European";
+    } else if (type == Exercise::Bermudan) {
+        os << "Bermudan";
+    } else if (type == Exercise::American) {
+        os << "American";
+    } else {
+        QL_FAIL("Exercise::Type (" << static_cast<int>(type)
+                                   << " not recognized. Expected 'European', 'Bermudan', or 'American'.");
+    }
+
+    return os;
 }
 
 } // namespace data

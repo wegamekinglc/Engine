@@ -30,7 +30,7 @@
 #include <ored/utilities/serializationdate.hpp>
 
 #include <boost/serialization/serialization.hpp>
-#include <boost/shared_ptr.hpp>
+#include <ql/shared_ptr.hpp>
 
 #include <vector>
 
@@ -43,15 +43,16 @@ namespace data {
 */
 struct Fixing {
     //! Fixing date
-    QuantLib::Date date;
+    QuantLib::Date date = QuantLib::Date();
     //! Index name
-    std::string name;
+    std::string name = string();
     //! Fixing amount
-    QuantLib::Real fixing;
+    QuantLib::Real fixing = QuantLib::Null<QuantLib::Real>();
 
     //! Constructor
     Fixing() {}
     Fixing(const QuantLib::Date& d, const std::string& s, const QuantLib::Real f) : date(d), name(s), fixing(f) {}
+    bool empty() { return name.empty() && date == QuantLib::Date() && fixing == QuantLib::Null<QuantLib::Real>(); }
 
 private:
     //! Serialization
@@ -63,11 +64,11 @@ private:
     }
 };
 
-//! Utility to write a vector of fixings in the QuantLib index manager's fixing history
-void applyFixings(const std::vector<Fixing>& fixings);
+//! Compare fixings
+bool operator<(const Fixing& f1, const Fixing& f2);
 
 //! Utility to write a vector of fixings in the QuantLib index manager's fixing history
-void applyDividends(const std::vector<Fixing>& dividends);
+void applyFixings(const std::set<Fixing>& fixings);
 
 } // namespace data
 } // namespace ore

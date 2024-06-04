@@ -31,14 +31,14 @@ using QuantExt::PriceTermStructure;
 namespace QuantExt {
 
 CommodityIndex::CommodityIndex(const std::string& underlyingName, const Date& expiryDate,
-    const Calendar& fixingCalendar, const Handle<QuantExt::PriceTermStructure>& curve)
+                               const Calendar& fixingCalendar, const Handle<QuantExt::PriceTermStructure>& curve)
     : underlyingName_(underlyingName), expiryDate_(expiryDate), fixingCalendar_(fixingCalendar),
       curve_(curve), keepDays_(false) {
     init();
 }
 
 CommodityIndex::CommodityIndex(const string& underlyingName, const Date& expiryDate,
-    const Calendar& fixingCalendar, bool keepDays, const Handle<PriceTermStructure>& curve)
+                               const Calendar& fixingCalendar, bool keepDays, const Handle<PriceTermStructure>& curve)
     : underlyingName_(underlyingName), expiryDate_(expiryDate), fixingCalendar_(fixingCalendar),
       curve_(curve), keepDays_(keepDays) {
     init();
@@ -71,12 +71,12 @@ void CommodityIndex::init() {
 Real CommodityIndex::fixing(const Date& fixingDate, bool forecastTodaysFixing) const {
 
     QL_REQUIRE(isValidFixingDate(fixingDate), "Commodity index " << name() << ": fixing date " <<
-        io::iso_date(fixingDate) << " is not valid");
-    QL_REQUIRE(expiryDate_ == Date() || fixingDate <= expiryDate_, "Commodity index " << name() <<
-        ": fixing requested on fixing date (" << io::iso_date(fixingDate) << ") that is past the expiry date (" <<
-        io::iso_date(expiryDate_) << ").");
-
+                                                                 io::iso_date(fixingDate) << " is not valid");
     Date today = Settings::instance().evaluationDate();
+    QL_REQUIRE(expiryDate_ == Date() || fixingDate <= expiryDate_,
+               "Commodity index " << name() << ": fixing requested on fixing date (" << io::iso_date(fixingDate)
+                                  << ") that is past the expiry date (" << io::iso_date(expiryDate_)
+                                  << "). Eval date is " << today);
 
     if (fixingDate > today || (fixingDate == today && forecastTodaysFixing))
         return forecastFixing(fixingDate);
@@ -120,17 +120,17 @@ Real CommodityIndex::forecastFixing(const Date& fixingDate) const {
         return curve_->price(fixingDate);
 }
 
-boost::shared_ptr<CommodityIndex> CommoditySpotIndex::clone(const Date& expiryDate,
-    const boost::optional<Handle<PriceTermStructure>>& ts) const {
+QuantLib::ext::shared_ptr<CommodityIndex> CommoditySpotIndex::clone(const Date& expiryDate,
+                                                            const boost::optional<Handle<PriceTermStructure>>& ts) const {
     const auto& pts = ts ? *ts : priceCurve();
-    return boost::make_shared<CommoditySpotIndex>(underlyingName(), fixingCalendar(), pts);
+    return QuantLib::ext::make_shared<CommoditySpotIndex>(underlyingName(), fixingCalendar(), pts);
 }
 
-boost::shared_ptr<CommodityIndex> CommodityFuturesIndex::clone(const Date& expiry,
-    const boost::optional<Handle<PriceTermStructure>>& ts) const {
+QuantLib::ext::shared_ptr<CommodityIndex> CommodityFuturesIndex::clone(const Date& expiry,
+                                                               const boost::optional<Handle<PriceTermStructure>>& ts) const {
     const auto& pts = ts ? *ts : priceCurve();
     const auto& ed = expiry == Date() ? expiryDate() : expiry;
-    return boost::make_shared<CommodityFuturesIndex>(underlyingName(), ed, fixingCalendar(), keepDays(), pts);
+    return QuantLib::ext::make_shared<CommodityFuturesIndex>(underlyingName(), ed, fixingCalendar(), keepDays(), pts);
 }
 
 } // namespace QuantExt

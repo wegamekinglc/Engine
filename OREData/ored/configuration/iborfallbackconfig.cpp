@@ -17,12 +17,17 @@
 */
 
 #include <ored/configuration/iborfallbackconfig.hpp>
-#include <ored/utilities/to_string.hpp>
-#include <ored/utilities/log.hpp>
 #include <ored/portfolio/structuredconfigurationwarning.hpp>
+#include <ored/utilities/log.hpp>
+#include <ored/utilities/parsers.hpp>
+#include <ored/utilities/to_string.hpp>
+
+#include <ql/time/date.hpp>
 
 namespace ore {
 namespace data {
+
+using namespace QuantLib;
 
 IborFallbackConfig::IborFallbackConfig() { clear(); }
 IborFallbackConfig::IborFallbackConfig(const bool enableIborFallbacks, const bool useRfrCurveInTodaysMarket,
@@ -82,7 +87,7 @@ void IborFallbackConfig::fromXML(XMLNode* node) {
     }
 }
 
-XMLNode* IborFallbackConfig::toXML(XMLDocument& doc) {
+XMLNode* IborFallbackConfig::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode("IborFallbackConfig");
     XMLNode* global = XMLUtils::addChild(doc, node, "GlobalSettings");
     XMLUtils::addChild(doc, global, "EnableIborFallbacks", enableIborFallbacks_);
@@ -162,9 +167,9 @@ IborFallbackConfig IborFallbackConfig::defaultConfig() {
                                     {"HKD-HIBOR-3M", FallbackData{"HKD-HONIA", 0.0072642, Date(1, Jan, 2100)}},
                                     {"HKD-HIBOR-6M", FallbackData{"HKD-HONIA", 0.0093495, Date(1, Jan, 2100)}},
                                     {"HKD-HIBOR-12M", FallbackData{"HKD-HONIA", 0.0121231, Date(1, Jan, 2100)}},
-                                    {"CAD-CDOR-1M", FallbackData{"CAD-CORRA", 0.0029547, Date(16, May, 2022)}},
-                                    {"CAD-CDOR-2M", FallbackData{"CAD-CORRA", 0.0030190, Date(16, May, 2022)}},
-                                    {"CAD-CDOR-3M", FallbackData{"CAD-CORRA", 0.0032138, Date(16, May, 2022)}},
+                                    {"CAD-CDOR-1M", FallbackData{"CAD-CORRA", 0.0029547, Date(1, July, 2024)}},
+                                    {"CAD-CDOR-2M", FallbackData{"CAD-CORRA", 0.0030190, Date(1, July, 2024)}},
+                                    {"CAD-CDOR-3M", FallbackData{"CAD-CORRA", 0.0032138, Date(1, July, 2024)}},
                                     {"CAD-CDOR-6M", FallbackData{"CAD-CORRA", 0.0049375, Date(17, May, 2021)}},
                                     {"CAD-CDOR-12M", FallbackData{"CAD-CORRA", 0.005482, Date(17, May, 2021)}},
                                     {"GBP-LIBOR-ON", FallbackData{"GBP-SONIA", -0.000024, Date(1, Jan, 2022)}},
@@ -183,7 +188,7 @@ IborFallbackConfig IborFallbackConfig::defaultConfig() {
                                     {"USD-LIBOR-12M", FallbackData{"USD-SOFR", 0.0071513, Date(1, Jul, 2023)}},
                                     {"TRY-TRLIBOR-1M", FallbackData{"TRY-TLREF", 0.0100, Date(1, July, 2022)}},
                                     {"TRY-TRLIBOR-3M", FallbackData{"TRY-TLREF", 0.0093, Date(1, July, 2022)}},
-                                    {"TRY-TRLIBOR-6M", FallbackData{"TRY-TLREF", 0.0053, Date(1, July, 2022)}}}};
+                                    {"TRY-TRLIBOR-6M", FallbackData{"TRY-TLREF", 0.0058, Date(1, July, 2022)}}}};
     return c;
 }
 
@@ -191,8 +196,10 @@ void IborFallbackConfig::updateSwitchDate(QuantLib::Date targetSwitchDate, const
     for (std::map<std::string, FallbackData>::iterator f = fallbacks_.begin(); f != fallbacks_.end(); f++) {
         if ((f->first == indexName || indexName == "") && // selected index or all of them if indexName is left blank
             f->second.switchDate > targetSwitchDate)  {   // skipping IBORs with switch dates before the target switch date
-            WLOG(StructuredConfigurationWarningMessage("IborFallbackConfig", f->first, "update switch date",
-                                                       "change switch date from " + to_string(f->second.switchDate) + " to " + to_string(targetSwitchDate)));
+            StructuredConfigurationWarningMessage("IborFallbackConfig", f->first, "",
+                                                  "Updating switch date from " + to_string(f->second.switchDate) +
+                                                      " to " + to_string(targetSwitchDate))
+                .log();
             f->second.switchDate = targetSwitchDate;
         }
     }

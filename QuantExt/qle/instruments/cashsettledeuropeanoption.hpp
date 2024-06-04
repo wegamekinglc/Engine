@@ -38,19 +38,32 @@ public:
     class arguments;
     class engine;
 
-    /*! Constructor for cash settled vanilla European option.
-     */
+    //! Constructor for cash settled vanilla European option.
     CashSettledEuropeanOption(QuantLib::Option::Type type, QuantLib::Real strike, const QuantLib::Date& expiryDate,
                               const QuantLib::Date& paymentDate, bool automaticExercise,
-                              const boost::shared_ptr<QuantLib::Index>& underlying = nullptr, bool exercised = false,
+                              const QuantLib::ext::shared_ptr<QuantLib::Index>& underlying = nullptr, bool exercised = false,
                               QuantLib::Real priceAtExercise = QuantLib::Null<QuantLib::Real>());
 
-    /*! Constructor for cash settled vanilla European option.
-     */
+    //! Constructor for cash settled vanilla European option.
     CashSettledEuropeanOption(QuantLib::Option::Type type, QuantLib::Real strike, const QuantLib::Date& expiryDate,
                               QuantLib::Natural paymentLag, const QuantLib::Calendar& paymentCalendar,
                               QuantLib::BusinessDayConvention paymentConvention, bool automaticExercise,
-                              const boost::shared_ptr<QuantLib::Index>& underlying = nullptr, bool exercised = false,
+                              const QuantLib::ext::shared_ptr<QuantLib::Index>& underlying = nullptr, bool exercised = false,
+                              QuantLib::Real priceAtExercise = QuantLib::Null<QuantLib::Real>());
+
+    //! Constructor for cash settled vanilla European option with digital payoff.
+    CashSettledEuropeanOption(QuantLib::Option::Type type, QuantLib::Real strike, QuantLib::Real cashPayoff,
+                              const QuantLib::Date& expiryDate, const QuantLib::Date& paymentDate,
+                              bool automaticExercise, const QuantLib::ext::shared_ptr<QuantLib::Index>& underlying = nullptr,
+                              bool exercised = false,
+                              QuantLib::Real priceAtExercise = QuantLib::Null<QuantLib::Real>());
+
+    //! Constructor for cash settled vanilla European option with digital payoff.
+    CashSettledEuropeanOption(QuantLib::Option::Type type, QuantLib::Real strike, QuantLib::Real cashPayoff,
+                              const QuantLib::Date& expiryDate, QuantLib::Natural paymentLag,
+                              const QuantLib::Calendar& paymentCalendar,
+                              QuantLib::BusinessDayConvention paymentConvention, bool automaticExercise,
+                              const QuantLib::ext::shared_ptr<QuantLib::Index>& underlying = nullptr, bool exercised = false,
                               QuantLib::Real priceAtExercise = QuantLib::Null<QuantLib::Real>());
 
     //! \name Instrument interface
@@ -69,7 +82,7 @@ public:
     //@{
     const QuantLib::Date& paymentDate() const;
     bool automaticExercise() const;
-    const boost::shared_ptr<QuantLib::Index>& underlying() const;
+    const QuantLib::ext::shared_ptr<QuantLib::Index>& underlying() const;
     bool exercised() const;
     QuantLib::Real priceAtExercise() const;
     //@}
@@ -77,7 +90,7 @@ public:
 private:
     QuantLib::Date paymentDate_;
     bool automaticExercise_;
-    boost::shared_ptr<QuantLib::Index> underlying_;
+    QuantLib::ext::shared_ptr<QuantLib::Index> underlying_;
     bool exercised_;
     QuantLib::Real priceAtExercise_;
 
@@ -92,7 +105,7 @@ public:
 
     QuantLib::Date paymentDate;
     bool automaticExercise;
-    boost::shared_ptr<QuantLib::Index> underlying;
+    QuantLib::ext::shared_ptr<QuantLib::Index> underlying;
     bool exercised;
     QuantLib::Real priceAtExercise;
 };

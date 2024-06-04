@@ -22,7 +22,7 @@
 
 namespace QuantExt {
 
-LgmConvolutionSolver2::LgmConvolutionSolver2(const boost::shared_ptr<LinearGaussMarkovModel>& model, const Real sy,
+LgmConvolutionSolver2::LgmConvolutionSolver2(const QuantLib::ext::shared_ptr<LinearGaussMarkovModel>& model, const Real sy,
                                              const Size ny, const Real sx, const Size nx)
     : model_(model), nx_(static_cast<int>(nx)) {
 
@@ -68,7 +68,7 @@ RandomVariable LgmConvolutionSolver2::stateGrid(const Real t) const {
     return x;
 }
 
-RandomVariable LgmConvolutionSolver2::rollback(const RandomVariable& v, const Real t1, const Real t0) const {
+RandomVariable LgmConvolutionSolver2::rollback(const RandomVariable& v, const Real t1, const Real t0, Size) const {
     if (QuantLib::close_enough(t0, t1) || v.deterministic())
         return v;
     QL_REQUIRE(t0 < t1, "LgmConvolutionSolver2::rollback(): t0 (" << t0 << ") < t1 (" << t1 << ") required.");
@@ -85,9 +85,8 @@ RandomVariable LgmConvolutionSolver2::rollback(const RandomVariable& v, const Re
             // Get value at kp by linear interpolation on
             // kk <= kp <= kk + 1 with flat extrapolation
             value +=
-                w_[i] * (kk < 0 ? v.data()[0]
-                                : (kk + 1 > 2 * mx_ ? v.data()[2 * mx_]
-                                                    : (kp - kk) * v.data()[kk + 1] + (1.0 + kk - kp) * v.data()[kk]));
+                w_[i] *
+                (kk < 0 ? v[0] : (kk + 1 > 2 * mx_ ? v[2 * mx_] : (kp - kk) * v[kk + 1] + (1.0 + kk - kp) * v[kk]));
         }
         return RandomVariable(2 * mx_ + 1, value);
     } else {
@@ -104,11 +103,10 @@ RandomVariable LgmConvolutionSolver2::rollback(const RandomVariable& v, const Re
                 int kk = int(floor(kp));
                 // Get value at kp by linear interpolation on
                 // kk <= kp <= kk + 1 with flat extrapolation
-                value.data()[k] +=
-                    w_[i] * (kk < 0
-                                 ? v.data()[0]
-                                 : (kk + 1 > 2 * mx_ ? v.data()[2 * mx_]
-                                                     : (kp - kk) * v.data()[kk + 1] + (1.0 + kk - kp) * v.data()[kk]));
+                value.set(k, value[k] + w_[i] * (kk < 0 ? v[0]
+                                                        : (kk + 1 > 2 * mx_
+                                                               ? v[2 * mx_]
+                                                               : (kp - kk) * v[kk + 1] + (1.0 + kk - kp) * v[kk])));
             }
         }
         return value;

@@ -1,6 +1,7 @@
 /*
   Copyright (C) 2021 Skandinaviska Enskilda Banken AB (publ)
   All rights reserved.
+
   This file is part of ORE, a free-software/open-source library
   for transparent pricing and risk analysis - http://opensourcerisk.org
   ORE is free software: you can redistribute it and/or modify it
@@ -92,6 +93,17 @@
      EquityEuropeanAsianOptionACGAPEngineBuilder()
          : EuropeanAsianOptionACGAPEngineBuilder("BlackScholesMerton", {"EquityAsianOptionGeometricPrice"},
                                                  AssetClass::EQ) {}
+ };
+
+ //! Discrete Analytic TW Engine Builder for European Asian Equity Arithmetic Average Price Options
+ /*! Pricing engines are cached by asset/currency
+     \ingroup builders
+  */
+ class EquityEuropeanAsianOptionTWEngineBuilder : public EuropeanAsianOptionTWEngineBuilder {
+ public:
+     EquityEuropeanAsianOptionTWEngineBuilder()
+         : EuropeanAsianOptionTWEngineBuilder("BlackScholesMerton", {"EquityAsianOptionArithmeticPrice"},
+                                              AssetClass::EQ) {}
  };
 
  } // namespace data

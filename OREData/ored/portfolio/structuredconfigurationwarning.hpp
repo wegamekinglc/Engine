@@ -30,27 +30,17 @@ namespace ore {
 namespace data {
 
 //! Utility classes for Structured warnings, contains the configuration type and ID (NettingSetId, CounterParty, etc.)
-class StructuredConfigurationWarningMessage : public StructuredErrorMessage {
+class StructuredConfigurationWarningMessage : public StructuredMessage {
 public:
     StructuredConfigurationWarningMessage(const std::string& configurationType, const std::string& configurationId,
-                                          const std::string& warningType, const std::string warningWhat)
-        : configurationType_(configurationType), configurationId_(configurationId), warningType_(warningType),
-          warningWhat_(warningWhat) {}
-
-    const std::string& configurationType() const { return configurationType_; }
-    const std::string& configurationId() const { return configurationId_; }
-    const std::string& warningType() const { return warningType_; }
-    const std::string& warningWhat() const { return warningWhat_; }
-
-protected:
-    std::string json() const override {
-        return "{ \"errorType\":\"Configuration Warning\", \"configType\":\"" + configurationType_ + "\"," +
-               " \"configId\":\"" + configurationId_ + "\"," + " \"warningType\":\"" + warningType_ + "\"," +
-               " \"warningMessage\":\"" + jsonify(warningWhat_) + "\"}";
+                                          const std::string& warningType, const std::string& warningWhat,
+                                          const std::map<std::string, std::string>& subFields = {})
+        : StructuredMessage(Category::Warning, Group::Configuration, warningWhat,
+                            std::map<std::string, std::string>({{"warningType", warningType},
+                                                                {"configurationType", configurationType},
+                                                                {"configurationId", configurationId}})) {
+        addSubFields(subFields);
     }
-
-private:
-    std::string configurationType_, configurationId_, warningType_, warningWhat_;
 };
 
 } // namespace data

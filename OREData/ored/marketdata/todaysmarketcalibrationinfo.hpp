@@ -91,10 +91,23 @@ struct YoYInflationCurveCalibrationInfo : public InflationCurveCalibrationInfo {
     std::vector<double> yoyRates;
 };
 
+// commodity curves
+
+struct CommodityCurveCalibrationInfo {
+    virtual ~CommodityCurveCalibrationInfo() = default;
+    std::string dayCounter;
+    std::string calendar;
+    std::string currency;
+    std::string interpolationMethod;
+    std::vector<QuantLib::Date> pillarDates;
+    std::vector<QuantLib::Real> futurePrices;
+    std::vector<QuantLib::Real> times;
+};
+
 // fx, eq vols
 
-struct FxEqVolCalibrationInfo {
-    virtual ~FxEqVolCalibrationInfo() {}
+struct FxEqCommVolCalibrationInfo {
+    virtual ~FxEqCommVolCalibrationInfo() {}
     std::string dayCounter;
     std::string calendar;
     std::string atmType;
@@ -116,6 +129,10 @@ struct FxEqVolCalibrationInfo {
     std::vector<std::vector<double>> deltaGridStrikes;
     std::vector<std::vector<double>> deltaGridProb;
     std::vector<std::vector<double>> deltaGridImpliedVolatility;
+    std::vector<std::vector<double>> deltaCallPrices;
+    std::vector<std::vector<double>> deltaPutPrices;
+    std::vector<std::vector<double>> moneynessCallPrices;
+    std::vector<std::vector<double>> moneynessPutPrices;
     std::vector<std::vector<bool>> moneynessGridCallSpreadArbitrage;
     std::vector<std::vector<bool>> moneynessGridButterflyArbitrage;
     std::vector<std::vector<bool>> moneynessGridCalendarArbitrage;
@@ -156,17 +173,21 @@ struct IrVolCalibrationInfo {
 struct TodaysMarketCalibrationInfo {
     QuantLib::Date asof;
     // discount, index and yield curves
-    std::map<std::string, boost::shared_ptr<YieldCurveCalibrationInfo>> yieldCurveCalibrationInfo;
+    std::map<std::string, QuantLib::ext::shared_ptr<YieldCurveCalibrationInfo>> yieldCurveCalibrationInfo;
     // equity dividend yield curves
-    std::map<std::string, boost::shared_ptr<YieldCurveCalibrationInfo>> dividendCurveCalibrationInfo;
+    std::map<std::string, QuantLib::ext::shared_ptr<YieldCurveCalibrationInfo>> dividendCurveCalibrationInfo;
     // inflation curves
-    std::map<std::string, boost::shared_ptr<InflationCurveCalibrationInfo>> inflationCurveCalibrationInfo;
+    std::map<std::string, QuantLib::ext::shared_ptr<InflationCurveCalibrationInfo>> inflationCurveCalibrationInfo;
+    // commodity curves
+    std::map<std::string, QuantLib::ext::shared_ptr<CommodityCurveCalibrationInfo>> commodityCurveCalibrationInfo;
     // fx vols
-    std::map<std::string, boost::shared_ptr<FxEqVolCalibrationInfo>> fxVolCalibrationInfo;
+    std::map<std::string, QuantLib::ext::shared_ptr<FxEqCommVolCalibrationInfo>> fxVolCalibrationInfo;
     // eq vols
-    std::map<std::string, boost::shared_ptr<FxEqVolCalibrationInfo>> eqVolCalibrationInfo;
+    std::map<std::string, QuantLib::ext::shared_ptr<FxEqCommVolCalibrationInfo>> eqVolCalibrationInfo;
     // ir vols (swaption, capfloor)
-    std::map<std::string, boost::shared_ptr<IrVolCalibrationInfo>> irVolCalibrationInfo;
+    std::map<std::string, QuantLib::ext::shared_ptr<IrVolCalibrationInfo>> irVolCalibrationInfo;
+    // comm vols
+    std::map<std::string, QuantLib::ext::shared_ptr<FxEqCommVolCalibrationInfo>> commVolCalibrationInfo;
 };
 
 } // namespace data

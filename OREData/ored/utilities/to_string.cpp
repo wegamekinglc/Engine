@@ -22,7 +22,11 @@
 */
 
 #include <ored/utilities/to_string.hpp>
+#include <ored/utilities/log.hpp>
+
 #include <ql/errors.hpp>
+
+#include <iostream>
 #include <stdio.h>
 
 #ifdef _MSC_VER
@@ -34,9 +38,11 @@ using std::string;
 namespace ore {
 namespace data {
 
-std::string to_string(const QuantLib::Date& date) {
-    if (date == QuantLib::Date())
-        return "1900-01-01";
+using namespace QuantLib;
+
+std::string to_string(const Date& date) {
+    if (date == Date())
+        return "1901-01-01";
 
     char buf[11];
     int y = date.year();
@@ -49,6 +55,52 @@ std::string to_string(const QuantLib::Date& date) {
 }
 
 string to_string(bool aBool) { return aBool ? "true" : "false"; }
+
+std::string to_string(const Period& period) {
+    Integer n = period.length();
+    Integer m = 0;
+    std::ostringstream o;
+    switch (period.units()) {
+    case Days:
+        if (n>=7) {
+	    m = n/7;
+	    o << m << "W";
+	    n = n%7;
+	}
+	if (n != 0 || m == 0) {
+	    o << n << "D";
+	    return o.str();
+	}
+	else {
+	    return o.str();
+	}
+    case Weeks: {
+        o << n << "W";
+	return o.str();
+    }
+    case Months:
+        if (n>=12) {
+	    m = n/12;
+	    o << n/12 << "Y";
+	    n = n%12;
+	}
+	if (n != 0 || m == 0) {
+	    o << n << "M";
+	    return o.str();
+	}
+	else {
+	    return o.str();
+	}
+    case Years: {
+        o << n << "Y";
+	return o.str();
+    }
+    default:
+        ALOG("unknown time unit (" << Integer(period.units()) << ")");
+	o << period;
+	return o.str();
+    }
+}
 
 } // namespace data
 } // namespace ore

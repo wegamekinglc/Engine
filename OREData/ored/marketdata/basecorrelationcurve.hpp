@@ -27,14 +27,12 @@
 #include <ored/marketdata/curvespec.hpp>
 #include <ored/marketdata/loader.hpp>
 
-#include <ql/experimental/credit/basecorrelationstructure.hpp>
+#include <qle/termstructures/credit/basecorrelationstructure.hpp>
 
 namespace ore {
 namespace data {
 
 class ReferenceDataManager;
-
-typedef QuantLib::BaseCorrelationTermStructure<QuantLib::BilinearInterpolation> BilinearBaseCorrelationTermStructure;
 
 //! Wrapper class for building Base Correlation structures
 //! \ingroup curves
@@ -43,20 +41,20 @@ public:
     BaseCorrelationCurve() {}
     BaseCorrelationCurve(QuantLib::Date asof, BaseCorrelationCurveSpec spec, const Loader& loader,
                          const CurveConfigurations& curveConfigs,
-        const boost::shared_ptr<ReferenceDataManager>& referenceData = nullptr);
+        const QuantLib::ext::shared_ptr<ReferenceDataManager>& referenceData = nullptr);
 
     //! \name Inspectors
     //@{
     const BaseCorrelationCurveSpec& spec() const { return spec_; }
     //! Base Correlation term structure
-    const boost::shared_ptr<BilinearBaseCorrelationTermStructure>& baseCorrelationTermStructure() const {
+    const QuantLib::ext::shared_ptr<QuantExt::BaseCorrelationTermStructure>& baseCorrelationTermStructure() const {
         return baseCorrelation_;
     }
     //@}
 private:
     BaseCorrelationCurveSpec spec_;
-    boost::shared_ptr<BilinearBaseCorrelationTermStructure> baseCorrelation_;
-    boost::shared_ptr<ReferenceDataManager> referenceData_;
+    QuantLib::ext::shared_ptr<QuantExt::BaseCorrelationTermStructure> baseCorrelation_;
+    QuantLib::ext::shared_ptr<ReferenceDataManager> referenceData_;
 
     /*! Use the reference data to adjust the detachment points, \p detachPoints, for existing losses if requested.
     */

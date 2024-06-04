@@ -28,6 +28,127 @@ using namespace QuantLib;
 namespace ore {
 namespace data {
 
+namespace {
+QuantLib::ext::shared_ptr<MarketDatum> makeDummyMarketDatum(const Date& d, const std::string& name) {
+    return QuantLib::ext::make_shared<MarketDatum>(0.0, d, name, MarketDatum::QuoteType::NONE,
+                                           MarketDatum::InstrumentType::NONE);
+}
+} // namespace
+
+std::vector<QuantLib::ext::shared_ptr<MarketDatum>> InMemoryLoader::loadQuotes(const QuantLib::Date& d) const {
+    auto it = data_.find(d);
+    if(it == data_.end())
+	return {};
+    return std::vector<QuantLib::ext::shared_ptr<MarketDatum>>(it->second.begin(), it->second.end());
+}
+
+QuantLib::ext::shared_ptr<MarketDatum> InMemoryLoader::get(const string& name, const QuantLib::Date& d) const {
+    auto it = data_.find(d);
+    QL_REQUIRE(it != data_.end(), "No datum for " << name << " on date " << d);
+    auto it2 = it->second.find(makeDummyMarketDatum(d, name));
+    QL_REQUIRE(it2 != it->second.end(), "No datum for " << name << " on date " << d);
+    return *it2;
+}
+
+std::set<QuantLib::ext::shared_ptr<MarketDatum>> InMemoryLoader::get(const std::set<std::string>& names,
+                                                             const QuantLib::Date& asof) const {
+    auto it = data_.find(asof);
+    if(it == data_.end())
+        return {};
+    std::set<QuantLib::ext::shared_ptr<MarketDatum>> result;
+    for (auto const& n : names) {
+        auto it2 = it->second.find(makeDummyMarketDatum(asof, n));
+        if (it2 != it->second.end())
+            result.insert(*it2);
+    }
+    return result;
+}
+
+std::set<QuantLib::ext::shared_ptr<MarketDatum>> InMemoryLoader::get(const Wildcard& wildcard,
+                                                             const QuantLib::Date& asof) const {
+    if (!wildcard.hasWildcard()) {
+        // no wildcard => use get by name function
+        try {
+            return {get(wildcard.pattern(), asof)};
+        } catch (...) {
+        }
+        return {};
+    }
+    auto it = data_.find(asof);
+    if (it == data_.end())
+        return {};
+    std::set<QuantLib::ext::shared_ptr<MarketDatum>> result;
+    std::set<QuantLib::ext::shared_ptr<MarketDatum>>::iterator it1, it2;
+    if (wildcard.wildcardPos() == 0) {
+        // wildcard at first position => we have to search all of the data
+        it1 = it->second.begin();
+        it2 = it->second.end();
+    } else {
+        // search the range matching the substring of the pattern until the wildcard
+        std::string prefix = wildcard.pattern().substr(0, wildcard.wildcardPos());
+        it1 = it->second.lower_bound(makeDummyMarketDatum(asof, prefix));
+        it2 = it->second.upper_bound(makeDummyMarketDatum(asof, prefix + "\xFF"));
+    }
+    for (auto it = it1; it != it2; ++it) {
+        if (wildcard.isPrefix() || wildcard.matches((*it)->name()))
+            result.insert(*it);
+    }
+    return result;
+}
+
+bool InMemoryLoader::hasQuotes(const QuantLib::Date& d) const {
+    auto it = data_.find(d);
+    return it != data_.end();
+}
+
+void InMemoryLoader::add(QuantLib::Date date, const string& name, QuantLib::Real value) {
+    QuantLib::ext::shared_ptr<MarketDatum> md;
+    try {
+        md = parseMarketDatum(date, name, value);
+    } catch (std::exception& e) {
+        WLOG("Failed to parse MarketDatum " << name << ": " << e.what());
+    }
+    if (md != nullptr) {
+        std::pair<bool, string> addFX = {true, ""};
+        if (md->instrumentType() == MarketDatum::InstrumentType::FX_SPOT &&
+            md->quoteType() == MarketDatum::QuoteType::RATE) {
+            addFX = checkFxDuplicate(md, date);
+            if (!addFX.second.empty()) {
+                auto it = data_[date].find(makeDummyMarketDatum(date, addFX.second));
+                TLOG("Replacing MarketDatum " << addFX.second << " with " << name << " due to FX Dominance.");
+                if (it != data_[date].end())
+					data_[date].erase(it);
+			}
+		}
+        if (addFX.first && data_[date].insert(md).second) {
+            TLOG("Added MarketDatum " << name);
+        } else if (!addFX.first) {
+            WLOG("Skipped MarketDatum " << name << " - dominant FX already present.")
+        } else {
+            WLOG("Skipped MarketDatum " << name << " - this is already present.");
+        }
+    }
+}
+
+void InMemoryLoader::addFixing(QuantLib::Date date, const string& name, QuantLib::Real value) {
+    if (!fixings_.insert(Fixing(date, name, value)).second) {
+        WLOG("Skipped Fixing " << name << "@" << QuantLib::io::iso_date(date) << " - this is already present.");
+    }
+}
+
+void InMemoryLoader::addDividend(const QuantExt::Dividend& dividend) {
+    if (!dividends_.insert(dividend).second) {
+        WLOG("Skipped Dividend " << dividend.name << "@" << QuantLib::io::iso_date(dividend.exDate) << " - this is already present.");
+    }
+}
+
+void InMemoryLoader::reset() {
+    data_.clear();
+    fixings_.clear();
+    dividends_.clear();
+    actualDate_ = Date();
+}
+
 void load(InMemoryLoader& loader, const vector<string>& data, bool isMarket, bool implyTodaysFixings) {
     LOG("MemoryLoader started");
 

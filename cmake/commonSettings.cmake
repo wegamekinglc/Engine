@@ -1,28 +1,70 @@
 include(CheckCXXCompilerFlag)
+if(CMAKE_MINOR_VERSION GREATER 18 OR CMAKE_MINOR_VERSION EQUAL 18)
+    include(CheckLinkerFlag)
+endif()
 
 option(MSVC_LINK_DYNAMIC_RUNTIME "Link against dynamic runtime" ON)
 option(MSVC_PARALLELBUILD "Use flag /MP" ON)
 
+option(QL_USE_PCH OFF)
+
+# define build type clang address sanitizer + undefined behaviour + LIBCPP assertions, but keep O2
+set(CMAKE_CXX_FLAGS_CLANG_ASAN_O2 "-fsanitize=address,undefined -fno-omit-frame-pointer -D_LIBCPP_ENABLE_ASSERTIONS=1 -g -O2")
+
 # add compiler flag, if not already present
 macro(add_compiler_flag flag supportsFlag)
     check_cxx_compiler_flag(${flag} ${supportsFlag})
-
     if(${supportsFlag} AND NOT "${CMAKE_CXX_FLAGS}" MATCHES "${flag}")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flag}")
     endif()
 endmacro()
 
-# use CXX 11 and std::unique_ptr in QuantLib (instead of std::auto_ptr, which is deprecated in C++11)
-set(CMAKE_CXX_STANDARD 11)
+# add linker flag for shared libs and exe, if not already present
+macro(add_linker_flag flag supportsFlag)
+    check_linker_flag(CXX ${flag} ${supportsFlag})
+    if(${supportsFlag} AND NOT "${CMAKE_SHARED_LINKER_FLAGS}" MATCHES "${flag}")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${flag}")
+    endif()
+    if(${supportsFlag} AND NOT "${CMAKE_EXE_LINKER_FLAGS}" MATCHES "${flag}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${flag}")
+    endif()
+endmacro()
+
+# use CXX 17, disable gnu extensions
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_EXTENSIONS FALSE)
+
+# If available, use PIC for shared libs and PIE for executables
+if (NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+if (CMAKE_POSITION_INDEPENDENT_CODE)
+    # cmake policy CMP0083: add PIE support if possible (need cmake 3.14)
+    include(CheckPIESupported)
+    check_pie_supported()
+endif()
+
+# set compiler macro if open cl is enabled
+if (ORE_ENABLE_OPENCL)
+  add_compile_definitions(ORE_ENABLE_OPENCL)
+endif()
+
 
 # On single-configuration builds, select a default build type that gives the same compilation flags as a default autotools build.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo")
 endif()
 
+if(NOT DONT_SET_QL_INCLUDE_DIR_FIRST)
+   # add build/QuantLib as first include directory to make sure we include QL's cmake-configured files
+    include_directories("${PROJECT_BINARY_DIR}/QuantLib")
+endif()
+
 if(MSVC)
     set(BUILD_SHARED_LIBS OFF)
-
+    add_compile_definitions(_WINVER=0x0601)
+    add_compile_definitions(_WIN32_WINNT=0x0601)
+    add_compile_definitions(BOOST_USE_WINAPI_VERSION=0x0601)
     # build static libs always
     set(CMAKE_MSVC_RUNTIME_LIBRARY
         "MultiThreaded$<$<CONFIG:Debug>:Debug>$<$<BOOL:${MSVC_LINK_DYNAMIC_RUNTIME}>:DLL>")
@@ -45,30 +87,55 @@ if(MSVC)
         endif()
     endif()
 
+
+
     IF(NOT Boost_USE_STATIC_LIBS)
         add_definitions(-DBOOST_ALL_DYN_LINK)
         add_definitions(-DBOOST_TEST_DYN_LINK)
     endif()
-
-    add_compiler_flag("-D_SCL_SECURE_NO_DEPRECATE" supports_D_SCL_SECURE_NO_DEPRECATE)
-    add_compiler_flag("-D_CRT_SECURE_NO_DEPRECATE" supports_D_CRT_SECURE_NO_DEPRECATE)
-    add_compiler_flag("-DBOOST_ENABLE_ASSERT_HANDLER" enableAssertionHandler)
-    add_compiler_flag("/bigobj" supports_bigobj)
-    add_compiler_flag("/W3" supports_w3)
-
-    add_compiler_flag("/we4189" unused_variable_mscv)
-    add_compiler_flag("/wd4834" deactivate_discrading_return_value)
-
+    add_compile_options(/external:env:BOOST)
+    add_compile_options(/external:W0)
+    add_compile_definitions(_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
+    add_compile_definitions(_SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING)
+    add_compile_definitions(_SCL_SECURE_NO_DEPRECATE)
+    add_compile_definitions(_CRT_SECURE_NO_DEPRECATE)
+    add_compile_definitions(BOOST_ENABLE_ASSERT_HANDLER)
+    add_compile_options(/bigobj)
+    add_compile_options(/W3)
+    #add_compile_options(/we4265) #no-virtual-destructor
+    #add_compile_options(/we4388) # 'equality-operator' : signed/unsigned mismatch
+    add_compile_options(/we5038) # reorder
+    # add_compile_options(/we4101) # unreferenced local variable (too strict)
+    add_compile_options(/we4189) # 'identifier' : local variable is initialized but not referenced
+    add_compile_options(/we4700) # uninitialized local variable 'name' used
+    add_compile_options(/we5233) # unused lambda
+    add_compile_options(/we4508) # 'function' : function should return a value; 'void' return type assumed
+    add_compile_options(/wd4834)
+    add_compile_options(/we26815) # dangling references/pointer
     # add_compiler_flag("/we4389" signed_compare_mscv)
-    add_compiler_flag("/we5038" reorder_msvc)
+
+    add_link_options(/LARGEADDRESSAWARE)
+
+    add_compile_options("$<$<CONFIG:Release>:/GF>")
+    add_compile_options("$<$<CONFIG:Release>:/Gy>")
+    add_compile_options("$<$<CONFIG:Release>:/Ot>")
+    add_compile_options("$<$<CONFIG:Release>:/GT>")
+
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:/GF>")
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:/Gy>")
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:/GT>")
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:/Oi>")
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:/Ot>")
 
     if(MSVC_PARALLELBUILD)
-        add_compiler_flag("/MP" parallel_build)
+        add_compile_options(/MP)
     endif()
 
 else()
-    # build shared libs always
-    set(BUILD_SHARED_LIBS ON)
+    if (NOT DEFINED BUILD_SHARED_LIBS)
+        # build shared libs always
+        set(BUILD_SHARED_LIBS ON)
+    endif()
 
     # link against dynamic boost libraries
     add_definitions(-DBOOST_ALL_DYN_LINK)
@@ -82,6 +149,19 @@ else()
         add_definitions(-DBOOST_UBLAS_NDEBUG)
     endif()
 
+    # add pthread flag
+    add_compiler_flag("-pthread" usePThreadCompilerFlag)
+    if(CMAKE_MINOR_VERSION GREATER 18 OR CMAKE_MINOR_VERSION EQUAL 18)
+        add_linker_flag("-pthread" usePThreadLinkerFlag)
+    endif()
+
+    if(QL_USE_PCH)
+      # see https://ccache.dev/manual/4.8.3.html#_precompiled_headers
+      add_compiler_flag("-Xclang -fno-pch-timestamp" supportsNoPchTimestamp)
+      # needed for gcc, although the ccache documentation does not strictly require this
+      add_compiler_flag("-fpch-preprocess" supportsPchPreprocess)
+    endif()
+
     # enable boost assert handler
     add_compiler_flag("-DBOOST_ENABLE_ASSERT_HANDLER" enableAssertionHandler)
 
@@ -92,7 +172,8 @@ else()
 
     # turn the following warnings into errors
     add_compiler_flag("-Werror=non-virtual-dtor" supportsNonVirtualDtor)
-    add_compiler_flag("-Werror=sign-compare" supportsSignCompare)
+    # the line below breaks the linux build
+    #add_compiler_flag("-Werror=sign-compare" supportsSignCompare)
     add_compiler_flag("-Werror=float-conversion" supportsWfloatConversion)
     add_compiler_flag("-Werror=reorder" supportsReorder)
     add_compiler_flag("-Werror=unused-variable" supportsUnusedVariable)
@@ -101,19 +182,25 @@ else()
     add_compiler_flag("-Werror=unused-lambda-capture" supportsUnusedLambdaCapture)
     add_compiler_flag("-Werror=return-type" supportsReturnType)
     add_compiler_flag("-Werror=unused-function" supportsUnusedFunction)
-    add_compiler_flag("-Werror=suggest-override" supportsSuggestOverride)
+    # the line below breaks the linux build
+    #add_compiler_flag("-Werror=suggest-override" supportsSuggestOverride)
     add_compiler_flag("-Werror=inconsistent-missing-override" supportsInconsistentMissingOverride)
 
     # disable some warnings
     add_compiler_flag("-Wno-unknown-pragmas" supportsNoUnknownPragmas)
 
-    # add build/QuantLib as first include directory to make sure we include QL's cmake-configured files
-    include_directories("${PROJECT_BINARY_DIR}/QuantLib")
+    # disable warnings from boost
+    add_compiler_flag("--system-header-prefix=boost/" supportsSystemHeaderPrefixBoost)
 
-    # similar if QuantLib is build separately
+    # add build/QuantLib as first include directory to make sure we include QL's cmake-configured files
+    # if QuantLib is build separately
     include_directories("${CMAKE_CURRENT_LIST_DIR}/../QuantLib/build")
+
+
 endif()
 
+# workaround when building with boost 1.81, see https://github.com/boostorg/phoenix/issues/111
+add_definitions(-DBOOST_PHOENIX_STL_TUPLE_H_)
 
 # set library locations
 get_filename_component(QUANTLIB_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../QuantLib" ABSOLUTE)
@@ -122,6 +209,12 @@ get_filename_component(OREDATA_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../OREData"
 get_filename_component(OREANALYTICS_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../OREAnalytics" ABSOLUTE)
 get_filename_component(ORETEST_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../ORETest" ABSOLUTE)
 get_filename_component(RAPIDXML_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../ThirdPartyLibs/rapidxml-1.13" ABSOLUTE)
+
+# parallel unit test runner
+option(ORE_ENABLE_PARALLEL_UNIT_TEST_RUNNER "Enable the parallel unit test runner" OFF)
+if (ORE_ENABLE_PARALLEL_UNIT_TEST_RUNNER)
+    add_definitions(-DORE_ENABLE_PARALLEL_UNIT_TEST_RUNNER)
+endif()
 
 # convenience function that adds a link directory dir, but only if it exists
 function(add_link_directory_if_exists dir)
@@ -151,7 +244,7 @@ macro(get_library_name LIB_NAME OUTPUT_NAME)
         else()
             set(CMAKE_DEBUG_POSTFIX "-gd")
         endif()
-    
+
 
         set(${OUTPUT_NAME} "${LIB_NAME}${LIB_PLATFORM}${LIB_THREAD_OPT}${LIB_RT_OPT}")
     else()

@@ -22,6 +22,8 @@
 #include <qle/models/cpicapfloorhelper.hpp>
 #include <qle/models/infdkparametrization.hpp>
 #include <qle/pricingengines/cpiblackcapfloorengine.hpp>
+#include <qle/pricingengines/cpibacheliercapfloorengine.hpp>
+#include <qle/utilities/inflation.hpp>
 
 #include <ored/model/calibrationinstruments/cpicapfloor.hpp>
 #include <ored/model/inflation/infdkbuilder.hpp>
@@ -31,6 +33,7 @@
 #include <ored/utilities/parsers.hpp>
 #include <ored/utilities/strike.hpp>
 
+
 using namespace QuantLib;
 using namespace QuantExt;
 using namespace std;
@@ -38,7 +41,7 @@ using namespace std;
 namespace ore {
 namespace data {
 
-InfDkBuilder::InfDkBuilder(const boost::shared_ptr<ore::data::Market>& market, const boost::shared_ptr<InfDkData>& data,
+InfDkBuilder::InfDkBuilder(const QuantLib::ext::shared_ptr<ore::data::Market>& market, const QuantLib::ext::shared_ptr<InfDkData>& data,
                            const std::string& configuration, const std::string& referenceCalibrationGrid,
                            const bool dontCalibrate)
     : market_(market), configuration_(configuration), data_(data), referenceCalibrationGrid_(referenceCalibrationGrid),
@@ -53,11 +56,11 @@ InfDkBuilder::InfDkBuilder(const boost::shared_ptr<ore::data::Market>& market, c
         optionActive_ = vector<bool>(cb.instruments().size(), false);
     }
 
-    marketObserver_ = boost::make_shared<MarketObserver>();
+    marketObserver_ = QuantLib::ext::make_shared<MarketObserver>();
 
     // get market data
     inflationIndex_ =
-        boost::dynamic_pointer_cast<ZeroInflationIndex>(*market_->zeroInflationIndex(data_->index(), configuration_));
+        QuantLib::ext::dynamic_pointer_cast<ZeroInflationIndex>(*market_->zeroInflationIndex(data_->index(), configuration_));
     QL_REQUIRE(inflationIndex_, "DkBuilder: requires ZeroInflationIndex, got " << data_->index());
     rateCurve_ = market_->discountCurve(inflationIndex_->currency().code(), configuration_);
     infVol_ = market_->cpiInflationCapFloorVolatilitySurface(data_->index(), configuration_);
@@ -125,16 +128,16 @@ InfDkBuilder::InfDkBuilder(const boost::shared_ptr<ore::data::Market>& market, c
     if (reversion.reversionType() == LgmData::ReversionType::HullWhite &&
         volatility.volatilityType() == LgmData::VolatilityType::HullWhite) {
         DLOG("INF parametrization: InfDkPiecewiseConstantHullWhiteAdaptor");
-        parametrization_ = boost::make_shared<InfDkPiecewiseConstantHullWhiteAdaptor>(
+        parametrization_ = QuantLib::ext::make_shared<InfDkPiecewiseConstantHullWhiteAdaptor>(
             inflationIndex_->currency(), inflationIndex_->zeroInflationTermStructure(), aTimes, alpha, hTimes, h,
             data_->index());
     } else if (reversion.reversionType() == LgmData::ReversionType::HullWhite) {
         DLOG("INF parametrization for " << data_->index() << ": InfDkPiecewiseConstant");
-        parametrization_ = boost::make_shared<InfDkPiecewiseConstantParametrization>(
+        parametrization_ = QuantLib::ext::make_shared<InfDkPiecewiseConstantParametrization>(
             inflationIndex_->currency(), inflationIndex_->zeroInflationTermStructure(), aTimes, alpha, hTimes, h,
             data_->index());
     } else {
-        parametrization_ = boost::make_shared<InfDkPiecewiseLinearParametrization>(
+        parametrization_ = QuantLib::ext::make_shared<InfDkPiecewiseLinearParametrization>(
             inflationIndex_->currency(), inflationIndex_->zeroInflationTermStructure(), aTimes, alpha, hTimes, h,
             data_->index());
         DLOG("INF parametrization for " << data_->index() << ": InfDkPiecewiseLinear");
@@ -160,12 +163,12 @@ InfDkBuilder::InfDkBuilder(const boost::shared_ptr<ore::data::Market>& market, c
     }
 }
 
-boost::shared_ptr<QuantExt::InfDkParametrization> InfDkBuilder::parametrization() const {
+QuantLib::ext::shared_ptr<QuantExt::InfDkParametrization> InfDkBuilder::parametrization() const {
     calculate();
     return parametrization_;
 }
 
-std::vector<boost::shared_ptr<BlackCalibrationHelper>> InfDkBuilder::optionBasket() const {
+std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>> InfDkBuilder::optionBasket() const {
     calculate();
     return optionBasket_;
 }
@@ -177,13 +180,16 @@ bool InfDkBuilder::requiresRecalibration() const {
 
 void InfDkBuilder::performCalculations() const {
     if (requiresRecalibration()) {
-        // reset market observer updated flag
-        marketObserver_->hasUpdated(true);
         // build option basket
         buildCapFloorBasket();
-        // update vol cache
-        volSurfaceChanged(true);
     }
+}
+
+void InfDkBuilder::setCalibrationDone() const {
+    // reset market observer updated flag
+    marketObserver_->hasUpdated(true);
+    // update vol cache
+    volSurfaceChanged(true);
 }
 
 Date InfDkBuilder::optionMaturityDate(const Size j) const {
@@ -191,7 +197,7 @@ Date InfDkBuilder::optionMaturityDate(const Size j) const {
     const auto& ci = data_->calibrationBaskets()[0].instruments();
     QL_REQUIRE(j < ci.size(), "InfDkBuilder::optionMaturityDate(" << j << "): out of bounds, got " << ci.size()
                                                                   << " calibration instruments");
-    auto cf = boost::dynamic_pointer_cast<CpiCapFloor>(ci.at(j));
+    auto cf = QuantLib::ext::dynamic_pointer_cast<CpiCapFloor>(ci.at(j));
     QL_REQUIRE(cf, "InfDkBuilder::optionMaturityDate("
                        << j << "): expected CpiCapFloor calibration instruments, could not cast");
     Date res = optionMaturity(cf->maturity(), inflationIndex_->fixingCalendar());
@@ -203,7 +209,7 @@ Real InfDkBuilder::optionStrikeValue(const Size j) const {
     const auto& ci = data_->calibrationBaskets()[0].instruments();
     QL_REQUIRE(j < ci.size(), "InfDkBuilder::optionMaturityDate(" << j << "): out of bounds, got " << ci.size()
                                                                   << " calibration instruments");
-    auto cf = boost::dynamic_pointer_cast<CpiCapFloor>(ci.at(j));
+    auto cf = QuantLib::ext::dynamic_pointer_cast<CpiCapFloor>(ci.at(j));
     QL_REQUIRE(cf,
                "InfDkBuilder::optionStrike(" << j << "): expected CpiCapFloor calibration instruments, could not cast");
     return cpiCapFloorStrikeValue(cf->strike(), *inflationIndex_->zeroInflationTermStructure(), optionMaturityDate(j));
@@ -211,16 +217,23 @@ Real InfDkBuilder::optionStrikeValue(const Size j) const {
 
 bool InfDkBuilder::volSurfaceChanged(const bool updateCache) const {
     bool hasUpdated = false;
+    if(dontCalibrate_)
+        return false;
 
-    boost::shared_ptr<QuantExt::CPIBlackCapFloorEngine> engine =
-        boost::make_shared<QuantExt::CPIBlackCapFloorEngine>(rateCurve_, infVol_);
+    QuantLib::ext::shared_ptr<QuantExt::CPICapFloorEngine> engine;
+
+    bool isLogNormalVol = QuantExt::ZeroInflation::isCPIVolSurfaceLogNormal(infVol_.currentLink());
+    if (isLogNormalVol) {
+        engine = QuantLib::ext::make_shared<QuantExt::CPIBlackCapFloorEngine>(rateCurve_, infVol_);
+    } else {
+        engine = QuantLib::ext::make_shared<QuantExt::CPIBachelierCapFloorEngine>(rateCurve_, infVol_);
+    }
 
     Calendar fixCalendar = inflationIndex_->fixingCalendar();
     BusinessDayConvention bdc = infVol_->businessDayConvention();
     Date baseDate = inflationIndex_->zeroInflationTermStructure()->baseDate();
     Real baseCPI = inflationIndex_->fixing(baseDate);
     Period lag = infVol_->observationLag();
-    Handle<ZeroInflationIndex> hIndex(inflationIndex_);
 
     // if cache doesn't exist resize vector
     if (infPriceCache_.size() != optionBasket_.size())
@@ -237,7 +250,7 @@ bool InfDkBuilder::volSurfaceChanged(const bool updateCache) const {
         if (!optionActive_[j])
             continue;
 
-        auto cpiCapFloor = boost::dynamic_pointer_cast<CpiCapFloor>(ci[j]);
+        auto cpiCapFloor = QuantLib::ext::dynamic_pointer_cast<CpiCapFloor>(ci[j]);
         QL_REQUIRE(cpiCapFloor, "Expected CpiCapFloor calibration instruments in DK inflation model data.");
 
         Date expiryDate = optionMaturityDate(j);
@@ -245,9 +258,9 @@ bool InfDkBuilder::volSurfaceChanged(const bool updateCache) const {
 
         Option::Type capfloor = cpiCapFloor->type() == CapFloor::Cap ? Option::Call : Option::Put;
 
-        boost::shared_ptr<CPICapFloor> h =
-            boost::make_shared<CPICapFloor>(capfloor, nominal, today, baseCPI, expiryDate, fixCalendar, bdc,
-                                            fixCalendar, bdc, strikeValue, hIndex, lag);
+        QuantLib::ext::shared_ptr<CPICapFloor> h =
+            QuantLib::ext::make_shared<CPICapFloor>(capfloor, nominal, today, baseCPI, expiryDate, fixCalendar, bdc,
+                                            fixCalendar, bdc, strikeValue, inflationIndex_, lag);
         h->setPricingEngine(engine);
         Real price = h->NPV();
         if (!close_enough(infPriceCache_[optionCounter], price)) {
@@ -277,9 +290,15 @@ void InfDkBuilder::buildCapFloorBasket() const {
     if (!referenceCalibrationGrid_.empty())
         referenceCalibrationDates = DateGrid(referenceCalibrationGrid_).dates();
 
-    boost::shared_ptr<QuantExt::CPIBlackCapFloorEngine> engine =
-        boost::make_shared<QuantExt::CPIBlackCapFloorEngine>(rateCurve_, infVol_);
+    QuantLib::ext::shared_ptr<QuantExt::CPICapFloorEngine> engine;
 
+    bool isLogNormalVol = QuantExt::ZeroInflation::isCPIVolSurfaceLogNormal(infVol_.currentLink());
+    if (isLogNormalVol) {
+        engine = QuantLib::ext::make_shared<QuantExt::CPIBlackCapFloorEngine>(rateCurve_, infVol_);
+    } else {
+        engine = QuantLib::ext::make_shared<QuantExt::CPIBachelierCapFloorEngine>(rateCurve_, infVol_);
+    }
+       
     Calendar fixCalendar = inflationIndex_->fixingCalendar();
     Date baseDate = inflationIndex_->zeroInflationTermStructure()->baseDate();
     Real baseCPI = dontCalibrate_ ? 100. : inflationIndex_->fixing(baseDate);
@@ -287,13 +306,13 @@ void InfDkBuilder::buildCapFloorBasket() const {
     Period lag = infVol_->observationLag();
     Handle<ZeroInflationIndex> hIndex(inflationIndex_);
     Date startDate = Settings::instance().evaluationDate();
-
+    bool useInterpolatedCPIFixings = infVol_->indexIsInterpolated();
     Real nominal = 1.0;
     vector<Time> expiryTimes;
     optionBasket_.clear();
     for (Size j = 0; j < ci.size(); j++) {
 
-        auto cpiCapFloor = boost::dynamic_pointer_cast<CpiCapFloor>(ci[j]);
+        auto cpiCapFloor = QuantLib::ext::dynamic_pointer_cast<CpiCapFloor>(ci[j]);
         QL_REQUIRE(cpiCapFloor, "Expected CpiCapFloor calibration instruments in DK inflation model data.");
 
         Date expiryDate = optionMaturityDate(j);
@@ -304,25 +323,33 @@ void InfDkBuilder::buildCapFloorBasket() const {
         if (refCalDate == referenceCalibrationDates.end() || *refCalDate > lastRefCalDate) {
             Real strikeValue = optionStrikeValue(j);
             Option::Type capfloor = cpiCapFloor->type() == CapFloor::Cap ? Option::Call : Option::Put;
-            boost::shared_ptr<CPICapFloor> cf =
-                boost::make_shared<CPICapFloor>(capfloor, nominal, startDate, baseCPI, expiryDate, fixCalendar, bdc,
-                                                fixCalendar, bdc, strikeValue, hIndex, lag);
+            QuantLib::ext::shared_ptr<CPICapFloor> cf =
+                QuantLib::ext::make_shared<CPICapFloor>(capfloor, nominal, startDate, baseCPI, expiryDate, fixCalendar, bdc,
+                                                fixCalendar, bdc, strikeValue, inflationIndex_, lag);
             cf->setPricingEngine(engine);
-            Real tte = inflationYearFraction(inflationIndex_->frequency(), inflationIndex_->interpolated(),
+            Real tte = inflationYearFraction(inflationIndex_->frequency(), useInterpolatedCPIFixings,
                                              inflationIndex_->zeroInflationTermStructure()->dayCounter(), baseDate,
                                              cf->fixingDate());
 
             Real tteFromBase = infVol_->timeFromBase(expiryDate);
 
-            Real marketPrem = dontCalibrate_ || tte <= 0 || tteFromBase <= 0 ? 0.01 : cf->NPV();
-            boost::shared_ptr<QuantExt::CpiCapFloorHelper> helper =
-                boost::make_shared<QuantExt::CpiCapFloorHelper>(capfloor, baseCPI, expiryDate, fixCalendar, bdc,
-                                                                fixCalendar, bdc, strikeValue, hIndex, lag, marketPrem);
+            Real marketPrem;
+            if (dontCalibrate_)
+                marketPrem = 0.1;
+            else if (tte <= 0 || tteFromBase <= 0)
+                marketPrem = 0.00;
+            else
+                marketPrem = cf->NPV();
+
+            QuantLib::ext::shared_ptr<QuantExt::CpiCapFloorHelper> helper =
+                QuantLib::ext::make_shared<QuantExt::CpiCapFloorHelper>(capfloor, baseCPI, expiryDate, fixCalendar, bdc,
+                                                                        fixCalendar, bdc, strikeValue, hIndex, lag,
+                                                                        marketPrem);
 
             // we might produce duplicate expiry times even if the fixing dates are all different
-            if (tte > 0 && tteFromBase >= 0 && std::find_if(expiryTimes.begin(), expiryTimes.end(), [tte](Real x) {
-                                                   return QuantLib::close_enough(x, tte);
-                                               }) == expiryTimes.end()) {
+            if (marketPrem > 0.0 && tte > 0 && tteFromBase > 0 &&
+                std::find_if(expiryTimes.begin(), expiryTimes.end(),
+                             [tte](Real x) { return QuantLib::close_enough(x, tte); }) == expiryTimes.end()) {
                 optionBasket_.push_back(helper);
                 helper->performCalculations();
                 expiryTimes.push_back(tte);

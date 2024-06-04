@@ -117,7 +117,9 @@ public:
         COMMODITY_FWD,
         CORRELATION,
         COMMODITY_OPTION,
-        CPR
+        CPR,
+        RATING,
+        NONE
     };
 
     //! Supported market quote types
@@ -135,20 +137,21 @@ public:
         RATE_SLNVOL,
         BASE_CORRELATION,
         SHIFT,
+        TRANSITION_PROBABILITY,
         NONE
     };
 
     //! Constructor
     MarketDatum(Real value, Date asofDate, const string& name, QuoteType quoteType, InstrumentType instrumentType)
-        : quote_(boost::make_shared<SimpleQuote>(value)), asofDate_(asofDate), name_(name),
+        : quote_(QuantLib::ext::make_shared<SimpleQuote>(value)), asofDate_(asofDate), name_(name),
           instrumentType_(instrumentType), quoteType_(quoteType) {}
 
     //! Default destructor
     virtual ~MarketDatum() {}
 
     //! Make a copy of the market datum
-    virtual boost::shared_ptr<MarketDatum> clone() {
-        return boost::make_shared<MarketDatum>(quote_->value(), asofDate_, name_, quoteType_, instrumentType_);
+    virtual QuantLib::ext::shared_ptr<MarketDatum> clone() {
+        return QuantLib::ext::make_shared<MarketDatum>(quote_->value(), asofDate_, name_, quoteType_, instrumentType_);
     }
 
     //! \name Inspectors
@@ -172,7 +175,16 @@ private:
     template <class Archive> void serialize(Archive& ar, const unsigned int version);
 };
 
+bool operator<(const MarketDatum& a, const MarketDatum& b);
+
+struct SharedPtrMarketDatumComparator {
+    bool operator()(const QuantLib::ext::shared_ptr<MarketDatum>& a, const QuantLib::ext::shared_ptr<MarketDatum>& b) const {
+        return *a < *b;
+    }
+};
+
 std::ostream& operator<<(std::ostream& out, const MarketDatum::QuoteType& type);
+std::ostream& operator<<(std::ostream& out, const MarketDatum::InstrumentType& type);
 
 //! Money market data class
 /*!
@@ -193,8 +205,8 @@ public:
           term_(term), indexName_(indexName) {}
     
     //! Make a copy of the datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<MoneyMarketQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, fwdStart_, term_, indexName_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<MoneyMarketQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, fwdStart_, term_, indexName_);
     }
 
     //! \name Inspectors
@@ -234,8 +246,8 @@ public:
           term_(term) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<FRAQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, fwdStart_, term_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<FRAQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, fwdStart_, term_);
     }
 
     //! \name Inspectors
@@ -273,8 +285,8 @@ public:
         : MarketDatum(value, asofDate, name, quoteType, InstrumentType::IMM_FRA), ccy_(ccy), imm1_(imm1), imm2_(imm2) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<ImmFraQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, imm1_, imm2_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<ImmFraQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, imm1_, imm2_);
     }
 
     //! \name Inspectors
@@ -297,22 +309,33 @@ private:
   This class holds single market points of type
   - IR_SWAP
 
-  Specific data comprise currency, fwdStart, tenor, term
+  Specific data comprise currency, fwdStart, tenor, term, startDate, maturityDate
+  The constructor accepts either fwdStart/term or startDate/maturityDate
 
   \ingroup marketdata
 */
 class SwapQuote : public MarketDatum {
 public:
     SwapQuote() {}
-    //! Constructor
+    //! Constructor if fwdStart / tenor is given
     SwapQuote(Real value, Date asofDate, const string& name, QuoteType quoteType, string ccy, Period fwdStart,
               Period term, Period tenor, const std::string& indexName = "")
         : MarketDatum(value, asofDate, name, quoteType, InstrumentType::IR_SWAP), ccy_(ccy), fwdStart_(fwdStart),
-          term_(term), tenor_(tenor), indexName_(indexName) {}
+          term_(term), tenor_(tenor), indexName_(indexName), startDate_(Null<Date>()), maturityDate_(Null<Date>()) {}
+    //! Constructor if startDate, maturityDate is given
+    SwapQuote(Real value, Date asofDate, const string& name, QuoteType quoteType, string ccy, Date startDate,
+              Date maturityDate, Period tenor, const std::string& indexName = "")
+        : MarketDatum(value, asofDate, name, quoteType, InstrumentType::IR_SWAP), ccy_(ccy), fwdStart_(Period()),
+          term_(Period()), tenor_(tenor), indexName_(indexName), startDate_(startDate), maturityDate_(maturityDate) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<SwapQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, fwdStart_, term_, tenor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        if (startDate_ == Null<Date>() && maturityDate_ == Null<Date>())
+            return QuantLib::ext::make_shared<SwapQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, fwdStart_, term_,
+                                                 tenor_);
+        else
+            return QuantLib::ext::make_shared<SwapQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, startDate_,
+                                                 maturityDate_, tenor_);
     }
 
     //! \name Inspectors
@@ -322,6 +345,8 @@ public:
     const Period& term() const { return term_; }
     const Period& tenor() const { return tenor_; }
     const std::string& indeName() const { return indexName_; }
+    const Date& startDate() const { return startDate_; }
+    const Date& maturityDate() const { return maturityDate_; }
     //@}
 private:
     string ccy_;
@@ -329,24 +354,13 @@ private:
     Period term_;
     Period tenor_;
     std::string indexName_;
+    Date startDate_;
+    Date maturityDate_;
     //! Serialization
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive& ar, const unsigned int version);
 };
 
-//! Zero market data class
-/*!
-  This class holds single market points of type
-  - ZERO.
-  Specific data comprise currency, date and day counter.
-
-  Zero rates are hardly quoted in the market, but derived from quoted
-  yields such as deposits, swaps, as well as futures prices.
-  This data type is included here nevertheless
-  to enable consistency checks between ORE and reference systems.
-
-  \ingroup marketdata
-*/
 class ZeroQuote : public MarketDatum {
 public:
     ZeroQuote() {}
@@ -361,8 +375,8 @@ public:
     }
     
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<ZeroQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, date_, dayCounter_, tenor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<ZeroQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, date_, dayCounter_, tenor_);
     }
 
     //! Inspectors
@@ -400,8 +414,8 @@ public:
         : MarketDatum(value, asofDate, name, quoteType, InstrumentType::DISCOUNT), ccy_(ccy), date_(date), tenor_(tenor) {}
     
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<DiscountQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, date_, tenor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<DiscountQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, date_, tenor_);
     }
     //! \name Inspectors
     //@{
@@ -437,8 +451,8 @@ public:
           contract_(contract), tenor_(tenor) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<MMFutureQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, expiry_, contract_, tenor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<MMFutureQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, expiry_, contract_, tenor_);
     }
 
     //! \name Inspectors
@@ -480,8 +494,8 @@ public:
           contract_(contract), tenor_(tenor) {}
     
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<OIFutureQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, expiry_, contract_, tenor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<OIFutureQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, expiry_, contract_, tenor_);
     }
 
     //! \name Inspectors
@@ -529,8 +543,8 @@ public:
           ccy_(ccy), maturity_(maturity) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<BasisSwapQuote>(quote_->value(), asofDate_, name_, quoteType_, flatTerm_, term_, ccy_, maturity_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<BasisSwapQuote>(quote_->value(), asofDate_, name_, quoteType_, flatTerm_, term_, ccy_, maturity_);
     }
 
     //! \name Inspectors
@@ -576,8 +590,8 @@ public:
           maturity_(maturity) {}
     
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<BMASwapQuote>(quote_->value(), asofDate_, name_, quoteType_, term_, ccy_, maturity_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<BMASwapQuote>(quote_->value(), asofDate_, name_, quoteType_, term_, ccy_, maturity_);
     }
 
     //! \name Inspectors
@@ -621,8 +635,8 @@ public:
           flatTerm_(flatTerm), ccy_(ccy), term_(term), maturity_(maturity) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CrossCcyBasisSwapQuote>(quote_->value(), asofDate_, name_, quoteType_, flatCcy_, flatTerm_, ccy_, term_, maturity_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CrossCcyBasisSwapQuote>(quote_->value(), asofDate_, name_, quoteType_, flatCcy_, flatTerm_, ccy_, term_, maturity_);
     }
 
     //! \name Inspectors
@@ -663,8 +677,8 @@ public:
           floatTenor_(floatTenor), fixedCurrency_(fixedCurrency), fixedTenor_(fixedTenor), maturity_(maturity) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CrossCcyFixFloatSwapQuote>(quote_->value(), asofDate_, name_, quoteType_, floatCurrency_, floatTenor_, fixedCurrency_, fixedTenor_, maturity_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CrossCcyFixFloatSwapQuote>(quote_->value(), asofDate_, name_, quoteType_, floatCurrency_, floatTenor_, fixedCurrency_, fixedTenor_, maturity_);
     }
 
     //! \name Inspectors
@@ -706,8 +720,8 @@ public:
           seniority_(seniority), ccy_(ccy), term_(term), docClause_(docClause), runningSpread_(runningSpread) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CdsQuote>(quote_->value(), asofDate_, name_, quoteType_, underlyingName_,
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CdsQuote>(quote_->value(), asofDate_, name_, quoteType_, underlyingName_,
             seniority_, ccy_, term_, docClause_, runningSpread_);
     }
 
@@ -751,8 +765,8 @@ public:
           underlyingName_(underlyingName), seniority_(seniority), ccy_(ccy), term_(term), docClause_(docClause) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<HazardRateQuote>(quote_->value(), asofDate_, name_, underlyingName_, seniority_, ccy_, term_, docClause_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<HazardRateQuote>(quote_->value(), asofDate_, name_, underlyingName_, seniority_, ccy_, term_, docClause_);
     }
 
     //! \name Inspectors
@@ -790,8 +804,8 @@ public:
           underlyingName_(underlyingName), seniority_(seniority), ccy_(ccy), docClause_(docClause) {}
     
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<RecoveryRateQuote>(quote_->value(), asofDate_, name_, underlyingName_, seniority_, ccy_, docClause_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<RecoveryRateQuote>(quote_->value(), asofDate_, name_, underlyingName_, seniority_, ccy_, docClause_);
     }
 
     //! \name Inspectors
@@ -829,14 +843,15 @@ public:
     SwaptionQuote() {}
     //! Constructor
     SwaptionQuote(Real value, Date asofDate, const string& name, QuoteType quoteType, string ccy, Period expiry,
-                  Period term, string dimension, Real strike = 0.0, const std::string& quoteTag = std::string())
+                  Period term, string dimension, Real strike = 0.0, const std::string& quoteTag = std::string(),
+                  bool isPayer = true)
         : MarketDatum(value, asofDate, name, quoteType, InstrumentType::SWAPTION), ccy_(ccy), expiry_(expiry),
-          term_(term), dimension_(dimension), strike_(strike), quoteTag_(quoteTag) {}
+          term_(term), dimension_(dimension), strike_(strike), quoteTag_(quoteTag), isPayer_(isPayer) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<SwaptionQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, expiry_, term_,
-                                                 dimension_, strike_, quoteTag_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<SwaptionQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, expiry_, term_,
+                                                 dimension_, strike_, quoteTag_, isPayer_);
     }
 
     //! \name Inspectors
@@ -847,6 +862,7 @@ public:
     const string& dimension() const { return dimension_; }
     Real strike() { return strike_; }
     const string& quoteTag() const { return quoteTag_; }
+    bool isPayer() const { return isPayer_; }
     //@}
 private:
     string ccy_;
@@ -855,6 +871,7 @@ private:
     string dimension_;
     Real strike_;
     string quoteTag_;
+    bool isPayer_;
     //! Serialization
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive& ar, const unsigned int version);
@@ -882,8 +899,8 @@ public:
     }
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<SwaptionShiftQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, term_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<SwaptionShiftQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, term_);
     }
 
     //! \name Inspectors
@@ -923,8 +940,8 @@ public:
           expiry_(expiry), term_(term) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<BondOptionQuote>(quote_->value(), asofDate_, name_, quoteType_, qualifier_, expiry_, term_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<BondOptionQuote>(quote_->value(), asofDate_, name_, quoteType_, qualifier_, expiry_, term_);
     }
 
     //! \name Inspectors
@@ -965,8 +982,8 @@ public:
     }
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<BondOptionShiftQuote>(quote_->value(), asofDate_, name_, quoteType_, qualifier_, term_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<BondOptionShiftQuote>(quote_->value(), asofDate_, name_, quoteType_, qualifier_, term_);
     }
 
     //! \name Inspectors
@@ -1001,14 +1018,14 @@ public:
     CapFloorQuote() {}
     //! Constructor
     CapFloorQuote(Real value, Date asofDate, const string& name, QuoteType quoteType, string ccy, Period term,
-                  Period underlying, bool atm, bool relative, Real strike = 0.0, const string& indexName = string())
+                  Period underlying, bool atm, bool relative, Real strike = 0.0, const string& indexName = string(), bool isCap = true)
         : MarketDatum(value, asofDate, name, quoteType, InstrumentType::CAPFLOOR), ccy_(ccy), term_(term),
-          underlying_(underlying), atm_(atm), relative_(relative), strike_(strike), indexName_(indexName) {}
+          underlying_(underlying), atm_(atm), relative_(relative), strike_(strike), indexName_(indexName), isCap_(isCap) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, term_,
-                                                 underlying_, atm_, relative_, strike_, indexName_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, term_,
+                                                 underlying_, atm_, relative_, strike_, indexName_, isCap_);
     }
 
     //! \name Inspectors
@@ -1020,6 +1037,7 @@ public:
     bool relative() const { return relative_; }
     Real strike() { return strike_; }
     const string& indexName() const { return indexName_; }
+    bool isCap() const { return isCap_; }
     //@}
 private:
     string ccy_;
@@ -1029,6 +1047,7 @@ private:
     bool relative_;
     Real strike_;
     string indexName_;
+    bool isCap_;
     //! Serialization
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive& ar, const unsigned int version);
@@ -1050,8 +1069,8 @@ public:
     }
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CapFloorShiftQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, indexTenor_,
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CapFloorShiftQuote>(quote_->value(), asofDate_, name_, quoteType_, ccy_, indexTenor_,
                                                       indexName_);
     }
 
@@ -1090,8 +1109,8 @@ public:
         : MarketDatum(value, asofDate, name, quoteType, InstrumentType::FX_SPOT), unitCcy_(unitCcy), ccy_(ccy) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<FXSpotQuote>(quote_->value(), asofDate_, name_, quoteType_, unitCcy_, ccy_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<FXSpotQuote>(quote_->value(), asofDate_, name_, quoteType_, unitCcy_, ccy_);
     }
 
     //! \name Inspectors
@@ -1133,8 +1152,8 @@ public:
           term_(term), conversionFactor_(conversionFactor) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<FXForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, unitCcy_, ccy_, term_, conversionFactor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<FXForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, unitCcy_, ccy_, term_, conversionFactor_);
     }
 
     //! \name Inspectors
@@ -1178,13 +1197,13 @@ public:
 
         Strike s = parseStrike(strike);
         QL_REQUIRE(s.type == Strike::Type::DeltaCall || s.type == Strike::Type::DeltaPut ||
-                       s.type == Strike::Type::ATM || s.type == Strike::Type::BF || s.type == Strike::Type::RR,
+                       s.type == Strike::Type::ATM || s.type == Strike::Type::BF || s.type == Strike::Type::RR || s.type == Strike::Type::Absolute,
                    "Unsupported FXOptionQuote strike (" << strike << ")");
     }
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<FXOptionQuote>(quote_->value(), asofDate_, name_, quoteType_, unitCcy_, ccy_, expiry_, strike_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<FXOptionQuote>(quote_->value(), asofDate_, name_, quoteType_, unitCcy_, ccy_, expiry_, strike_);
     }
 
     //! \name Inspectors
@@ -1220,8 +1239,8 @@ public:
           term_(term) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<ZcInflationSwapQuote>(quote_->value(), asofDate_, name_, index_, term_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<ZcInflationSwapQuote>(quote_->value(), asofDate_, name_, index_, term_);
     }
 
     string index() { return index_; }
@@ -1253,8 +1272,8 @@ public:
           strike_(strike) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<InflationCapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, index_, term_, isCap_, strike_, instrumentType_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<InflationCapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, index_, term_, isCap_, strike_, instrumentType_);
     }
 
     string index() { return index_; }
@@ -1290,8 +1309,8 @@ public:
                                  InstrumentType::ZC_INFLATIONCAPFLOOR) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<ZcInflationCapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, index(), term(), isCap(), strike());
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<ZcInflationCapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, index(), term(), isCap(), strike());
     }
 
 private:
@@ -1316,8 +1335,8 @@ public:
           term_(term) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<YoYInflationSwapQuote>(quote_->value(), asofDate_, name_, index_, term_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<YoYInflationSwapQuote>(quote_->value(), asofDate_, name_, index_, term_);
     }
 
     string index() { return index_; }
@@ -1350,8 +1369,8 @@ public:
 
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<YyInflationCapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, index(), term(), isCap(), strike());
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<YyInflationCapFloorQuote>(quote_->value(), asofDate_, name_, quoteType_, index(), term(), isCap(), strike());
     }
 private:
     //! Serialization
@@ -1375,8 +1394,8 @@ public:
         : MarketDatum(value, asofDate, name, QuoteType::RATE, InstrumentType::SEASONALITY), index_(index), type_(type),
           month_(month) {}
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<SeasonalityQuote>(quote_->value(), asofDate_, name_, index(), type(), month());
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<SeasonalityQuote>(quote_->value(), asofDate_, name_, index(), type(), month());
     }
 
     string index() { return index_; }
@@ -1412,8 +1431,8 @@ public:
 
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<EquitySpotQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<EquitySpotQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_);
     }
 
     //! \name Inspectors
@@ -1450,8 +1469,8 @@ public:
                        string ccy, const Date& expiryDate);
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<EquityForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_, expiry_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<EquityForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_, expiry_);
     }
 
     //! \name Inspectors
@@ -1490,8 +1509,8 @@ public:
                              string ccy, const Date& tenorDate);
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<EquityDividendYieldQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_, tenor_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<EquityDividendYieldQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_, tenor_);
     }
 
     //! \name Inspectors
@@ -1530,12 +1549,12 @@ public:
     EquityOptionQuote() {}
     //! Constructor
     EquityOptionQuote(Real value, Date asofDate, const string& name, QuoteType quoteType, string equityName, string ccy,
-                      string expiry, const boost::shared_ptr<BaseStrike>& strike, bool isCall = true);
+                      string expiry, const QuantLib::ext::shared_ptr<BaseStrike>& strike, bool isCall = true);
 
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<EquityOptionQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_, expiry_, strike_, isCall_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<EquityOptionQuote>(quote_->value(), asofDate_, name_, quoteType_, eqName_, ccy_, expiry_, strike_, isCall_);
     }
 
     //! \name Inspectors
@@ -1543,14 +1562,14 @@ public:
     const string& eqName() const { return eqName_; }
     const string& ccy() const { return ccy_; }
     const string& expiry() const { return expiry_; }
-    const boost::shared_ptr<BaseStrike>& strike() const { return strike_; }
+    const QuantLib::ext::shared_ptr<BaseStrike>& strike() const { return strike_; }
     bool isCall() { return isCall_; }
     //@}
 private:
     string eqName_;
     string ccy_;
     string expiry_;
-    boost::shared_ptr<BaseStrike> strike_;
+    QuantLib::ext::shared_ptr<BaseStrike> strike_;
     bool isCall_;
     //! Serialization
     friend class boost::serialization::access;
@@ -1571,8 +1590,8 @@ public:
         : MarketDatum(value, asofDate, name, QuoteType::YIELD_SPREAD, InstrumentType::BOND), securityID_(securityID) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<SecuritySpreadQuote>(quote_->value(), asofDate_, name_, securityID_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<SecuritySpreadQuote>(quote_->value(), asofDate_, name_, securityID_);
     }
 
     //! \name Inspectors
@@ -1603,8 +1622,8 @@ public:
 
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<BaseCorrelationQuote>(quote_->value(), asofDate_, name_, quoteType_, cdsIndexName_, term_, detachmentPoint_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<BaseCorrelationQuote>(quote_->value(), asofDate_, name_, quoteType_, cdsIndexName_, term_, detachmentPoint_);
     }
 
     //! \name Inspectors
@@ -1642,28 +1661,28 @@ public:
         \param strike    Strike object defining the quote's strike. If not given, assumed that quote is ATM.
     */
     IndexCDSOptionQuote(QuantLib::Real value, const QuantLib::Date& asof, const std::string& name,
-                        const std::string& indexName, const boost::shared_ptr<Expiry>& expiry,
-                        const std::string& indexTerm = "", const boost::shared_ptr<BaseStrike>& strike = nullptr);
+                        const std::string& indexName, const QuantLib::ext::shared_ptr<Expiry>& expiry,
+                        const std::string& indexTerm = "", const QuantLib::ext::shared_ptr<BaseStrike>& strike = nullptr);
 
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<IndexCDSOptionQuote>(quote_->value(), asofDate_, name_, indexName_, expiry_, indexTerm_, strike_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<IndexCDSOptionQuote>(quote_->value(), asofDate_, name_, indexName_, expiry_, indexTerm_, strike_);
     }
 
     //! \name Inspectors
     //@{
     const std::string& indexName() const { return indexName_; }
-    const boost::shared_ptr<Expiry>& expiry() const { return expiry_; }
+    const QuantLib::ext::shared_ptr<Expiry>& expiry() const { return expiry_; }
     const std::string& indexTerm() const { return indexTerm_; }
-    const boost::shared_ptr<BaseStrike>& strike() const { return strike_; }
+    const QuantLib::ext::shared_ptr<BaseStrike>& strike() const { return strike_; }
     //@}
 
 private:
     std::string indexName_;
-    boost::shared_ptr<Expiry> expiry_;
+    QuantLib::ext::shared_ptr<Expiry> expiry_;
     std::string indexTerm_;
-    boost::shared_ptr<BaseStrike> strike_;
+    QuantLib::ext::shared_ptr<BaseStrike> strike_;
 
     //! Serialization
     friend class boost::serialization::access;
@@ -1686,8 +1705,8 @@ public:
     }
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CommoditySpotQuote>(quote_->value(), asofDate_, name_, quoteType_, commodityName_, quoteCurrency_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CommoditySpotQuote>(quote_->value(), asofDate_, name_, quoteType_, commodityName_, quoteCurrency_);
     }
 
     //! \name Inspectors
@@ -1722,11 +1741,11 @@ public:
                           const QuantLib::Period& tenor, boost::optional<QuantLib::Period> startTenor = boost::none);
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
         if (tenorBased_) {
-            return boost::make_shared<CommodityForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, commodityName_, quoteCurrency_, tenor_, startTenor_);
+            return QuantLib::ext::make_shared<CommodityForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, commodityName_, quoteCurrency_, tenor_, startTenor_);
         } else {
-            return boost::make_shared<CommodityForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, commodityName_, quoteCurrency_, expiryDate_);
+            return QuantLib::ext::make_shared<CommodityForwardQuote>(quote_->value(), asofDate_, name_, quoteType_, commodityName_, quoteCurrency_, expiryDate_);
         }
     }
 
@@ -1785,12 +1804,12 @@ public:
     */
     CommodityOptionQuote(QuantLib::Real value, const QuantLib::Date& asof, const std::string& name, QuoteType quoteType,
                          const std::string& commodityName, const std::string& quoteCurrency,
-                         const boost::shared_ptr<Expiry>& expiry, const boost::shared_ptr<BaseStrike>& strike,
+                         const QuantLib::ext::shared_ptr<Expiry>& expiry, const QuantLib::ext::shared_ptr<BaseStrike>& strike,
                          QuantLib::Option::Type optionType = QuantLib::Option::Call);
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CommodityOptionQuote>(quote_->value(), asofDate_, name_,
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CommodityOptionQuote>(quote_->value(), asofDate_, name_,
             quoteType_, commodityName_, quoteCurrency_, expiry_, strike_, optionType_);
     }
 
@@ -1798,16 +1817,16 @@ public:
     //@{
     const std::string& commodityName() const { return commodityName_; }
     const std::string& quoteCurrency() const { return quoteCurrency_; }
-    const boost::shared_ptr<Expiry>& expiry() const { return expiry_; }
-    const boost::shared_ptr<BaseStrike>& strike() const { return strike_; }
+    const QuantLib::ext::shared_ptr<Expiry>& expiry() const { return expiry_; }
+    const QuantLib::ext::shared_ptr<BaseStrike>& strike() const { return strike_; }
     QuantLib::Option::Type optionType() const { return optionType_; }
     //@}
 
 private:
     std::string commodityName_;
     std::string quoteCurrency_;
-    boost::shared_ptr<Expiry> expiry_;
-    boost::shared_ptr<BaseStrike> strike_;
+    QuantLib::ext::shared_ptr<Expiry> expiry_;
+    QuantLib::ext::shared_ptr<BaseStrike> strike_;
     QuantLib::Option::Type optionType_;
     //! Serialization
     friend class boost::serialization::access;
@@ -1836,8 +1855,8 @@ public:
                      const std::string& strike);
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CorrelationQuote>(quote_->value(), asofDate_, name_, quoteType_, index1_, index2_, expiry_, strike_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CorrelationQuote>(quote_->value(), asofDate_, name_, quoteType_, index1_, index2_, expiry_, strike_);
     }
 
     //! \name Inspectors
@@ -1872,8 +1891,8 @@ public:
         : MarketDatum(value, asofDate, name, QuoteType::RATE, InstrumentType::CPR), securityID_(securityId) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<CPRQuote>(quote_->value(), asofDate_, name_, securityID_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<CPRQuote>(quote_->value(), asofDate_, name_, securityID_);
     }
 
     //! \name Inspectors
@@ -1901,8 +1920,8 @@ public:
         : MarketDatum(value, asofDate, name, QuoteType::PRICE, InstrumentType::BOND), securityID_(securityId) {}
 
     //! Make a copy of the market datum
-    boost::shared_ptr<MarketDatum> clone() override {
-        return boost::make_shared<BondPriceQuote>(quote_->value(), asofDate_, name_, securityID_);
+    QuantLib::ext::shared_ptr<MarketDatum> clone() override {
+        return QuantLib::ext::make_shared<BondPriceQuote>(quote_->value(), asofDate_, name_, securityID_);
     }
 
     //! \name Inspectors
@@ -1911,6 +1930,30 @@ public:
     //@}
 private:
     string securityID_;
+    //! Serialization
+    friend class boost::serialization::access;
+    template <class Archive> void serialize(Archive& ar, const unsigned int version);
+};
+
+//! Transition Probability data class
+class TransitionProbabilityQuote : public MarketDatum {
+public:
+    TransitionProbabilityQuote() {}
+    TransitionProbabilityQuote(Real value, Date asofDate, const string& name, const string& id,
+                               const string& fromRating, const string& toRating)
+        : MarketDatum(value, asofDate, name, QuoteType::TRANSITION_PROBABILITY, InstrumentType::RATING), id_(id),
+          fromRating_(fromRating), toRating_(toRating) {}
+
+    //! \name Inspectors
+    //@{
+    const string& id() const { return id_; }
+    const string& fromRating() const { return fromRating_; }
+    const string& toRating() const { return toRating_; }
+    //@}
+private:
+    string id_;
+    string fromRating_;
+    string toRating_;
     //! Serialization
     friend class boost::serialization::access;
     template <class Archive> void serialize(Archive& ar, const unsigned int version);
@@ -1962,3 +2005,4 @@ BOOST_CLASS_EXPORT_KEY(ore::data::CommodityOptionQuote);
 BOOST_CLASS_EXPORT_KEY(ore::data::CorrelationQuote);
 BOOST_CLASS_EXPORT_KEY(ore::data::CPRQuote);
 BOOST_CLASS_EXPORT_KEY(ore::data::BondPriceQuote);
+BOOST_CLASS_EXPORT_KEY(ore::data::TransitionProbabilityQuote);

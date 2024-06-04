@@ -31,10 +31,10 @@ using QuantLib::Visitor;
 namespace QuantExt {
 
 AverageFuturePriceHelper::AverageFuturePriceHelper(const Handle<Quote>& price,
-    const boost::shared_ptr<CommodityIndex>& index,
+    const QuantLib::ext::shared_ptr<CommodityIndex>& index,
     const Date& start,
     const Date& end,
-    const boost::shared_ptr<FutureExpiryCalculator>& calc,
+    const QuantLib::ext::shared_ptr<FutureExpiryCalculator>& calc,
     const Calendar& calendar,
     Natural deliveryDateRoll,
     Natural futureMonthOffset,
@@ -45,10 +45,10 @@ AverageFuturePriceHelper::AverageFuturePriceHelper(const Handle<Quote>& price,
 }
 
 AverageFuturePriceHelper::AverageFuturePriceHelper(Real price,
-    const boost::shared_ptr<CommodityIndex>& index,
+    const QuantLib::ext::shared_ptr<CommodityIndex>& index,
     const Date& start,
     const Date& end,
-    const boost::shared_ptr<FutureExpiryCalculator>& calc,
+    const QuantLib::ext::shared_ptr<FutureExpiryCalculator>& calc,
     const Calendar& calendar,
     Natural deliveryDateRoll,
     Natural futureMonthOffset,
@@ -58,8 +58,8 @@ AverageFuturePriceHelper::AverageFuturePriceHelper(Real price,
     init(index, start, end, calc, calendar, deliveryDateRoll, futureMonthOffset, useBusinessDays, dailyExpiryOffset);
 }
 
-void AverageFuturePriceHelper::init(const boost::shared_ptr<CommodityIndex>& index,
-    const Date& start, const Date& end, const boost::shared_ptr<FutureExpiryCalculator>& calc,
+void AverageFuturePriceHelper::init(const QuantLib::ext::shared_ptr<CommodityIndex>& index,
+    const Date& start, const Date& end, const QuantLib::ext::shared_ptr<FutureExpiryCalculator>& calc,
     const Calendar& calendar, Natural deliveryDateRoll, Natural futureMonthOffset,
     bool useBusinessDays, Natural dailyExpiryOffset) {
 
@@ -73,7 +73,7 @@ void AverageFuturePriceHelper::init(const boost::shared_ptr<CommodityIndex>& ind
     registerWith(indexClone);
 
     // Create the averaging cashflow referencing the commodity index.
-    averageCashflow_ = boost::make_shared<CommodityIndexedAverageCashFlow>(1.0, start, end, end, indexClone,
+    averageCashflow_ = QuantLib::ext::make_shared<CommodityIndexedAverageCashFlow>(1.0, start, end, end, indexClone,
         calendar, 0.0, 1.0, true, deliveryDateRoll, futureMonthOffset, calc, true, false, useBusinessDays,
         CommodityQuantityFrequency::PerCalculationPeriod, Null<Natural>(), dailyExpiryOffset);
 
@@ -87,11 +87,12 @@ void AverageFuturePriceHelper::init(const boost::shared_ptr<CommodityIndex>& ind
 
 Real AverageFuturePriceHelper::impliedQuote() const {
     QL_REQUIRE(termStructure_, "AverageFuturePriceHelper term structure not set.");
+    averageCashflow_->update();
     return averageCashflow_->amount();
 }
 
 void AverageFuturePriceHelper::setTermStructure(PriceTermStructure* ts) {
-    boost::shared_ptr<PriceTermStructure> temp(ts, null_deleter());
+    QuantLib::ext::shared_ptr<PriceTermStructure> temp(ts, null_deleter());
     // Do not set the relinkable handle as an observer i.e. registerAsObserver is false here.
     termStructureHandle_.linkTo(temp, false);
     PriceHelper::setTermStructure(ts);
@@ -104,8 +105,14 @@ void AverageFuturePriceHelper::accept(AcyclicVisitor& v) {
         PriceHelper::accept(v);
 }
 
-boost::shared_ptr<CommodityIndexedAverageCashFlow> AverageFuturePriceHelper::averageCashflow() const {
+QuantLib::ext::shared_ptr<CommodityIndexedAverageCashFlow> AverageFuturePriceHelper::averageCashflow() const {
     return averageCashflow_;
 }
 
+void AverageFuturePriceHelper::deepUpdate() {
+    if (averageCashflow_)
+        averageCashflow_->update();
+    update();
 }
+
+} // namespace QuantExt

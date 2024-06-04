@@ -43,9 +43,14 @@ CdsTier parseCdsTier(const string& s) {
         return CdsTier::JRSUBUT2;
     } else if (s == "PREFT1") {
         return CdsTier::PREFT1;
-    } else {
-        QL_FAIL("Could not parse \"" << s << "\" to CdsTier");
+    } else if (s == "LIEN1") {
+        return CdsTier::LIEN1;
+    } else if (s == "LIEN2") {
+        return CdsTier::LIEN2;
+    } else if (s == "LIEN3") {
+        return CdsTier::LIEN3;
     }
+    QL_FAIL("Could not parse \"" << s << "\" to CdsTier");
 }
 
 ostream& operator<<(ostream& out, const CdsTier& cdsTier) {
@@ -62,6 +67,12 @@ ostream& operator<<(ostream& out, const CdsTier& cdsTier) {
         return out << "JRSUBUT2";
     case CdsTier::PREFT1:
         return out << "PREFT1";
+    case CdsTier::LIEN1:
+        return out << "LIEN1";
+    case CdsTier::LIEN2:
+        return out << "LIEN2";
+    case CdsTier::LIEN3:
+        return out << "LIEN3";
     default:
         QL_FAIL("Do not recognise CdsTier " << static_cast<int>(cdsTier));
     }
@@ -393,11 +404,10 @@ bool isAuctionedSeniority(CdsTier contractTier, CreditEventTiers creditEventTier
 }
 // end TODO refactor to creditevents.cpp
 
-CdsReferenceInformation::CdsReferenceInformation():
-    tier_(CdsTier::SNRFOR), docClause_(CdsDocClause::XR14) {}
+CdsReferenceInformation::CdsReferenceInformation() : tier_(CdsTier::SNRFOR), docClause_(boost::none) {}
 
 CdsReferenceInformation::CdsReferenceInformation(const string& referenceEntityId, CdsTier tier,
-                                                 const Currency& currency, CdsDocClause docClause)
+                                                 const Currency& currency, boost::optional<CdsDocClause> docClause)
     : referenceEntityId_(referenceEntityId), tier_(tier), currency_(currency), docClause_(docClause) {
     populateId();
 }
@@ -407,33 +417,45 @@ void CdsReferenceInformation::fromXML(XMLNode* node) {
     referenceEntityId_ = XMLUtils::getChildValue(node, "ReferenceEntityId", true);
     tier_ = parseCdsTier(XMLUtils::getChildValue(node, "Tier", true));
     currency_ = parseCurrency(XMLUtils::getChildValue(node, "Currency", true));
-    docClause_ = parseCdsDocClause(XMLUtils::getChildValue(node, "DocClause", true));
+    if (auto s = XMLUtils::getChildValue(node, "DocClause", false); !s.empty()) {
+        docClause_ = parseCdsDocClause(s);
+    }
     populateId();
 }
 
-XMLNode* CdsReferenceInformation::toXML(XMLDocument& doc) {
+XMLNode* CdsReferenceInformation::toXML(XMLDocument& doc) const {
     XMLNode* node = doc.allocNode("ReferenceInformation");
     XMLUtils::addChild(doc, node, "ReferenceEntityId", referenceEntityId_);
     XMLUtils::addChild(doc, node, "Tier", to_string(tier_));
     XMLUtils::addChild(doc, node, "Currency", currency_.code());
-    XMLUtils::addChild(doc, node, "DocClause", to_string(docClause_));
+    if(docClause_)
+        XMLUtils::addChild(doc, node, "DocClause", to_string(*docClause_));
     return node;
 }
 
 void CdsReferenceInformation::populateId() {
-    id_ = referenceEntityId_ + "|" + to_string(tier_) + "|" + currency_.code() + "|" + to_string(docClause_);
+    id_ = referenceEntityId_ + "|" + to_string(tier_) + "|" + currency_.code();
+    if (docClause_)
+        id_ += "|" + to_string(*docClause_);
 }
 
-bool tryParseCdsInformation(const string& strInfo, CdsReferenceInformation& cdsInfo) {
+CdsDocClause CdsReferenceInformation::docClause() const {
+    QL_REQUIRE(docClause_, "CdsReferenceInforamtion::docClause(): docClause not set.");
+    return *docClause_;
+}
+
+bool CdsReferenceInformation::hasDocClause() const { return docClause_ != boost::none; }
+
+bool tryParseCdsInformation(string strInfo, CdsReferenceInformation& cdsInfo) {
 
     DLOG("tryParseCdsInformation: attempting to parse " << strInfo);
 
-    // As in documentation comment, expect strInfo of form ID|TIER|CCY|DOCCLAUSE
+    // As in documentation comment, expect strInfo of form ID|TIER|CCY(|DOCCLAUSE)
     vector<string> tokens;
     boost::split(tokens, strInfo, boost::is_any_of("|"));
 
-    if (tokens.size() != 4) {
-        TLOG("String " << strInfo << " not of form ID|TIER|CCY|DOCCLAUSE so parsing failed");
+    if (tokens.size() != 4 && tokens.size() != 3) {
+        TLOG("String " << strInfo << " not of form ID|TIER|CCY(|DOCCLAUSE) so parsing failed");
         return false;
     }
 
@@ -447,9 +469,13 @@ bool tryParseCdsInformation(const string& strInfo, CdsReferenceInformation& cdsI
         return false;
     }
 
-    CdsDocClause cdsDocClause;
-    if (!tryParse<CdsDocClause>(tokens[3], cdsDocClause, &parseCdsDocClause)) {
-        return false;
+    boost::optional<CdsDocClause> cdsDocClause;
+    if (tokens.size() == 4) {
+        CdsDocClause tmp;
+        if (!tryParse<CdsDocClause>(tokens[3], tmp, &parseCdsDocClause)) {
+            return false;
+        }
+        cdsDocClause = tmp;
     }
 
     cdsInfo = CdsReferenceInformation(tokens[0], cdsTier, ccy, cdsDocClause);
@@ -459,15 +485,17 @@ bool tryParseCdsInformation(const string& strInfo, CdsReferenceInformation& cdsI
 
 CreditDefaultSwapData::CreditDefaultSwapData()
     : settlesAccrual_(true), protectionPaymentTime_(QuantExt::CreditDefaultSwap::ProtectionPaymentTime::atDefault),
-      upfrontFee_(Null<Real>()), recoveryRate_(Null<Real>()), cashSettlementDays_(3) {}
+      upfrontFee_(Null<Real>()), rebatesAccrual_(true), recoveryRate_(Null<Real>()), cashSettlementDays_(3) {}
 
 CreditDefaultSwapData::CreditDefaultSwapData(const string& issuerId, const string& creditCurveId, const LegData& leg,
     const bool settlesAccrual, const PPT protectionPaymentTime,
     const Date& protectionStart, const Date& upfrontDate, const Real upfrontFee, Real recoveryRate,
-    const string& referenceObligation, const Date& tradeDate, const string& cashSettlementDays)
+    const string& referenceObligation, const Date& tradeDate, const string& cashSettlementDays,
+    const bool rebatesAccrual)
     : issuerId_(issuerId), creditCurveId_(creditCurveId), leg_(leg), settlesAccrual_(settlesAccrual),
       protectionPaymentTime_(protectionPaymentTime), protectionStart_(protectionStart), upfrontDate_(upfrontDate),
-      upfrontFee_(upfrontFee), recoveryRate_(recoveryRate), referenceObligation_(referenceObligation),
+      upfrontFee_(upfrontFee), rebatesAccrual_(rebatesAccrual), recoveryRate_(recoveryRate),
+      referenceObligation_(referenceObligation),
       tradeDate_(tradeDate), strCashSettlementDays_(cashSettlementDays),
       cashSettlementDays_(strCashSettlementDays_.empty() ? 3 : parseInteger(strCashSettlementDays_)) {}
 
@@ -475,9 +503,10 @@ CreditDefaultSwapData::CreditDefaultSwapData(
     const string& issuerId, const CdsReferenceInformation& referenceInformation, const LegData& leg,
     bool settlesAccrual, const PPT protectionPaymentTime,
     const Date& protectionStart, const Date& upfrontDate, Real upfrontFee, Real recoveryRate,
-    const std::string& referenceObligation, const Date& tradeDate, const string& cashSettlementDays)
+    const std::string& referenceObligation, const Date& tradeDate, const string& cashSettlementDays,
+    const bool rebatesAccrual)
     : issuerId_(issuerId), leg_(leg), settlesAccrual_(settlesAccrual), protectionPaymentTime_(protectionPaymentTime),
-      protectionStart_(protectionStart), upfrontDate_(upfrontDate), upfrontFee_(upfrontFee),
+      protectionStart_(protectionStart), upfrontDate_(upfrontDate), upfrontFee_(upfrontFee), rebatesAccrual_(rebatesAccrual),
       recoveryRate_(recoveryRate), referenceObligation_(referenceObligation),
       tradeDate_(tradeDate), strCashSettlementDays_(cashSettlementDays),
       cashSettlementDays_(strCashSettlementDays_.empty() ? 3 : parseInteger(strCashSettlementDays_)),
@@ -493,6 +522,9 @@ void CreditDefaultSwapData::fromXML(XMLNode* node) {
     // XMLNode* tmp = XMLUtils::getChildNode(node, "CreditCurveId");
     if (auto tmp = XMLUtils::getChildNode(node, "CreditCurveId")) {
         creditCurveId_ = XMLUtils::getNodeValue(tmp);
+        CdsReferenceInformation ref;
+        if (tryParseCdsInformation(creditCurveId_, ref))
+            referenceInformation_ = ref;
     } else {
         tmp = XMLUtils::getChildNode(node, "ReferenceInformation");
         QL_REQUIRE(tmp, "Need either a CreditCurveId or ReferenceInformation node in CreditDefaultSwapData");
@@ -503,6 +535,8 @@ void CreditDefaultSwapData::fromXML(XMLNode* node) {
     }
 
     settlesAccrual_ = XMLUtils::getChildValueAsBool(node, "SettlesAccrual", false);
+    rebatesAccrual_ = XMLUtils::getChildValueAsBool(node, "RebatesAccrual", false);
+    
     protectionPaymentTime_ = PPT::atDefault;
 
     // for backwards compatibility only
@@ -562,7 +596,7 @@ void CreditDefaultSwapData::fromXML(XMLNode* node) {
     leg_.fromXML(XMLUtils::getChildNode(node, "LegData"));
 }
 
-XMLNode* CreditDefaultSwapData::toXML(XMLDocument& doc) {
+XMLNode* CreditDefaultSwapData::toXML(XMLDocument& doc) const {
 
     XMLNode* node = alloc(doc);
 
@@ -576,6 +610,8 @@ XMLNode* CreditDefaultSwapData::toXML(XMLDocument& doc) {
     }
 
     XMLUtils::addChild(doc, node, "SettlesAccrual", settlesAccrual_);
+    if (!rebatesAccrual_)
+        XMLUtils::addChild(doc, node, "RebatesAccrual", rebatesAccrual_);
     if (protectionPaymentTime_ == PPT::atDefault) {
         XMLUtils::addChild(doc, node, "ProtectionPaymentTime", "atDefault");
     } else if (protectionPaymentTime_ == PPT::atPeriodEnd) {
