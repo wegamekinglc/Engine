@@ -16,35 +16,36 @@
  FITNESS FOR A PARTICULAR PURPOSE. See the license for more details.
 */
 
-#include <ql/utilities/null_deleter.hpp>
 #include <qle/instruments/makeaverageois.hpp>
 #include <qle/termstructures/averageoisratehelper.hpp>
+#include <qle/utilities/ratehelpers.hpp>
+
+#include <ql/utilities/null_deleter.hpp>
+#include <ql/cashflows/fixedratecoupon.hpp>
 
 namespace QuantExt {
 
-AverageOISRateHelper::AverageOISRateHelper(const Handle<Quote>& fixedRate, const Period& spotLagTenor,
-                                           const Period& swapTenor,
-                                           // Fixed leg
-                                           const Period& fixedTenor, const DayCounter& fixedDayCounter,
-                                           const Calendar& fixedCalendar, BusinessDayConvention fixedConvention,
-                                           BusinessDayConvention fixedPaymentAdjustment,
-                                           // ON leg
-                                           const QuantLib::ext::shared_ptr<OvernightIndex>& overnightIndex,
-                                           const Period& onTenor, const Handle<Quote>& onSpread, Natural rateCutoff,
-                                           // Exogenous discount curve
-                                           const Handle<YieldTermStructure>& discountCurve,
-                                           const bool telescopicValueDates)
+AverageOISRateHelper::AverageOISRateHelper(
+    const Handle<Quote>& fixedRate, const Period& spotLagTenor, const Period& swapTenor,
+    // Fixed leg
+    const Period& fixedTenor, const DayCounter& fixedDayCounter, const Calendar& fixedCalendar,
+    BusinessDayConvention fixedConvention, BusinessDayConvention fixedPaymentAdjustment,
+    // ON leg
+    const QuantLib::ext::shared_ptr<OvernightIndex>& overnightIndex, const bool onIndexGiven, const Period& onTenor,
+    const Handle<Quote>& onSpread, Natural rateCutoff,
+    // Exogenous discount curve
+    const Handle<YieldTermStructure>& discountCurve, const bool discountCurveGiven, const bool telescopicValueDates,
+    const QuantLib::Pillar::Choice pillarChoice)
     : RelativeDateRateHelper(fixedRate), spotLagTenor_(spotLagTenor), swapTenor_(swapTenor), fixedTenor_(fixedTenor),
       fixedDayCounter_(fixedDayCounter), fixedCalendar_(fixedCalendar), fixedConvention_(fixedConvention),
-      fixedPaymentAdjustment_(fixedPaymentAdjustment), overnightIndex_(overnightIndex), onTenor_(onTenor),
-      onSpread_(onSpread), rateCutoff_(rateCutoff), discountHandle_(discountCurve),
-      telescopicValueDates_(telescopicValueDates) {
+      fixedPaymentAdjustment_(fixedPaymentAdjustment), overnightIndex_(overnightIndex), onIndexGiven_(onIndexGiven),
+      onTenor_(onTenor), onSpread_(onSpread), rateCutoff_(rateCutoff), discountHandle_(discountCurve),
+      discountCurveGiven_(discountCurveGiven), telescopicValueDates_(telescopicValueDates),
+      pillarChoice_(pillarChoice) {
 
-    bool onIndexHasCurve = !overnightIndex_->forwardingTermStructure().empty();
-    bool haveDiscountCurve = !discountHandle_.empty();
-    QL_REQUIRE(!(onIndexHasCurve && haveDiscountCurve), "Have both curves nothing to solve for.");
+    QL_REQUIRE(!(onIndexGiven_ && discountCurveGiven_), "Have both curves nothing to solve for.");
 
-    if (!onIndexHasCurve) {
+    if (!onIndexGiven_) {
         QuantLib::ext::shared_ptr<IborIndex> clonedIborIndex(overnightIndex_->clone(termStructureHandle_));
         overnightIndex_ = QuantLib::ext::dynamic_pointer_cast<OvernightIndex>(clonedIborIndex);
         overnightIndex_->unregisterWith(termStructureHandle_);
@@ -58,18 +59,28 @@ AverageOISRateHelper::AverageOISRateHelper(const Handle<Quote>& fixedRate, const
 
 void AverageOISRateHelper::initializeDates() {
 
-    averageOIS_ =
-        MakeAverageOIS(swapTenor_, overnightIndex_, onTenor_, 0.0, fixedTenor_, fixedDayCounter_, spotLagTenor_)
-            .withFixedCalendar(fixedCalendar_)
-            .withFixedConvention(fixedConvention_)
-            .withFixedTerminationDateConvention(fixedConvention_)
-            .withFixedPaymentAdjustment(fixedPaymentAdjustment_)
-            .withRateCutoff(rateCutoff_)
-            .withDiscountingTermStructure(discountRelinkableHandle_)
-            .withTelescopicValueDates(telescopicValueDates_);
+    averageOIS_ = MakeAverageOIS(swapTenor_, overnightIndex_, onTenor_,
+                                 quote().empty() || !quote()->isValid() ? 0.0 : quote()->value(), fixedTenor_,
+                                 fixedDayCounter_, spotLagTenor_)
+                      .withFixedCalendar(fixedCalendar_)
+                      .withFixedConvention(fixedConvention_)
+                      .withFixedTerminationDateConvention(fixedConvention_)
+                      .withFixedPaymentAdjustment(fixedPaymentAdjustment_)
+                      .withRateCutoff(rateCutoff_)
+                      .withDiscountingTermStructure(discountRelinkableHandle_)
+                      .withTelescopicValueDates(telescopicValueDates_);
+
+    spreadLeg_ = FixedRateLeg(averageOIS_->onSchedule())
+                     .withNotionals(1.0)
+                     .withCouponRates(onSpread_.empty() ? 0.0 : onSpread_->value(), overnightIndex_->dayCounter())
+                     .withPaymentAdjustment(overnightIndex_->businessDayConvention())
+                     .withPaymentCalendar(overnightIndex_->fixingCalendar());
 
     earliestDate_ = averageOIS_->startDate();
-    latestDate_ = averageOIS_->maturityDate();
+
+    maturityDate_ = averageOIS_->maturityDate();
+    latestRelevantDate_ = determineLatestRelevantDate(averageOIS_->legs());
+    latestDate_ = pillarDate_ = determinePillarDate(pillarChoice_, maturityDate_, latestRelevantDate_);
 }
 
 Real AverageOISRateHelper::impliedQuote() const {
@@ -95,7 +106,7 @@ void AverageOISRateHelper::setTermStructure(YieldTermStructure* t) {
     QuantLib::ext::shared_ptr<YieldTermStructure> temp(t, null_deleter());
     termStructureHandle_.linkTo(temp, observer);
 
-    if (discountHandle_.empty())
+    if (!discountCurveGiven_)
         discountRelinkableHandle_.linkTo(temp, observer);
     else
         discountRelinkableHandle_.linkTo(*discountHandle_, observer);
@@ -104,6 +115,8 @@ void AverageOISRateHelper::setTermStructure(YieldTermStructure* t) {
 }
 
 Spread AverageOISRateHelper::onSpread() const { return onSpread_.empty() ? 0.0 : onSpread_->value(); }
+
+const Leg& AverageOISRateHelper::spreadLeg() const { return spreadLeg_; }
 
 QuantLib::ext::shared_ptr<AverageOIS> AverageOISRateHelper::averageOIS() const { return averageOIS_; }
 

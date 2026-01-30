@@ -4,9 +4,6 @@ project(OREData CXX)
 
 enable_testing()
 
-include(writeAll)
-include(commonSettings)
-
 get_library_name("OREData" ORED_LIB_NAME)
 get_library_name("QuantExt" QLE_LIB_NAME)
 set_ql_library_name()
@@ -16,7 +13,21 @@ if (ORE_BUILD_TESTS)
 else()
     SET(COMPONENTS_CONDITIONAL "")
 endif()
-find_package (Boost REQUIRED COMPONENTS ${COMPONENTS_CONDITIONAL} regex system date_time serialization filesystem timer log OPTIONAL_COMPONENTS chrono)
+
+if(MSVC)
+	add_compile_definitions(BOOST_IOSTREAMS_NO_LIB)
+endif()
+
+if(ORE_USE_ZLIB)
+    find_package(ZLIB REQUIRED)
+endif()
+
+if(MSVC AND ORE_USE_ZLIB)
+    LIST(APPEND COMPONENT_LIST zlib)
+endif()
+
+find_package (Boost REQUIRED COMPONENTS ${COMPONENTS_CONDITIONAL} date_time thread serialization timer log filesystem OPTIONAL_COMPONENTS system chrono iostreams)
+
 
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${QUANTLIB_SOURCE_DIR})

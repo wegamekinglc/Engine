@@ -23,6 +23,8 @@
 
 #pragma once
 
+#include <ored/portfolio/cashflowutils.hpp>
+
 #include <ql/math/array.hpp>
 #include <ql/time/date.hpp>
 #include <ql/time/period.hpp>
@@ -50,6 +52,11 @@ struct YieldCurveCalibrationInfo {
     std::vector<double> zeroRates;
     std::vector<double> discountFactors;
     std::vector<double> times;
+    // the following are all empty or corresponding to pillarDates, if these were not overwritten manually
+    std::vector<std::string> mdQuoteLabels;
+    std::vector<double> mdQuoteValues;
+    std::vector<std::string> rateHelperTypes;
+    std::vector<std::vector<TradeCashflowReportData>> rateHelperCashflows;
 };
 
 struct PiecewiseYieldCurveCalibrationInfo : public YieldCurveCalibrationInfo {
@@ -79,6 +86,10 @@ struct InflationCurveCalibrationInfo {
     QuantLib::Date baseDate;
     std::vector<QuantLib::Date> pillarDates;
     std::vector<double> times;
+    std::vector<std::string> mdQuoteLabels;
+    std::vector<double> mdQuoteValues;
+    std::vector<std::string> rateHelperTypes;
+    std::vector<std::vector<TradeCashflowReportData>> rateHelperCashflows;
 };
 
 struct ZeroInflationCurveCalibrationInfo : public InflationCurveCalibrationInfo {
@@ -168,6 +179,26 @@ struct IrVolCalibrationInfo {
     std::vector<std::string> messages;
 };
 
+// cpi vols
+
+struct CpiVolCalibrationInfo {
+    std::string dayCounter;
+    std::string calendar;
+    bool isArbitrageFree;
+    std::vector<QuantLib::Date> expiryDates;
+    std::vector<QuantLib::Date> optionObservationDates;
+    std::vector<double> times;
+    std::vector<double> optionLifeTimes;
+    std::vector<double> forwards;
+    std::vector<double> strikes;
+    std::vector<std::vector<double>> strikeGridProb;
+    std::vector<std::vector<double>> strikeGridImpliedVolatility;
+    std::vector<std::vector<bool>> strikeGridCallSpreadArbitrage;
+    std::vector<std::vector<bool>> strikeGridButterflyArbitrage;
+    std::vector<double> forwardCPI;
+    std::vector<std::vector<double>> strikeCPI;
+};
+
 // main container
 
 struct TodaysMarketCalibrationInfo {
@@ -188,6 +219,8 @@ struct TodaysMarketCalibrationInfo {
     std::map<std::string, QuantLib::ext::shared_ptr<IrVolCalibrationInfo>> irVolCalibrationInfo;
     // comm vols
     std::map<std::string, QuantLib::ext::shared_ptr<FxEqCommVolCalibrationInfo>> commVolCalibrationInfo;
+    // cpi vols
+    std::map<std::string, QuantLib::ext::shared_ptr<CpiVolCalibrationInfo>> cpiVolCalibrationInfo;
 };
 
 } // namespace data

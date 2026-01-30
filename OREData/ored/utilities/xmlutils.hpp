@@ -25,12 +25,15 @@
 
 #include <ql/errors.hpp>
 #include <ql/time/period.hpp>
+#include <ql/time/date.hpp>
 #include <ql/time/calendar.hpp>
 #include <ql/time/businessdayconvention.hpp>
 #include <ql/types.hpp>
 
+#include <boost/lexical_cast.hpp>
+
 #include <map>
-#include <sstream> // std::ostringstream
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -50,6 +53,7 @@ template <class Ch> class xml_document;
 namespace ore {
 namespace data {
 using QuantLib::Period;
+using QuantLib::Date;
 using QuantLib::Real;
 using QuantLib::Size;
 using std::map;
@@ -76,9 +80,13 @@ public:
 
     //! save the XML Document to the given file.
     void toFile(const string& filename) const;
+        
+    //! load an xml doc from the given file.
+    void fromFile(const string& filename);
 
     //! return the XML Document as a string.
     std::string toString() const;
+    std::string toStringUnformatted() const;
 
     XMLNode* getFirstNode(const string& name) const;
     void appendNode(XMLNode*);
@@ -111,6 +119,7 @@ public:
     void fromXMLString(const std::string& xml);
     //! Parse from XML string
     std::string toXMLString() const;
+    std::string toXMLStringUnformatted() const;
 };
 
 //! XML Utilities Class
@@ -140,6 +149,10 @@ public:
         addChild(doc, n, name, oss.str());
     }
 
+    static string convertToString(const Real value);
+
+    template <class T> static string convertToString(const T& value) { return boost::lexical_cast<std::string>(value); }
+
     template <class T>
     static void addGenericChildAsList(XMLDocument& doc, XMLNode* n, const string& name, const vector<T>& values,
                                       const string& attrName = "", const string& attr = "") {
@@ -149,7 +162,7 @@ public:
         } else {
             oss << values[0];
             for (Size i = 1; i < values.size(); i++) {
-                oss << ", " << values[i];
+                oss << ", " << convertToString(values[i]);
             }
         }
         addChild(doc, n, name, oss.str(), attrName, attr);
@@ -239,6 +252,7 @@ public:
     //! Returns all the children with a given name
     // To get all children, set name equal to ""
     static vector<XMLNode*> getChildrenNodes(XMLNode* node, const string& name);
+    static vector<XMLNode*> getAnyChildrenNodes(XMLNode* node, const std::vector<string>& names);
 
     static vector<XMLNode*> getChildrenNodesWithAttributes(XMLNode* node, const string& names, const string& name,
                                                            const string& attrName, vector<string>& attrs,
@@ -263,12 +277,6 @@ public:
 
     //! Write a node out as a string
     static string toString(XMLNode* node);
-
-    // helper routine to convert a value of an arbitrary type to string
-    static string convertToString(const Real value);
-
-	template <class T> static string convertToString(const T& value);
-
 };
 
 } // namespace data

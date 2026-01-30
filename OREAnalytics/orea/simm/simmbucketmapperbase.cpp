@@ -187,10 +187,10 @@ string SimmBucketMapperBase::bucket(const RiskType& riskType, const string& qual
     return bucket;
 }
 
-bool SimmBucketMapperBase::hasBuckets(const RiskType& riskType) const { return rtWithBuckets_.count(riskType) > 0; }
+bool SimmBucketMapperBase::hasBuckets(const RiskType& riskType) const { return rtWithBuckets_.find(riskType) != rtWithBuckets_.end(); }
 
 bool SimmBucketMapperBase::has(const RiskType& riskType, const string& qualifier,
-                               boost::optional<bool> fallback) const {
+                               QuantLib::ext::optional<bool> fallback) const {
 
     // Vol risk type bucket mappings are stored in their non-vol counterparts
     auto lookupRiskType = riskType;

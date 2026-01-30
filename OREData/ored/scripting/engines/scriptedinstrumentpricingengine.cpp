@@ -31,22 +31,22 @@ namespace data {
 
 namespace {
 
-// helper that converts a context value to a ql additional result (i.e. boost::any)
+// helper that converts a context value to a ql additional result (i.e. QuantLib::ext::any)
 
-struct anyGetter : public boost::static_visitor<boost::any> {
+struct anyGetter : public boost::static_visitor<QuantLib::ext::any> {
     explicit anyGetter(const QuantLib::ext::shared_ptr<Model>& model) : model_(model) {}
-    boost::any operator()(const RandomVariable& x) const { return model_->extractT0Result(x); }
-    boost::any operator()(const EventVec& x) const { return x.value; }
-    boost::any operator()(const IndexVec& x) const { return x.value; }
-    boost::any operator()(const CurrencyVec& x) const { return x.value; }
-    boost::any operator()(const DaycounterVec& x) const { return x.value; }
-    boost::any operator()(const Filter& x) const {
-        QL_FAIL("can not convert Filter to boost::any, unexpected call to anyGetter");
+    QuantLib::ext::any operator()(const RandomVariable& x) const { return model_->extractT0Result(x); }
+    QuantLib::ext::any operator()(const EventVec& x) const { return x.value; }
+    QuantLib::ext::any operator()(const IndexVec& x) const { return x.value; }
+    QuantLib::ext::any operator()(const CurrencyVec& x) const { return x.value; }
+    QuantLib::ext::any operator()(const DaycounterVec& x) const { return x.value; }
+    QuantLib::ext::any operator()(const Filter& x) const {
+        QL_FAIL("can not convert Filter to QuantLib::ext::any, unexpected call to anyGetter");
     }
     QuantLib::ext::shared_ptr<Model> model_;
 };
 
-boost::any valueToAny(const QuantLib::ext::shared_ptr<Model>& model, const ValueType& v) {
+QuantLib::ext::any valueToAny(const QuantLib::ext::shared_ptr<Model>& model, const ValueType& v) {
     return boost::apply_visitor(anyGetter(model), v);
 }
 
@@ -57,7 +57,7 @@ Real ScriptedInstrumentPricingEngine::addMcErrorEstimate(const std::string& labe
         return Null<Real>();
     if (v.which() != ValueTypeWhich::Number)
         return Null<Real>();
-    Real var = variance(QuantLib::ext::get<RandomVariable>(v)).at(0);
+    Real var = variance(boost::get<RandomVariable>(v)).at(0);
     Real errEst = std::sqrt(var / static_cast<double>(model_->size()));
     if(!label.empty())
         results_.additionalResults[label] = errEst;
@@ -88,7 +88,8 @@ void ScriptedInstrumentPricingEngine::calculate() const {
 
     // clear NPVMem() regression coefficients
 
-    model_->resetNPVMem();
+    if(!staticNpvMem_)
+        model_->resetNPVMem();
 
     // if the model uses a separate training phase for NPV(), run this
 
@@ -121,7 +122,7 @@ void ScriptedInstrumentPricingEngine::calculate() const {
                "did not find npv result variable '" << npv_ << "' as scalar in context");
     QL_REQUIRE(npv->second.which() == ValueTypeWhich::Number,
                "result variable '" << npv_ << "' must be of type NUMBER, got " << npv->second.which());
-    results_.value = model_->extractT0Result(QuantLib::ext::get<RandomVariable>(npv->second));
+    results_.value = model_->extractT0Result(boost::get<RandomVariable>(npv->second));
     DLOG("got NPV = " << results_.value << " " << model_->baseCcy());
 
     // set additional results, if this feature is enabled
@@ -132,7 +133,7 @@ void ScriptedInstrumentPricingEngine::calculate() const {
             auto s = workingContext->scalars.find(r.second);
             bool resultSet = false;
             if (s != workingContext->scalars.end()) {
-                boost::any t = valueToAny(model_, s->second);
+                QuantLib::ext::any t = valueToAny(model_, s->second);
                 results_.additionalResults[r.first] = t;
                 addMcErrorEstimate(r.first + "_MCErrEst", s->second);
                 DLOG("got additional result '" << r.first << "' referencing script variable '" << r.second << "'");
@@ -148,13 +149,13 @@ void ScriptedInstrumentPricingEngine::calculate() const {
                 std::vector<std::string> tmpstring;
                 std::vector<QuantLib::Date> tmpdate;
                 for (auto const& d : v->second) {
-                    boost::any t = valueToAny(model_, d);
+                    QuantLib::ext::any t = valueToAny(model_, d);
                     if (t.type() == typeid(double))
-                        tmpdouble.push_back(boost::any_cast<double>(t));
+                        tmpdouble.push_back(QuantLib::ext::any_cast<double>(t));
                     else if (t.type() == typeid(std::string))
-                        tmpstring.push_back(boost::any_cast<std::string>(t));
+                        tmpstring.push_back(QuantLib::ext::any_cast<std::string>(t));
                     else if (t.type() == typeid(QuantLib::Date))
-                        tmpdate.push_back(boost::any_cast<QuantLib::Date>(t));
+                        tmpdate.push_back(QuantLib::ext::any_cast<QuantLib::Date>(t));
                     else {
                         QL_FAIL("unexpected result type '" << t.type().name() << "' for result variable '" << r.first
                                                            << "' referencing script variable '" << r.second << "'");
@@ -196,12 +197,14 @@ void ScriptedInstrumentPricingEngine::calculate() const {
             // cashflow is written as expectation of deflated base ccy amount at T0, converted to flow ccy
             // with the T0 FX Spot and compounded back to the pay date on T0 curves
             Real fx = 1.0;
-            Real discount = 1.0;
+            Real discount = 0.0;
+            cashFlowResults[i].amount = model_->extractT0Result(paylog->amounts().at(i));
             if (paylog->dates().at(i) > model_->referenceDate()) {
                 fx = model_->fxSpotT0(paylog->currencies().at(i), model_->baseCcy());
                 discount = model_->discount(referenceDate, paylog->dates().at(i), paylog->currencies().at(i)).at(0);
+                cashFlowResults[i].amount /= fx * discount;
             }
-            cashFlowResults[i].amount = model_->extractT0Result(paylog->amounts().at(i)) / fx / discount;
+            cashFlowResults[i].fixingDate = paylog->obsDates().at(i);
             cashFlowResults[i].payDate = paylog->dates().at(i);
             cashFlowResults[i].currency = paylog->currencies().at(i);
             cashFlowResults[i].legNumber = paylog->legNos().at(i);

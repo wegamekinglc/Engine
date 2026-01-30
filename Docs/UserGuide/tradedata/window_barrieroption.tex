@@ -1,5 +1,13 @@
 \subsubsection{Window Barrier Option}
 
+\ifdefined\IncludePayoff{{\bf Payoff}
+
+Window Barrier Options pay a (European) vanilla call / put. An American Knock-In or Knock-Out barrier condition can be
+defined that are monitored continuously between a start and end date. The different barrier types are ``UpAndIn'',
+``UpAndOut'', ``DownAndIn'', ``DownAndOut''.
+
+{\bf Input}}\fi
+
 The \verb+FxWindowBarrierOptionData+, \verb+EquityWindowBarrierOptionData+, \verb+CommodityWindowBarrierOptionData+ is
 the trade data container for the FxWindowBarrierOption, EquityWindowBarrierOption, CommodityBarrierOption trade
 type. The following listing shows the structure of an example trade for an FX underlying.
@@ -15,11 +23,11 @@ type. The following listing shows the structure of an example trade for an FX un
     <FixingAmount>1000000</FixingAmount>
     <Underlying>
       <Type>FX</Type>
-      <Name>ECB-EUR_USD</Name>
+      <Name>ECB-EUR-USD</Name>
     </Underlying>
     <Strike>1.1</Strike>
     <StartDate>2023-03-01</StartDate>
-    <EndDate>024-03-01</EndDate>
+    <EndDate>2024-03-01</EndDate>
     <OptionData>
       <LongShort>Long</LongShort>
       <OptionType>Call</OptionType>
@@ -84,7 +92,7 @@ Allowable values: See \lstinline!Currency! in Table \ref{tab:allow_stand_data}. 
 number. The currency provided in this node may be quoted as corresponding minor currency to the underlying major
 currency.
 
-\item Strike [Optional]: For FxWindowBarrierOptions: The the fx strike rate is defined as amount in domestic currency
+\item Strike [Optional]: For FxWindowBarrierOptions: The fx strike rate is defined as amount in domestic currency
   (\lstinline!CCY2!) for one unit of foreign currency (\lstinline!CCY1!). For Equity- and CommodityWindowBarrierOptions: The
   strike value for one unit/share/contract of the underlying equity or commodity, expressed in the currency the equity
   or commodity is quoted in. For EquityWindowBarrierOptions, the \lstinline!StrikeData! node (see above) should be used. \\
@@ -109,7 +117,7 @@ Allowable values: Any valid date.
 \item \lstinline!PaymentData! [Optional] Optional pay date associated to the exercise date.
 \end{itemize}
 
-\item BarrierData: Specification of the barrier type and level. The barrier is continuosly monitored between the
+\item BarrierData: Specification of the barrier type and level. The barrier is continuously monitored between the
   StartDate and EndDate. \\
 
 Allowable values: See \ref{ss:barrier_data}, allowable types are \emph{UpAndOut}, \emph{DownAndOut},\emph{UpAndIn},

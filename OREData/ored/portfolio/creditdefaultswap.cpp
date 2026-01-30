@@ -40,6 +40,7 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
     // set isdaSubProduct to entityType in credit reference data
     additionalData_["isdaSubProduct"] = string("");
     string entity = swap_.referenceInformation() ? swap_.referenceInformation()->id() : swap_.creditCurveId();
+
     QuantLib::ext::shared_ptr<ReferenceDataManager> refData = engineFactory->referenceData();
     if (refData && refData->hasData("Credit", entity)) {
         auto refDatum = refData->getData("Credit", entity);
@@ -49,14 +50,26 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
         if (creditRefDatum->creditData().entityType == "") {
             ALOG("EntityType is blank in credit reference data for entity " << entity);
         }
+        additionalData_["primaryPriceType"] = creditRefDatum->creditData().primaryPriceType;
     } else {
         ALOG("Credit reference data missing for entity " << entity << ", isdaSubProduct left blank");
     }
+
     // skip the transaction level mapping for now
-    additionalData_["isdaTransaction"] = string("");  
+    additionalData_["isdaTransaction"] = string("");
 
     const QuantLib::ext::shared_ptr<Market> market = engineFactory->market();
     QuantLib::ext::shared_ptr<EngineBuilder> builder = engineFactory->builder("CreditDefaultSwap");
+    
+    Envelope env = envelope();
+    auto addFields = env.additionalFields();
+    auto it = addFields.find("use_cp_trade");
+    if (it != addFields.end() && parseBool(it->second)) {
+        additionalData_["cdsDefaultCurveEngine"] = "";
+    }else{
+        string cdsDefaultCurveType = market->defaultCurve(entity)->refData().type;
+        additionalData_["cdsDefaultCurveEngine"] = cdsDefaultCurveType == "ConvSpreadCDS" ? std::string("IsdaCdsEngine") : std::string("MidPointCdsEngine");
+    }
 
     auto legData = swap_.leg(); // copy
     const auto& notionals = swap_.leg().notionals();
@@ -64,9 +77,19 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
     npvCurrency_ = legData.currency();
     notionalCurrency_ = legData.currency();
 
-    QL_REQUIRE(legData.legType() == "Fixed", "CreditDefaultSwap requires Fixed leg");
+    QL_REQUIRE(legData.legType() == LegType::Fixed, "CreditDefaultSwap requires Fixed leg");
     Schedule schedule = makeSchedule(legData.schedule());
     QL_REQUIRE(schedule.size() > 1, "CreditDefaultSwap requires at least two dates in the schedule");
+
+    
+
+    if (schedule.hasRule() && (schedule.rule() == DateGeneration::CDS2015 || schedule.rule() == DateGeneration::CDS)) {
+        Date protectionStart = swap_.protectionStart();
+        Date tradeDate = swap_.tradeDate();
+        protectionStart = protectionStart != Date() ? protectionStart: schedule[0];
+        tradeDate = tradeDate != Date() ? tradeDate : protectionStart - 1;
+        schedule = removeCDSPeriodsBeforeStartDate(schedule, tradeDate + 1);
+     }
 
     BusinessDayConvention payConvention = Following;
     if (!legData.paymentConvention().empty()) {
@@ -122,8 +145,8 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
     if (swap_.upfrontFee() == Null<Real>()) {
         cds = QuantLib::ext::make_shared<QuantLib::CreditDefaultSwap>(
             prot, notional_, couponLeg, fixedRate, schedule, payConvention, dc, swap_.settlesAccrual(),
-            swap_.protectionPaymentTime(), swap_.protectionStart(), QuantLib::ext::shared_ptr<Claim>(), lastPeriodDayCounter,
-            swap_.rebatesAccrual(), swap_.tradeDate(), swap_.cashSettlementDays());
+            swap_.protectionPaymentTime(), swap_.protectionStart(), QuantLib::ext::shared_ptr<Claim>(),
+            lastPeriodDayCounter, swap_.rebatesAccrual(), swap_.tradeDate(), swap_.cashSettlementDays());
     } else {
         cds = QuantLib::ext::make_shared<QuantLib::CreditDefaultSwap>(
             prot, notional_, couponLeg, swap_.upfrontFee(), fixedRate, schedule, payConvention, dc,
@@ -133,6 +156,7 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
     }
 
     maturity_ = cds->coupons().back()->date();
+    maturityType_ = "Last CDS Coupon Date";
 
     QuantLib::ext::shared_ptr<CreditDefaultSwapEngineBuilder> cdsBuilder =
         QuantLib::ext::dynamic_pointer_cast<CreditDefaultSwapEngineBuilder>(builder);
@@ -140,6 +164,7 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
     QL_REQUIRE(cdsBuilder, "No Builder found for CreditDefaultSwap: " << id());
     cds->setPricingEngine(cdsBuilder->engine(parseCurrency(npvCurrency_), swap_.creditCurveId(), swap_.recoveryRate()));
     setSensitivityTemplate(*cdsBuilder);
+    addProductModelEngine(*cdsBuilder);
 
     instrument_.reset(new VanillaInstrument(cds));
 
@@ -153,9 +178,11 @@ void CreditDefaultSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& en
         additionalData_["startDate"] = to_string(schedule.dates().front());
 
     issuer_ = swap_.issuerId();
+
+    additionalData_["tradeRecoveryRate"] = swap_.recoveryRate();
 }
 
-const std::map<std::string, boost::any>& CreditDefaultSwap::additionalData() const {
+const std::map<std::string, QuantLib::ext::any>& CreditDefaultSwap::additionalData() const {
     setLegBasedAdditionalData(0, 2);
     additionalData_["legNPV[1]"] = instrument_->qlInstrument()->result<Real>("protectionLegNPV");
     additionalData_["legNPV[2]"] = instrument_->qlInstrument()->result<Real>("premiumLegNPVDirty") +
@@ -163,7 +190,7 @@ const std::map<std::string, boost::any>& CreditDefaultSwap::additionalData() con
                                    instrument_->qlInstrument()->result<Real>("accrualRebateNPV");
     additionalData_["isPayer[1]"] = !swap_.leg().isPayer();
     additionalData_["isPayer[2]"] = swap_.leg().isPayer();
-    additionalData_["legType[2]"] = swap_.leg().legType();
+    additionalData_["legType[2]"] = ore::data::to_string(swap_.leg().legType());
     additionalData_["legType[1]"] = std::string("Protection");
     additionalData_["currentNotional[1]"] = additionalData_["currentNotional[2]"];
     additionalData_["originalNotional[1]"] = additionalData_["originalNotional[2]"];
@@ -177,7 +204,7 @@ QuantLib::Real CreditDefaultSwap::notional() const {
     // get the current notional from CDS premium leg
     if (!legs_.empty()) {
         for (Size i = 0; i < legs_[0].size(); ++i) {
-            QuantLib::ext::shared_ptr<Coupon> coupon = boost::dynamic_pointer_cast<Coupon>(legs_[0][i]);
+            QuantLib::ext::shared_ptr<Coupon> coupon = QuantLib::ext::dynamic_pointer_cast<Coupon>(legs_[0][i]);
             if (coupon->date() > asof)
                 return coupon->nominal();
         }

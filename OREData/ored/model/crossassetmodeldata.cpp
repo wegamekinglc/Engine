@@ -72,9 +72,8 @@ namespace data {
 void InstantaneousCorrelations::fromXML(XMLNode* node) {
     // Configure correlation structure
     LOG("CrossAssetModelData: adding correlations.");
-    XMLNode* correlationNode = XMLUtils::locateNode(node, "InstantaneousCorrelations");
     CorrelationMatrixBuilder cmb;
-    if (correlationNode) {
+    if (auto correlationNode = XMLUtils::getChildNode(node, "InstantaneousCorrelations")) {
         vector<XMLNode*> nodes = XMLUtils::getChildrenNodes(correlationNode, "Correlation");
         for (Size i = 0; i < nodes.size(); ++i) {
             CorrelationFactor factor_1 = fromNode(nodes[i], true);
@@ -82,10 +81,7 @@ void InstantaneousCorrelations::fromXML(XMLNode* node) {
             Real corr = parseReal(XMLUtils::getNodeValue(nodes[i]));
             cmb.addCorrelation(factor_1, factor_2, corr);
         }
-    } else {
-        QL_FAIL("No InstantaneousCorrelations found in model configuration XML");
     }
-
     correlations_ = cmb.correlations();
 }
 
@@ -228,6 +224,7 @@ void CrossAssetModelData::validate() {
     }
 
     QL_REQUIRE(fxConfigs_.size() == irConfigs_.size() - 1, "inconsistent number of FX data provided");
+    QL_REQUIRE(irConfigs_[0]->ccy() == domesticCurrency_, "first currency defined in cross asset model has to be the domestic currency");
     for (Size i = 0; i < fxConfigs_.size(); ++i)
         QL_REQUIRE(fxConfigs_[i]->foreignCcy() == irConfigs_[i + 1]->ccy(),
                    "currency mismatch between IR and FX config vectors");
@@ -243,11 +240,6 @@ void CrossAssetModelData::validate() {
                            "shift horizon for the domestic LGM must be 0 for BA measure simulations");
             }
     }
-}
-
-std::vector<std::string> pairToStrings(std::pair<std::string, std::string> p) {
-    std::vector<std::string> pair = {p.first, p.second};
-    return pair;
 }
 
 void CrossAssetModelData::fromXML(XMLNode* root) {
@@ -283,6 +275,12 @@ void CrossAssetModelData::fromXML(XMLNode* root) {
     }
 
     discretization_ = parseDiscretization(discString);
+
+    std::string salvString = XMLUtils::getChildValue(modelNode, "SalvagingAlgorithm", false, "None");
+    salvagingAlgorithm_ = parseSalvagingAlgorithmType(salvString);
+
+    integrationPolicy_ = XMLUtils::getChildValue(modelNode, "IntegrationPolicy", false, std::string());
+    piecewiseIntegration_ = parseBool(XMLUtils::getChildValue(modelNode, "PiecewiseIntegration", false, "true"));
 
     domesticCurrency_ = XMLUtils::getChildValue(modelNode, "DomesticCcy", true); // mandatory
     LOG("CrossAssetModelData: domesticCcy " << domesticCurrency_);
@@ -598,18 +596,19 @@ void CrossAssetModelData::buildIrConfigs(std::map<std::string, QuantLib::ext::sh
             if (auto def = QuantLib::ext::dynamic_pointer_cast<HwModelData>(irDataMap["default"])) {
                 irConfigs_[i] = QuantLib::ext::make_shared<HwModelData>(
                     ccy, // overwrite this and keep the others
-                    def->calibrationType(), def->calibrateKappa(),
-                    def->kappaType(), def->kappaTimes(), def->kappaValues(), def->calibrateSigma(), def->sigmaType(),
-                    def->sigmaTimes(), def->sigmaValues(), def->optionExpiries(),
-                    def->optionTerms(), def->optionStrikes());
-                
+                    def->calibrationType(), def->calibrateKappa(), def->kappaType(), def->kappaTimes(),
+                    def->kappaValues(), def->calibrateSigma(), def->sigmaType(), def->sigmaTimes(), def->sigmaValues(),
+                    def->pcaLoadings(), def->calibratePcaSigma0(), def->pcaSigma0Type(), def->pcaSigma0Times(),
+                    def->pcaSigma0Values(), def->pcaSigmaRatios(), def->optionExpiries(), def->optionTerms(),
+                    def->optionStrikes());
+
             } else if (auto def = QuantLib::ext::dynamic_pointer_cast<IrLgmData>(irDataMap["default"])) {
                 irConfigs_[i] = QuantLib::ext::make_shared<IrLgmData>(
                     ccy, // overwrite this and keep the others
                     def->calibrationType(), def->reversionType(), def->volatilityType(), def->calibrateH(),
                     def->hParamType(), def->hTimes(), def->hValues(), def->calibrateA(), def->aParamType(),
                     def->aTimes(), def->aValues(), def->shiftHorizon(), def->scaling(), def->optionExpiries(),
-                    def->optionTerms(), def->optionStrikes());
+                    def->optionTerms(), def->optionStrikes(), def->floatSpreadMapping());
             } else {
                 QL_FAIL("Unexpected model data type,expect either HwModelData or IrLgmData");
             } 
@@ -765,8 +764,9 @@ void CrossAssetModelData::buildComConfigs(std::map<std::string, QuantLib::ext::s
             QuantLib::ext::shared_ptr<CommoditySchwartzData> def = comDataMap["default"];
             QuantLib::ext::shared_ptr<CommoditySchwartzData> comData = QuantLib::ext::make_shared<CommoditySchwartzData>(
                 name, def->currency(), def->calibrationType(), def->calibrateSigma(), def->sigmaValue(),
-                def->calibrateKappa(), def->kappaValue(), def->optionExpiries(), def->optionStrikes());
-
+                def->calibrateKappa(), def->kappaValue(), def->calibrateSeasonality(), def->seasonalityParamType(), def->seasonalityTimes(),
+                def->seasonalityValues(),
+                def->optionExpiries(), def->optionStrikes());
             comConfigs_.push_back(comData);
         }
         LOG("CrossAssetModelData: COM config added for name " << name);
@@ -787,6 +787,9 @@ XMLNode* CrossAssetModelData::toXML(XMLDocument& doc) const {
     XMLUtils::addChild(doc, crossAssetModelNode, "Measure", measure_);
     XMLUtils::addChild(doc, crossAssetModelNode, "Discretization",
                        discretization_ == CrossAssetModel::Discretization::Exact ? "Exact" : "Euler");
+    XMLUtils::addChild(doc, crossAssetModelNode, "SalvagingAlgorithm", ore::data::to_string(salvagingAlgorithm_));
+    XMLUtils::addChild(doc, crossAssetModelNode, "IntegrationPolicy", integrationPolicy_);
+    XMLUtils::addChild(doc, crossAssetModelNode, "PiecewiseIntegration", piecewiseIntegration_);
 
     XMLNode* interestRateModelsNode = XMLUtils::addChild(doc, crossAssetModelNode, "InterestRateModels");
     for (Size irConfigs_Iterator = 0; irConfigs_Iterator < irConfigs_.size(); irConfigs_Iterator++) {

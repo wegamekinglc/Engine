@@ -26,7 +26,8 @@ SpreadedBlackVolatilityCurve::SpreadedBlackVolatilityCurve(const Handle<BlackVol
                                                            const std::vector<Time>& times,
                                                            const std::vector<Handle<Quote>>& volSpreads,
                                                            const bool useAtmReferenceVolsOnly)
-    : BlackVolatilityTermStructure(referenceVol->businessDayConvention(), referenceVol->dayCounter()),
+    : BlackVolatilityTermStructure(referenceVol->businessDayConvention(), referenceVol->dayCounter(),
+                                   referenceVol->volType(), referenceVol->shift()),
       referenceVol_(referenceVol), times_(times), volSpreads_(volSpreads),
       useAtmReferenceVolsOnly_(useAtmReferenceVolsOnly), data_(times.size(), 0.0) {
     registerWith(referenceVol_);
@@ -66,7 +67,8 @@ void SpreadedBlackVolatilityCurve::performCalculations() const {
 
 Real SpreadedBlackVolatilityCurve::blackVolImpl(Time t, Real k) const {
     calculate();
-    return referenceVol_->blackVol(t, useAtmReferenceVolsOnly_ ? Null<Real>() : k) + (*interpolation_)(t);
+    return std::max(0.0,
+                    referenceVol_->blackVol(t, useAtmReferenceVolsOnly_ ? Null<Real>() : k) + (*interpolation_)(t));
 }
 
 } // namespace QuantExt

@@ -48,7 +48,7 @@
 #include <qle/termstructures/swaptionvolcubewithatm.hpp>
 #include <qle/termstructures/yoyinflationcurveobserverstatic.hpp>
 #include <qle/termstructures/zeroinflationcurveobserverstatic.hpp>
-
+#include <qle/utilities/inflation.hpp>
 #include <orea/scenario/sensitivityscenariodata.hpp>
 
 #include <iostream>
@@ -108,9 +108,10 @@ parRateCurveHelpers(const string& ccy, const vector<string>& parInst, const vect
             QuantLib::ext::shared_ptr<OisConvention> oisConv = QuantLib::ext::dynamic_pointer_cast<OisConvention>(conv);
             BOOST_ASSERT(oisConv);
             rateHelper = QuantLib::ext::make_shared<QuantExt::OISRateHelper>(
-                oisConv->spotLag(), tenor, parRateQuote, oisConv->index(), oisConv->fixedDayCounter(),
+                oisConv->spotLag(), tenor, parRateQuote, oisConv->index(), false, oisConv->fixedDayCounter(),
                 oisConv->fixedCalendar(), oisConv->paymentLag(), oisConv->eom(), oisConv->fixedFrequency(),
-                oisConv->fixedConvention(), oisConv->fixedPaymentConvention(), oisConv->rule(), exDiscount, true);
+                oisConv->fixedConvention(), oisConv->fixedPaymentConvention(), oisConv->rule(), exDiscount,
+                !exDiscount.empty(), true);
         } else if (parInst[i] == "FXF") {
             QuantLib::ext::shared_ptr<Convention> conv = conventions->get(ccy + "-FX-CONVENTIONS");
             QuantLib::ext::shared_ptr<FXConvention> fxConv = QuantLib::ext::dynamic_pointer_cast<FXConvention>(conv);
@@ -147,8 +148,8 @@ parRateCurveHelpers(const string& ccy, const vector<string>& parInst, const vect
             bool flatIsDomestic = true; // assumes fxSpot is in form 1*BaseCcy = X*Ccy
             rateHelper = QuantLib::ext::make_shared<CrossCcyBasisSwapHelper>(
                 parRateQuote, fxSpot, basisConv->settlementDays(), basisConv->settlementCalendar(), tenor,
-                basisConv->rollConvention(), flatIndex, spreadIndex, fgnDiscount, exDiscount, basisConv->eom(),
-                flatIsDomestic);
+                basisConv->rollConvention(), flatIndex, spreadIndex, fgnDiscount, exDiscount, true, true, true, false,
+                basisConv->eom(), flatIsDomestic);
         } else {
             BOOST_ERROR("Unrecognised par rate instrument in curve construction - " << i);
         }
@@ -179,7 +180,7 @@ parRateCurveHelpers(const string& name, const vector<Period>& parTenor, const ve
         BOOST_ASSERT(*exDiscount);
         rateHelper = QuantLib::ext::make_shared<QuantExt::SpreadCdsHelper>(
             parRateQuote, tenor, cdsConv->settlementDays(), cdsConv->calendar(), cdsConv->frequency(),
-            cdsConv->paymentConvention(), cdsConv->rule(), cdsConv->dayCounter(), recoveryRate, exDiscount,
+            cdsConv->paymentConvention(), cdsConv->rule(), cdsConv->dayCounter(), recoveryRate, exDiscount, CreditDefaultSwap::PricingModel::Midpoint,
             true, QuantExt::CreditDefaultSwap::ProtectionPaymentTime::atDefault, today + cdsConv->settlementDays());
         instruments.push_back(rateHelper);
     }
@@ -209,7 +210,7 @@ parRateCurve(const Date& asof, const vector<QuantLib::ext::shared_ptr<QuantExt::
 TestMarket::TestMarket(Date asof, bool swapVolCube) : MarketImpl(false) {
 
     TestConfigurationObjects::setConventions();
-    
+
     asof_ = asof;
 
     // build discount
@@ -351,19 +352,27 @@ TestMarket::TestMarket(Date asof, bool swapVolCube) : MarketImpl(false) {
     capFloorCurves_[make_pair(Market::defaultConfiguration, "CHF")] = flatRateCvs(0.0045, Normal);
     capFloorCurves_[make_pair(Market::defaultConfiguration, "JPY")] = flatRateCvs(0.0040, Normal);
 
-    // build default curves
-    defaultCurves_[make_pair(Market::defaultConfiguration, "dc")] = flatRateDcs(0.1);
-    defaultCurves_[make_pair(Market::defaultConfiguration, "dc2")] = flatRateDcs(0.2);
-    defaultCurves_[make_pair(Market::defaultConfiguration, "BondIssuer0")] = flatRateDcs(0.0);
-    defaultCurves_[make_pair(Market::defaultConfiguration, "BondIssuer1")] = flatRateDcs(0.0);
-
     recoveryRates_[make_pair(Market::defaultConfiguration, "dc")] = Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.4));
     recoveryRates_[make_pair(Market::defaultConfiguration, "dc2")] =
         Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.4));
     recoveryRates_[make_pair(Market::defaultConfiguration, "BondIssuer0")] =
-        Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.0)); 
+        Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.0));
     recoveryRates_[make_pair(Market::defaultConfiguration, "BondIssuer1")] =
         Handle<Quote>(QuantLib::ext::make_shared<SimpleQuote>(0.4));
+
+    // build default curves
+    defaultCurves_[make_pair(Market::defaultConfiguration, "dc")] =
+        flatRateDcs(0.1, yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "EUR")],
+                    recoveryRates_[make_pair(Market::defaultConfiguration, "dc")]);
+    defaultCurves_[make_pair(Market::defaultConfiguration, "dc2")] =
+        flatRateDcs(0.2, yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "EUR")],
+                    recoveryRates_[make_pair(Market::defaultConfiguration, "dc2")]);
+    defaultCurves_[make_pair(Market::defaultConfiguration, "BondIssuer0")] =
+        flatRateDcs(0.0, yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "EUR")],
+                    recoveryRates_[make_pair(Market::defaultConfiguration, "BondIssuer0")]);
+    defaultCurves_[make_pair(Market::defaultConfiguration, "BondIssuer1")] =
+        flatRateDcs(0.0, yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "EUR")],
+                    recoveryRates_[make_pair(Market::defaultConfiguration, "BondIssuer1")]);
 
     yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Yield, "BondCurve0")] = flatRateYts(0.05);
     yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Yield, "BondCurve1")] = flatRateYts(0.05);
@@ -375,7 +384,7 @@ TestMarket::TestMarket(Date asof, bool swapVolCube) : MarketImpl(false) {
 
     cdsVols_[make_pair(Market::defaultConfiguration, "dc")] =
         Handle<QuantExt::CreditVolCurve>(QuantLib::ext::make_shared<QuantExt::CreditVolCurveWrapper>(flatRateFxv(0.12)));
-    
+
     Handle<IborIndex> hGBP(ore::data::parseIborIndex(
         "GBP-LIBOR-6M", yieldCurves_[make_tuple(Market::defaultConfiguration, YieldCurveType::Discount, "GBP")]));
     // FIXME: We have defined that above already
@@ -383,9 +392,9 @@ TestMarket::TestMarket(Date asof, bool swapVolCube) : MarketImpl(false) {
 
     // Some test cases need a different definition of UKRPI index, curve and vol structure
     // We there fore added the new UKROi as UKRP1 and keep the "original" below.
-    
+
     // build inflation indices
-    auto zeroIndex = Handle<ZeroInflationIndex>(QuantLib::ext::make_shared<UKRPI>(true, flatZeroInflationCurve(0.02, 0.01)));
+    auto zeroIndex = Handle<ZeroInflationIndex>(QuantLib::ext::make_shared<UKRPI>(flatZeroInflationCurve(0.02, 0.01)));
     zeroInflationIndices_[make_pair(Market::defaultConfiguration, "UKRP1")] = zeroIndex;
     yoyInflationIndices_[make_pair(Market::defaultConfiguration, "UKRP1")] = Handle<YoYInflationIndex>(
         QuantLib::ext::make_shared<QuantExt::YoYInflationIndexWrapper>(*zeroIndex, false, flatYoYInflationCurve(0.02, 0.01)));
@@ -427,23 +436,12 @@ TestMarket::TestMarket(Date asof, bool swapVolCube) : MarketImpl(false) {
         euii->addFixing(fixingDatesEUHICPXT[i], fixingRatesEUHICPXT[i], true);
     };
 
-    vector<Date> datesZCII = {asof_,
-                              asof_ + 1 * Years,
-                              asof_ + 2 * Years,
-                              asof_ + 3 * Years,
-                              asof_ + 4 * Years,
-                              asof_ + 5 * Years,
-                              asof_ + 6 * Years,
-                              asof_ + 7 * Years,
-                              asof_ + 8 * Years,
-                              asof_ + 9 * Years,
-                              asof_ + 10 * Years,
-                              asof_ + 12 * Years,
-                              asof_ + 15 * Years,
+    vector<Date> datesZCII = {asof_ + 1 * Years, asof_ + 2 * Years,  asof_ + 3 * Years,  asof_ + 4 * Years,
+                              asof_ + 5 * Years, asof_ + 6 * Years,  asof_ + 7 * Years,  asof_ + 8 * Years,
+                              asof_ + 9 * Years, asof_ + 10 * Years, asof_ + 12 * Years, asof_ + 15 * Years,
                               asof_ + 20 * Years};
 
-    vector<Rate> ratesZCII = {2.825, 2.9425, 2.975,  2.983, 3.0,  3.01,  3.008,
-                              3.009, 3.013,  3.0445, 3.044, 3.09, 3.109, 3.108};
+    vector<Rate> ratesZCII = {2.9425, 2.975, 2.983, 3.0, 3.01, 3.008, 3.009, 3.013, 3.0445, 3.044, 3.09, 3.109, 3.108};
 
     zeroInflationIndices_[make_pair(Market::defaultConfiguration, "EUHICPXT")] =
         makeZeroInflationIndex("EUHICPXT", datesZCII, ratesZCII, euii,
@@ -515,10 +513,12 @@ TestMarket::flatRateSvs(Volatility forward, VolatilityType type, Real shift) {
     return Handle<QuantLib::SwaptionVolatilityStructure>(svs);
 }
 
-Handle<QuantExt::CreditCurve> TestMarket::flatRateDcs(Volatility forward) {
+Handle<QuantExt::CreditCurve> TestMarket::flatRateDcs(Volatility forward, const Handle<YieldTermStructure>& yts,
+                                                      const Handle<Quote>& recoveryRate) {
     QuantLib::ext::shared_ptr<DefaultProbabilityTermStructure> dcs(
             new FlatHazardRate(asof_, forward, ActualActual(ActualActual::ISDA)));
-    return Handle<QuantExt::CreditCurve>(QuantLib::ext::make_shared<QuantExt::CreditCurve>(Handle<DefaultProbabilityTermStructure>(dcs)));
+    return Handle<QuantExt::CreditCurve>(QuantLib::ext::make_shared<QuantExt::CreditCurve>(
+        Handle<DefaultProbabilityTermStructure>(dcs), yts, recoveryRate));
 }
 
 Handle<OptionletVolatilityStructure> TestMarket::flatRateCvs(Volatility vol, VolatilityType type, Real shift) {
@@ -544,7 +544,7 @@ Handle<CPICapFloorTermPriceSurface> TestMarket::flatRateCps(Handle<ZeroInflation
                 cPrice, fPrice));
     return Handle<CPICapFloorTermPriceSurface>(ts);
 }
-    
+
 Handle<QuantLib::CPIVolatilitySurface> TestMarket::flatCpiVolSurface(Volatility v) {
     Natural settleDays = 0;
     Calendar cal = TARGET();
@@ -567,17 +567,28 @@ Handle<ZeroInflationIndex> TestMarket::makeZeroInflationIndex(string index, vect
     vector<QuantLib::ext::shared_ptr<BootstrapHelper<ZeroInflationTermStructure>>> instruments;
     for (Size i = 0; i < dates.size(); i++) {
         Handle<Quote> quote(QuantLib::ext::shared_ptr<Quote>(new SimpleQuote(rates[i] / 100.0)));
-        QuantLib::ext::shared_ptr<BootstrapHelper<ZeroInflationTermStructure>> anInstrument(new ZeroCouponInflationSwapHelper(
-            quote, Period(2, Months), dates[i], TARGET(), ModifiedFollowing, ActualActual(ActualActual::ISDA), ii, CPI::AsIndex, yts));
-        anInstrument->unregisterWith(Settings::instance().evaluationDate());
+        QuantLib::ext::shared_ptr<BootstrapHelper<ZeroInflationTermStructure>> anInstrument(
+            new ZeroCouponInflationSwapHelper(quote, Period(2, Months), dates[i], TARGET(), ModifiedFollowing,
+                                              ActualActual(ActualActual::ISDA), ii, CPI::AsIndex, yts, asof_));
+
+        // Remove the helper's observation of the inflation index. This has the effect that the
+        // PiecewiseZeroInflationCurve created below will also not observe the index. It will only get recalculated
+        // if the initial market quotes change or if the initial nominal yield curve changes. Observation of the index
+        // was interfering with scenario generation. The PiecewiseZeroInflationCurve was getting recalculated on the
+        // first time grid date t_1 i.e. was not using the t_0 calculated curve.
+        anInstrument->unregisterWithAll();
+        anInstrument->registerWith(yts);
+        anInstrument->registerWith(quote);
+
         instruments.push_back(anInstrument);
     };
     // we can use historical or first ZCIIS for this
     // we know historical is WAY off market-implied, so use market implied flat.
-    Rate baseZeroRate = rates[0] / 100.0;
-    QuantLib::ext::shared_ptr<PiecewiseZeroInflationCurve<Linear>> pCPIts(
-        new PiecewiseZeroInflationCurve<Linear>(asof_, TARGET(), ActualActual(ActualActual::ISDA), Period(2, Months), ii->frequency(),
-                                                baseZeroRate, instruments));
+    auto obsLag = Period(2, Months);
+    auto frequency = ii->frequency();
+    Date baseDate = QuantExt::ZeroInflation::curveBaseDate(false, asof_, obsLag, frequency, ii);
+    QuantLib::ext::shared_ptr<PiecewiseZeroInflationCurve<Linear>> pCPIts(new PiecewiseZeroInflationCurve<Linear>(
+        asof_, baseDate, obsLag, frequency, ActualActual(ActualActual::ISDA), instruments));
     pCPIts->recalculate();
     cpiTS = QuantLib::ext::dynamic_pointer_cast<ZeroInflationTermStructure>(pCPIts);
     cpiTS->enableExtrapolation(true);
@@ -594,16 +605,36 @@ Handle<YoYInflationIndex> TestMarket::makeYoYInflationIndex(string index, vector
     vector<QuantLib::ext::shared_ptr<BootstrapHelper<YoYInflationTermStructure>>> instruments;
     for (Size i = 0; i < dates.size(); i++) {
         Handle<Quote> quote(QuantLib::ext::shared_ptr<Quote>(new SimpleQuote(rates[i] / 100.0)));
-        QuantLib::ext::shared_ptr<BootstrapHelper<YoYInflationTermStructure>> anInstrument(new YearOnYearInflationSwapHelper(
-            quote, Period(2, Months), dates[i], TARGET(), ModifiedFollowing, ActualActual(ActualActual::ISDA), ii, yts));
+        QL_DEPRECATED_DISABLE_WARNING
+        QuantLib::ext::shared_ptr<BootstrapHelper<YoYInflationTermStructure>> anInstrument(
+            new YearOnYearInflationSwapHelper(quote, Period(2, Months), dates[i], TARGET(), ModifiedFollowing,
+                                              ActualActual(ActualActual::ISDA), ii, yts, asof_));
+        QL_DEPRECATED_ENABLE_WARNING
+
+        // Remove the helper's observation of the inflation index. This has the effect that the
+        // PiecewiseYoYInflationCurve created below will also not observe the index. It will only get recalculated
+        // if the initial market quotes change or if the initial nominal yield curve changes.
+        // Note: QuantLib needs a change so that if swap start is provided in the helper above then updateDates_ on
+        //       the RelativeDateBootstrapHelper should be false and hence the helper does not observe Settings
+        //       evaluationDate. Without this fix, the unregister here does this also.
+        // These changes are needed to allow ObservationModeTest/testDefer to pass. Without them
+        // YearOnYearInflationSwapHelper::initializeDates() gets called due to evaluation date changes, the yyiis_
+        // member gets reassigned but the original value is still in the deferredObervers_. The testDefer test then
+        // crashes when deferredObserver->update(); is called in ObservableSettings::enableUpdates() with
+        // deferredObserver null.
+        anInstrument->unregisterWithAll();
+        anInstrument->registerWith(yts);
+        anInstrument->registerWith(quote);
         instruments.push_back(anInstrument);
     };
     // we can use historical or first ZCIIS for this
     // we know historical is WAY off market-implied, so use market implied flat.
     Rate baseZeroRate = rates[0] / 100.0;
-    QuantLib::ext::shared_ptr<PiecewiseYoYInflationCurve<Linear>> pYoYts(
-        new PiecewiseYoYInflationCurve<Linear>(asof_, TARGET(), ActualActual(ActualActual::ISDA), Period(2, Months), ii->frequency(),
-                                               ii->interpolated(), baseZeroRate, instruments));
+    Date baseDate = QuantExt::ZeroInflation::curveBaseDate(false, asof_, Period(2, Months), ii->frequency(), ii);
+    QL_DEPRECATED_DISABLE_WARNING
+    QuantLib::ext::shared_ptr<PiecewiseYoYInflationCurve<Linear>> pYoYts(new PiecewiseYoYInflationCurve<Linear>(
+        asof_, baseDate, baseZeroRate, Period(2, Months), ii->frequency(), ii->interpolated(), ActualActual(ActualActual::ISDA), instruments));
+    QL_DEPRECATED_ENABLE_WARNING
     pYoYts->recalculate();
     yoyTS = QuantLib::ext::dynamic_pointer_cast<YoYInflationTermStructure>(pYoYts);
     return Handle<YoYInflationIndex>(QuantLib::ext::make_shared<QuantExt::YoYInflationIndexWrapper>(
@@ -614,11 +645,14 @@ Handle<ZeroInflationTermStructure> TestMarket::flatZeroInflationCurve(Real infla
     Date today = Settings::instance().evaluationDate();
     Period lag = 2 * Months;
     std::vector<Date> dates;
+    dates.push_back(inflationPeriod(today - lag, Monthly).first);
     dates.push_back(today - lag);
     dates.push_back(today + 1 * Years);
+    std::sort(dates.begin(), dates.end());
+    dates.erase(std::unique(dates.begin(), dates.end()), dates.end());
     std::vector<Real> rates(dates.size(), inflationRate);
     auto curve = QuantLib::ext::make_shared<QuantLib::InterpolatedZeroInflationCurve<Linear>>(
-        today, NullCalendar(), QuantLib::ActualActual(ActualActual::ISDA), 2 * Months, Monthly, dates, rates);
+        today, dates, rates, 2 * Months, Monthly, QuantLib::ActualActual(ActualActual::ISDA));
     curve->enableExtrapolation();
     return Handle<ZeroInflationTermStructure>(curve);
 }
@@ -627,11 +661,14 @@ Handle<YoYInflationTermStructure> TestMarket::flatYoYInflationCurve(Real inflati
     Date today = Settings::instance().evaluationDate();
     Period lag = 2 * Months;
     std::vector<Date> dates;
+    dates.push_back(inflationPeriod(today - lag, Monthly).first);
     dates.push_back(today - lag);
     dates.push_back(today + 1 * Years);
+    std::sort(dates.begin(), dates.end());
+    dates.erase(std::unique(dates.begin(), dates.end()), dates.end());
     std::vector<Real> rates(dates.size(), inflationRate);
     auto curve = QuantLib::ext::make_shared<QuantLib::InterpolatedYoYInflationCurve<Linear>>(
-        today, NullCalendar(), QuantLib::ActualActual(ActualActual::ISDA), 2 * Months, Monthly, false, dates, rates);
+        today, dates, rates, 2 * Months, Monthly, false, QuantLib::ActualActual(ActualActual::ISDA));
     curve->enableExtrapolation();
     return Handle<YoYInflationTermStructure>(curve);
 }
@@ -680,7 +717,7 @@ TestMarketParCurves::TestMarketParCurves(const Date& asof) : MarketImpl(false) {
         vector<Real> parRates(parInst.size(), parRate);
         createDiscountCurve(ccy, parInst, parTenor, parRates);
     }
-        
+
     // add fx rates
     // add fx rates
     std::map<std::string, QuantLib::Handle<QuantLib::Quote>> quotes;
@@ -943,9 +980,11 @@ void TestMarketParCurves::createDefaultCurve(const string& name, const string& c
     Handle<YieldTermStructure> baseDiscount = this->discountCurve(ccy, Market::defaultConfiguration);
     defaultRateHelpersMap_[name] =
         parRateCurveHelpers(name, parTenor, defaultRateHelperValuesMap_[name], baseDiscount, this);
+    Handle<Quote> recoveryRate = this->recoveryRate(name, Market::defaultConfiguration);
 
-    defaultCurves_[make_pair(Market::defaultConfiguration, name)] = Handle<QuantExt::CreditCurve>(
-        QuantLib::ext::make_shared<QuantExt::CreditCurve>(parRateCurve(asof_, defaultRateHelpersMap_[name])));
+    defaultCurves_[make_pair(Market::defaultConfiguration, name)] =
+        Handle<QuantExt::CreditCurve>(QuantLib::ext::make_shared<QuantExt::CreditCurve>(
+            parRateCurve(asof_, defaultRateHelpersMap_[name]), baseDiscount, recoveryRate));
 }
 
 void TestMarketParCurves::createCdsVolCurve(const string& name, const vector<Period>& parTenor,
@@ -1103,10 +1142,10 @@ void TestMarketParCurves::createZeroInflationIndex(const string& idxName, const 
             yieldCurve(YieldCurveType::Discount, ccy, Market::defaultConfiguration)));
     }
     QuantLib::ext::shared_ptr<ZeroInflationTermStructure> zeroCurve;
-    Real baseRate = parQuotes[0]->value();
+
+    Date baseDate = QuantExt::ZeroInflation::curveBaseDate(false, asof_, conv->observationLag(), zii->frequency(), zii);
     zeroCurve = QuantLib::ext::shared_ptr<PiecewiseZeroInflationCurve<Linear>>(
-        new PiecewiseZeroInflationCurve<Linear>(asof_, conv->infCalendar(), conv->dayCounter(), conv->observationLag(),
-                                                zii->frequency(), baseRate, instruments));
+        new PiecewiseZeroInflationCurve<Linear>(asof_, baseDate, conv->observationLag(), zii->frequency(), conv->dayCounter(), instruments));
     Handle<ZeroInflationTermStructure> its(zeroCurve);
     its->enableExtrapolation();
     QuantLib::ext::shared_ptr<ZeroInflationIndex> i =
@@ -1142,9 +1181,11 @@ void TestMarketParCurves::createYoYInflationIndex(const string& idxName, const v
     QuantLib::ext::shared_ptr<YoYInflationTermStructure> yoyCurve;
 
     Real baseRate = parQuotes[0]->value();
-    yoyCurve = QuantLib::ext::shared_ptr<PiecewiseYoYInflationCurve<Linear>>(
-        new PiecewiseYoYInflationCurve<Linear>(asof_, conv->fixCalendar(), conv->dayCounter(), conv->observationLag(),
-                                               yi->frequency(), conv->interpolated(), baseRate, instruments));
+    Date baseDate = QuantExt::ZeroInflation::curveBaseDate(false, asof_, conv->observationLag(), zii->frequency(), zii);
+    QL_DEPRECATED_DISABLE_WARNING
+    yoyCurve = QuantLib::ext::shared_ptr<PiecewiseYoYInflationCurve<Linear>>(new PiecewiseYoYInflationCurve<Linear>(
+        asof_, baseDate, baseRate, conv->observationLag(), yi->frequency(), conv->interpolated(), conv->dayCounter(), instruments));
+    QL_DEPRECATED_ENABLE_WARNING
     yoyCurve->enableExtrapolation();
     Handle<YoYInflationTermStructure> its(yoyCurve);
     QuantLib::ext::shared_ptr<YoYInflationIndex> i(yi->clone(its));
@@ -1266,11 +1307,11 @@ TestConfigurationObjects::setupSimMarketData(bool hasSwapVolCube, bool hasYYCapV
                                       {2 * Weeks, 1 * Months, 3 * Months, 6 * Months, 1 * Years, 2 * Years, 3 * Years,
                                        5 * Years, 10 * Years, 13 * Years, 15 * Years, 20 * Years, 30 * Years});
     simMarketData->setSwapVolKeys({"EUR", "GBP", "USD", "CHF", "JPY"});
-    simMarketData->swapVolDecayMode() = "ForwardVariance";
+    simMarketData->setSwapVolDecayMode("ForwardVariance");
     simMarketData->setSimulateSwapVols(true); // false;
     if (hasSwapVolCube) {
         simMarketData->setSwapVolIsCube("", true);
-        simMarketData->simulateSwapVolATMOnly() = false;
+        simMarketData->setSimulateSwapVolATMOnly(false);
         simMarketData->setSwapVolStrikeSpreads("", {-0.02, -0.005, 0.0, 0.005, 0.02});
     }
 
@@ -1666,21 +1707,28 @@ TestConfigurationObjects::setupSensitivityScenarioData(bool hasSwapVolCube, bool
         sensiData->indexCurveShiftData()["CHF-LIBOR-6M"] =
             QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftParData>(cvsData);
     }
-    sensiData->fxShiftData()["EURUSD"] = fxsData;
-    sensiData->fxShiftData()["EURGBP"] = fxsData;
-    sensiData->fxShiftData()["EURJPY"] = fxsData;
-    sensiData->fxShiftData()["EURCHF"] = fxsData;
 
-    sensiData->fxVolShiftData()["EURUSD"] = fxvsData;
-    sensiData->fxVolShiftData()["EURGBP"] = fxvsData;
-    sensiData->fxVolShiftData()["EURJPY"] = fxvsData;
-    sensiData->fxVolShiftData()["EURCHF"] = fxvsData;
+    QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData::SpotShiftData> fxsDataPtr =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
+    sensiData->fxShiftData()["EURUSD"] = fxsDataPtr;
+    sensiData->fxShiftData()["EURGBP"] = fxsDataPtr;
+    sensiData->fxShiftData()["EURJPY"] = fxsDataPtr;
+    sensiData->fxShiftData()["EURCHF"] = fxsDataPtr;
 
-    sensiData->swaptionVolShiftData()["EUR"] = swvsData;
-    sensiData->swaptionVolShiftData()["GBP"] = swvsData;
-    sensiData->swaptionVolShiftData()["USD"] = swvsData;
-    sensiData->swaptionVolShiftData()["JPY"] = swvsData;
-    sensiData->swaptionVolShiftData()["CHF"] = swvsData;
+    QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData::VolShiftData> fxvsDataPtr =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
+    sensiData->fxVolShiftData()["EURUSD"] = fxvsDataPtr;
+    sensiData->fxVolShiftData()["EURGBP"] = fxvsDataPtr;
+    sensiData->fxVolShiftData()["EURJPY"] = fxvsDataPtr;
+    sensiData->fxVolShiftData()["EURCHF"] = fxvsDataPtr;
+
+    QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData> swvsDataPtr =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["EUR"] = swvsDataPtr;
+    sensiData->swaptionVolShiftData()["GBP"] = swvsDataPtr;
+    sensiData->swaptionVolShiftData()["USD"] = swvsDataPtr;
+    sensiData->swaptionVolShiftData()["JPY"] = swvsDataPtr;
+    sensiData->swaptionVolShiftData()["CHF"] = swvsDataPtr;
 
     sensiData->capFloorVolShiftData()["EUR"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
@@ -1719,19 +1767,27 @@ TestConfigurationObjects::setupSensitivityScenarioData(bool hasSwapVolCube, bool
         sensiData->creditCurveShiftData()["dc3"] =
             QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftParData>(cvsData);
     }
-    sensiData->cdsVolShiftData()["dc"] = cdsvsData;
-    sensiData->cdsVolShiftData()["dc2"] = cdsvsData;
-    sensiData->cdsVolShiftData()["dc3"] = cdsvsData;
+    sensiData->cdsVolShiftData()["dc"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CdsVolShiftData>(cdsvsData);
+    sensiData->cdsVolShiftData()["dc2"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CdsVolShiftData>(cdsvsData);
+    sensiData->cdsVolShiftData()["dc3"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CdsVolShiftData>(cdsvsData);
 
-    sensiData->equityShiftData()["SP5"] = eqsData;
-    sensiData->equityShiftData()["Lufthansa"] = eqsData;
+    sensiData->equityShiftData()["SP5"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(eqsData);
+    sensiData->equityShiftData()["Lufthansa"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(eqsData);
 
-    sensiData->equityVolShiftData()["SP5"] = eqvsData;
-    sensiData->equityVolShiftData()["Lufthansa"] = eqvsData;
+    sensiData->equityVolShiftData()["SP5"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(eqvsData);
+    sensiData->equityVolShiftData()["Lufthansa"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(eqvsData);
     sensiData->dividendYieldShiftData()["SP5"] = eqdivData;
     sensiData->dividendYieldShiftData()["Lufthansa"] = eqdivData;
 
-    sensiData->baseCorrelationShiftData()["Tranch1"] = bcorrData;
+    sensiData->baseCorrelationShiftData()["Tranch1"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::BaseCorrelationShiftData>(bcorrData);
 
     sensiData->zeroInflationCurveShiftData()["UKRPI"] = zinfData;
 
@@ -1743,7 +1799,7 @@ TestConfigurationObjects::setupSensitivityScenarioData(bool hasSwapVolCube, bool
     return sensiData;
 };
 
-    
+
 QuantLib::ext::shared_ptr<ore::analytics::ScenarioSimMarketParameters> TestConfigurationObjects::setupSimMarketData2() {
     QuantLib::ext::shared_ptr<ore::analytics::ScenarioSimMarketParameters> simMarketData(
         new ore::analytics::ScenarioSimMarketParameters());
@@ -1767,7 +1823,7 @@ QuantLib::ext::shared_ptr<ore::analytics::ScenarioSimMarketParameters> TestConfi
     simMarketData->setSwapVolExpiries(
         "", {6 * Months, 1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years, 20 * Years});
     simMarketData->setSwapVolKeys({"EUR", "GBP"});
-    simMarketData->swapVolDecayMode() = "ForwardVariance";
+    simMarketData->setSwapVolDecayMode("ForwardVariance");
     simMarketData->setSimulateSwapVols(true);
 
     simMarketData->setFxVolExpiries("",
@@ -1805,7 +1861,7 @@ QuantLib::ext::shared_ptr<ore::analytics::ScenarioSimMarketParameters> TestConfi
     simMarketData->setSwapVolExpiries(
         "", {6 * Months, 1 * Years, 2 * Years, 3 * Years, 5 * Years, 7 * Years, 10 * Years, 20 * Years});
     simMarketData->setSwapVolKeys({"EUR", "GBP", "USD", "CHF", "JPY"});
-    simMarketData->swapVolDecayMode() = "ForwardVariance";
+    simMarketData->setSwapVolDecayMode("ForwardVariance");
     simMarketData->setSimulateSwapVols(true); // false;
 
     simMarketData->setFxVolExpiries("",
@@ -1912,12 +1968,14 @@ QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData> TestConfigura
     sensiData->yieldCurveShiftData()["BondCurve0"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->fxShiftData()["EURGBP"] = fxsData;
+    sensiData->fxShiftData()["EURGBP"] = QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
 
-    sensiData->fxVolShiftData()["EURGBP"] = fxvsData;
+    sensiData->fxVolShiftData()["EURGBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
 
-    sensiData->swaptionVolShiftData()["EUR"] = swvsData;
-    sensiData->swaptionVolShiftData()["GBP"] = swvsData;
+    sensiData->swaptionVolShiftData()["EUR"] = QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["GBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
 
     sensiData->creditCurveShiftData()["BondIssuer0"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftData>(cvsData);
@@ -1980,12 +2038,16 @@ QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData> TestConfigura
     sensiData->yieldCurveShiftData()["BondCurve0"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->fxShiftData()["EURGBP"] = fxsData;
+    sensiData->fxShiftData()["EURGBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
 
-    sensiData->fxVolShiftData()["EURGBP"] = fxvsData;
+    sensiData->fxVolShiftData()["EURGBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
 
-    sensiData->swaptionVolShiftData()["EUR"] = swvsData;
-    sensiData->swaptionVolShiftData()["GBP"] = swvsData;
+    sensiData->swaptionVolShiftData()["EUR"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["GBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
 
     sensiData->creditCurveShiftData()["BondIssuer0"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftData>(cvsData);
@@ -2091,22 +2153,36 @@ QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData> TestConfigura
     sensiData->creditCurveShiftData()["BondIssuer0"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftData>(cvsData);
 
-    sensiData->fxShiftData()["EURUSD"] = fxsData;
-    sensiData->fxShiftData()["EURGBP"] = fxsData;
-    sensiData->fxShiftData()["EURJPY"] = fxsData;
-    sensiData->fxShiftData()["EURCHF"] = fxsData;
+    sensiData->fxShiftData()["EURUSD"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
+    sensiData->fxShiftData()["EURGBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
+    sensiData->fxShiftData()["EURJPY"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
+    sensiData->fxShiftData()["EURCHF"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(fxsData);
 
-    sensiData->fxVolShiftData()["EURUSD"] = fxvsData;
-    sensiData->fxVolShiftData()["EURGBP"] = fxvsData;
-    sensiData->fxVolShiftData()["EURJPY"] = fxvsData;
-    sensiData->fxVolShiftData()["EURCHF"] = fxvsData;
-    sensiData->fxVolShiftData()["GBPCHF"] = fxvsData;
+    sensiData->fxVolShiftData()["EURUSD"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
+    sensiData->fxVolShiftData()["EURGBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
+    sensiData->fxVolShiftData()["EURJPY"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
+    sensiData->fxVolShiftData()["EURCHF"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
+    sensiData->fxVolShiftData()["GBPCHF"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(fxvsData);
 
-    sensiData->swaptionVolShiftData()["EUR"] = swvsData;
-    sensiData->swaptionVolShiftData()["GBP"] = swvsData;
-    sensiData->swaptionVolShiftData()["USD"] = swvsData;
-    sensiData->swaptionVolShiftData()["JPY"] = swvsData;
-    sensiData->swaptionVolShiftData()["CHF"] = swvsData;
+    sensiData->swaptionVolShiftData()["EUR"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["GBP"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["USD"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["JPY"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
+    sensiData->swaptionVolShiftData()["CHF"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::GenericYieldVolShiftData>(swvsData);
 
     sensiData->capFloorVolShiftData()["EUR"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
@@ -2115,11 +2191,15 @@ QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData> TestConfigura
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CapFloorVolShiftData>(cfvsData);
     sensiData->capFloorVolShiftData()["USD"]->indexName = "USD-LIBOR-3M";
 
-    sensiData->equityShiftData()["SP5"] = eqsData;
-    sensiData->equityShiftData()["Lufthansa"] = eqsData;
+    sensiData->equityShiftData()["SP5"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(eqsData);
+    sensiData->equityShiftData()["Lufthansa"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::SpotShiftData>(eqsData);
 
-    sensiData->equityVolShiftData()["SP5"] = eqvsData;
-    sensiData->equityVolShiftData()["Lufthansa"] = eqvsData;
+    sensiData->equityVolShiftData()["SP5"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(eqvsData);
+    sensiData->equityVolShiftData()["Lufthansa"] =
+        QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(eqvsData);
 
     sensiData->zeroInflationCurveShiftData()["UKRPI"] =
         QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::CurveShiftData>(zinfData);
@@ -2132,8 +2212,8 @@ QuantLib::ext::shared_ptr<ore::analytics::SensitivityScenarioData> TestConfigura
     sensiData->commodityCurveShiftData()["COMDTY_WTI_USD"] = commodityShiftData;
     sensiData->commodityCurrencies()["COMDTY_WTI_USD"] = "USD";
 
-    sensiData->commodityVolShiftData()["COMDTY_GOLD_USD"] = commodityVolShiftData;
-    sensiData->commodityVolShiftData()["COMDTY_WTI_USD"] = commodityVolShiftData;
+    sensiData->commodityVolShiftData()["COMDTY_GOLD_USD"] = QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(commodityVolShiftData);
+    sensiData->commodityVolShiftData()["COMDTY_WTI_USD"] = QuantLib::ext::make_shared<ore::analytics::SensitivityScenarioData::VolShiftData>(commodityVolShiftData);
 
     return sensiData;
 }

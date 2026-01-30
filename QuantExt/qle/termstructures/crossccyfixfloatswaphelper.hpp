@@ -47,7 +47,16 @@ public:
                                const QuantLib::DayCounter& fixedDayCount,
                                const QuantLib::ext::shared_ptr<QuantLib::IborIndex>& index,
                                const QuantLib::Handle<QuantLib::YieldTermStructure>& floatDiscount,
-                               const Handle<Quote>& spread = Handle<Quote>(), bool endOfMonth = false);
+                               const Handle<Quote>& spread = Handle<Quote>(), bool endOfMonth = false,
+                               const bool telescopicValueDates_ = false,
+                               const QuantLib::Pillar::Choice pillarChoice = QuantLib::Pillar::LastRelevantDate,
+                               const std::vector<Natural>& spotFXSettleDaysVec = std::vector<Natural>(),
+                               const std::vector<Calendar>& spotFXSettleCalendar = std::vector<Calendar>(),
+                               QuantLib::ext::optional<bool> includeSpread = QuantLib::ext::nullopt,
+                               QuantLib::ext::optional<Period> lookback = QuantLib::ext::nullopt,
+                               QuantLib::ext::optional<Size> fixingDays = QuantLib::ext::nullopt,
+                               QuantLib::ext::optional<Size> rateCutoff = QuantLib::ext::nullopt,
+                               QuantLib::ext::optional<bool> isAveraged = QuantLib::ext::nullopt);
 
     //! \name Observer interface
     //@{
@@ -89,6 +98,15 @@ private:
     QuantLib::Handle<QuantLib::YieldTermStructure> floatDiscount_;
     QuantLib::Handle<QuantLib::Quote> spread_;
     bool endOfMonth_;
+    bool telescopicValueDates_;
+    QuantLib::Pillar::Choice pillarChoice_;
+    std::vector<Natural> spotFXSettleDaysVec_;
+    std::vector<Calendar> spotFXSettleCalendarVec_;
+    QuantLib::ext::optional<bool> includeSpread_;
+    QuantLib::ext::optional<Period> lookback_;
+    QuantLib::ext::optional<Size> fixingDays_;
+    QuantLib::ext::optional<Size> rateCutoff_;
+    QuantLib::ext::optional<bool> isAveraged_;
 
     QuantLib::ext::shared_ptr<CrossCcyFixFloatSwap> swap_;
     QuantLib::RelinkableHandle<QuantLib::YieldTermStructure> termStructureHandle_;

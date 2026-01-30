@@ -53,6 +53,8 @@
 #include <ql/time/daycounters/actualactual.hpp>
 #include <oret/toplevelfixture.hpp>
 #include <test/oreatoplevelfixture.hpp>
+#include <ored/report/inmemoryreport.hpp>
+#include <orea/app/reportwriter.hpp>
 
 #include "testmarket.hpp"
 
@@ -113,19 +115,18 @@ void testCube(NPVCube& cube, const std::string& cubeName, Real tolerance) {
 }
 
 template <class T>
-void testCubeFileIO(QuantLib::ext::shared_ptr<NPVCube> cube, const std::string& cubeName, Real tolerance,
-                    bool doublePrecision) {
+void testCubeFileIO(QuantLib::ext::shared_ptr<NPVCube> cube, const std::string& cubeName, Real tolerance) {
 
     initCube(*cube);
 
     // get a random filename
     string filename = boost::filesystem::unique_path().string();
     BOOST_TEST_MESSAGE("Saving cube " << cubeName << " to file " << filename);
-    saveCube(filename, NPVCubeWithMetaData{cube, nullptr, boost::none, boost::none}, doublePrecision);
+    saveCube(filename, NPVCubeWithMetaData{cube, nullptr, QuantLib::ext::nullopt, QuantLib::ext::nullopt});
 
     // Create a new Cube and load it
     BOOST_TEST_MESSAGE("Loading from file " << filename);
-    auto cube2 = loadCube(filename, doublePrecision).cube;
+    auto cube2 = loadCube(filename).cube;
     BOOST_TEST_MESSAGE("Cube " << cubeName << " loaded from file.");
 
     // Delete the file to make sure all reads are from memory
@@ -221,19 +222,19 @@ void testCube(NPVCube& cube, const std::string& cubeName, Real tolerance, QuantL
 
 template <class T>
 void testCubeFileIO(QuantLib::ext::shared_ptr<NPVCube> cube, const std::string& cubeName, Real tolerance,
-                    QuantLib::ext::shared_ptr<Portfolio>& portfolio, QuantLib::ext::shared_ptr<DateGrid>& d, bool doublePrecision) {
+                    QuantLib::ext::shared_ptr<Portfolio>& portfolio, QuantLib::ext::shared_ptr<DateGrid>& d) {
 
     initCube(*cube, portfolio, d);
 
     // get a random filename
     string filename = boost::filesystem::unique_path().string();
     BOOST_TEST_MESSAGE("Saving cube " << cubeName << " to file " << filename);
-    saveCube(filename, NPVCubeWithMetaData{cube, nullptr, boost::none, boost::none}, doublePrecision);
+    saveCube(filename, NPVCubeWithMetaData{cube, nullptr, QuantLib::ext::nullopt, QuantLib::ext::nullopt});
 
     // Create a new Cube and load it
     auto cube2 = QuantLib::ext::make_shared<T>();
     BOOST_TEST_MESSAGE("Loading from file " << filename);
-    cube2 = loadCube(filename, doublePrecision).cube;
+    cube2 = loadCube(filename).cube;
     BOOST_TEST_MESSAGE("Cube " << cubeName << " loaded from file.");
 
     // Delete the file to make sure all reads are from memory
@@ -368,7 +369,8 @@ QuantLib::ext::shared_ptr<Portfolio> buildPortfolio(Size portfolioSize, QuantLib
         QuantLib::ext::shared_ptr<ore::data::Swap> swap = QuantLib::ext::dynamic_pointer_cast<ore::data::Swap>(trade);
         string floatFreq = swap->legData()[0].schedule().rules().front().tenor();
         string fixFreq = swap->legData()[1].schedule().rules().front().tenor();
-        QL_REQUIRE(swap->legData()[0].legType() == "Floating" && swap->legData()[1].legType() == "Fixed", "Leg mixup");
+        QL_REQUIRE(swap->legData()[0].legType() == LegType::Floating && swap->legData()[1].legType() == LegType::Fixed,
+                   "Leg mixup");
         if (fixedFreqs.find(fixFreq) == fixedFreqs.end())
             fixedFreqs[fixFreq] = 1;
         else
@@ -446,7 +448,7 @@ BOOST_AUTO_TEST_CASE(testDoublePrecisionInMemoryCubeFileIO) {
     vector<Date> dates(100, d);
     Size samples = 1000;
     auto c = QuantLib::ext::make_shared<DoublePrecisionInMemoryCube>(d, ids, dates, samples);
-    testCubeFileIO<DoublePrecisionInMemoryCube>(c, "DoublePrecisionInMemoryCube", 1e-14, true);
+    testCubeFileIO<DoublePrecisionInMemoryCube>(c, "DoublePrecisionInMemoryCube", 1e-14);
 }
 
 BOOST_AUTO_TEST_CASE(testDoublePrecisionInMemoryCubeFileNIO) {
@@ -456,7 +458,7 @@ BOOST_AUTO_TEST_CASE(testDoublePrecisionInMemoryCubeFileNIO) {
     Size samples = 200;
     Size depth = 6;
     auto c = QuantLib::ext::make_shared<DoublePrecisionInMemoryCubeN>(d, ids, dates, samples, depth);
-    testCubeFileIO<DoublePrecisionInMemoryCubeN>(c, "DoublePrecisionInMemoryCubeN", 1e-14, true);
+    testCubeFileIO<DoublePrecisionInMemoryCubeN>(c, "DoublePrecisionInMemoryCubeN", 1e-14);
 }
 
 BOOST_AUTO_TEST_CASE(testInMemoryCubeGetSetbyDateID) {
@@ -535,6 +537,49 @@ BOOST_AUTO_TEST_CASE(testDoublePrecisionJaggedCube) {
     JaggedCube<double> jaggedCube(today, portfolio, d->dates(), samples, depth);
     testCube(jaggedCube, "DoublePrecisionJaggedCube", 1e-5, portfolio, d);
     IndexManager::instance().clearHistories();
+}
+
+string writeCube(const QuantLib::ext::shared_ptr<NPVCube>& cube, Size bufferSize) {
+    auto report = QuantLib::ext::make_shared<InMemoryReport>(bufferSize);
+    ReportWriter().writeCube(*report, cube);
+    string fileName = boost::filesystem::unique_path().string();
+    report->toFile(fileName);
+    return fileName;
+}
+
+void diffFiles(string filename1, string filename2) {
+    std::ifstream ifs1(filename1);
+    std::ifstream ifs2(filename2);
+
+    std::istream_iterator<char> b1(ifs1), e1;
+    std::istream_iterator<char> b2(ifs2), e2;
+
+    BOOST_CHECK_EQUAL_COLLECTIONS(b1, e1, b2, e2);
+}
+
+// Test the functionality of class InMemoryReport to cache data on disk
+BOOST_AUTO_TEST_CASE(testInMemoryReportBuffer) {
+
+    // Generate a cube
+    std::set<string> ids{string("id")}; // the overlap doesn't matter
+    vector<Date> dates(50, Date());
+    Size samples = 200;
+    Size depth = 6;
+    auto c = QuantLib::ext::make_shared<SinglePrecisionInMemoryCubeN>(Date(), ids, dates, samples, depth);
+
+    // From the cube, generate multiple copies of the report, each of which which will have ~60K rows.
+    // Specify different values for the buffer size in InMemoryReport:
+    string filename_0 = writeCube(c, 0);            // no buffering
+    string filename_100 = writeCube(c, 100);
+    string filename_1000 = writeCube(c, 1000);
+    string filename_10000 = writeCube(c, 10000);
+    string filename_100000 = writeCube(c, 100000);  // buffer size > report size, resulting in no buffering
+
+    // Verify that buffering generates the same output as no buffering
+    diffFiles(filename_0, filename_100);
+    diffFiles(filename_0, filename_1000);
+    diffFiles(filename_0, filename_10000);
+    diffFiles(filename_0, filename_100000);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

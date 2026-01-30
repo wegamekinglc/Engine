@@ -90,7 +90,7 @@ public:
     Handle<YoYInflationIndex>
     yoyInflationIndex(const string& indexName,
                       const string& configuration = Market::defaultConfiguration) const override;
-    Handle<CPIVolatilitySurface>
+    Handle<QuantLib::CPIVolatilitySurface>
     cpiInflationCapFloorVolatilitySurface(const string& indexName,
                                           const string& configuration = Market::defaultConfiguration) const override;
     Handle<Quote> equitySpot(const string& eqName,
@@ -109,6 +109,11 @@ public:
 
     Handle<Quote> securitySpread(const string& securityID,
                                  const string& configuration = Market::defaultConfiguration) const override;
+    Handle<Quote> conversionFactor(const string& name,
+                                   const string& configuration = Market::defaultConfiguration) const override;
+    Handle<Quote> securityPrice(const string& name,
+                                const string& configuration = Market::defaultConfiguration) const override;
+
     QuantLib::Handle<QuantExt::PriceTermStructure>
     commodityPriceCurve(const std::string& commodityName,
                         const std::string& configuration = Market::defaultConfiguration) const override;

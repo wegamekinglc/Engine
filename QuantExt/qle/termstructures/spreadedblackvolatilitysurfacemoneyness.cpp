@@ -37,7 +37,8 @@ SpreadedBlackVolatilitySurfaceMoneyness::SpreadedBlackVolatilitySurfaceMoneyness
     const Handle<Quote>& stickySpot, const Handle<YieldTermStructure>& stickyDividendTs,
     const Handle<YieldTermStructure>& stickyRiskFreeTs, const Handle<YieldTermStructure>& movingDividendTs,
     const Handle<YieldTermStructure>& movingRiskFreeTs, bool stickyStrike)
-    : BlackVolatilityTermStructure(referenceVol->businessDayConvention(), referenceVol->dayCounter()),
+    : BlackVolatilityTermStructure(referenceVol->businessDayConvention(), referenceVol->dayCounter(),
+                                   referenceVol->volType(), referenceVol->shift()),
       referenceVol_(referenceVol), movingSpot_(movingSpot), times_(times), moneyness_(moneyness),
       volSpreads_(volSpreads), stickySpot_(stickySpot), stickyDividendTs_(stickyDividendTs),
       stickyRiskFreeTs_(stickyRiskFreeTs), movingDividendTs_(movingDividendTs), movingRiskFreeTs_(movingRiskFreeTs),
@@ -141,7 +142,7 @@ Real SpreadedBlackVolatilitySurfaceMoneyness::blackVolImpl(Time t, Real strike) 
     QL_REQUIRE(std::isfinite(m2),
                "SpreadedBlackVolatilitySurfaceMoneyness: got invalid moneyness (sticky reference) at t = "
                    << t << ", strike = " << strike << ": " << m2);
-    return referenceVol_->blackVol(t, effStrike) + volSpreadSurface_(t, m2);
+    return std::max(0.0, referenceVol_->blackVol(t, effStrike) + volSpreadSurface_(t, m2));
 }
 
 Real SpreadedBlackVolatilitySurfaceMoneynessSpot::moneynessFromStrike(Time t, Real strike,

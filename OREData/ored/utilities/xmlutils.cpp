@@ -26,7 +26,6 @@
 #include <ored/utilities/to_string.hpp>
 #include <ored/utilities/xmlutils.hpp>
 
-#include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/erase.hpp>
 
@@ -75,6 +74,17 @@ void handle_rapidxml_parse_error(const rapidxml::parse_error& e) {
 XMLDocument::XMLDocument() : _doc(new rapidxml::xml_document<char>()), _buffer(NULL) {}
 
 XMLDocument::XMLDocument(const string& fileName) : _doc(new rapidxml::xml_document<char>()), _buffer(NULL) {
+    fromFile(fileName);
+}
+
+XMLDocument::~XMLDocument() {
+    if (_buffer != NULL)
+        delete[] _buffer;
+    if (_doc != NULL)
+        delete _doc;
+}
+
+void XMLDocument::fromFile(const string& fileName) {
     // Need to load the entire file into memory to pass to doc.parse().
     ifstream t(fileName.c_str());
     QL_REQUIRE(t.is_open(), "Failed to open file " << fileName);
@@ -91,13 +101,6 @@ XMLDocument::XMLDocument(const string& fileName) : _doc(new rapidxml::xml_docume
     } catch (const rapidxml::parse_error& pe) {
         handle_rapidxml_parse_error(pe);
     }
-}
-
-XMLDocument::~XMLDocument() {
-    if (_buffer != NULL)
-        delete[] _buffer;
-    if (_doc != NULL)
-        delete _doc;
 }
 
 void XMLDocument::fromXMLString(const string& xmlString) {
@@ -127,6 +130,13 @@ string XMLDocument::toString() const {
     ostringstream oss;
     oss << *_doc;
     return oss.str();
+}
+
+string XMLDocument::toStringUnformatted() const {
+    std::stringstream stream;
+    std::ostream_iterator<char> iter(stream);
+    rapidxml::print(iter, *_doc, rapidxml::print_no_indenting);
+    return stream.str();
 }
 
 XMLNode* XMLDocument::allocNode(const string& nodeName) {
@@ -170,6 +180,13 @@ string XMLSerializable::toXMLString() const {
     XMLNode* node = toXML(doc);
     doc.appendNode(node);
     return doc.toString();
+}
+
+string XMLSerializable::toXMLStringUnformatted() const {
+    XMLDocument doc;
+    XMLNode* node = toXML(doc);
+    doc.appendNode(node);
+    return doc.toStringUnformatted();
 }
 
 void XMLUtils::checkNode(XMLNode* node, const string& expectedName) {
@@ -406,6 +423,7 @@ XMLNode* XMLUtils::locateNode(XMLNode* n, const string& name) {
 void XMLUtils::appendNode(XMLNode* parent, XMLNode* child) {
     QL_REQUIRE(parent, "XMLUtils::appendNode() parent is NULL");
     QL_REQUIRE(child, "XMLUtils::appendNode() child is NULL");
+    QL_REQUIRE(!child->parent(), "XMLUtils::appendNode() child has a parent already.");
     parent->append_node(child);
 }
 
@@ -431,6 +449,15 @@ vector<XMLNode*> XMLUtils::getChildrenNodes(XMLNode* node, const string& name) {
     const char* p = name.empty() ? nullptr : name.c_str();
     for (xml_node<>* c = node->first_node(p); c; c = c->next_sibling(p))
         res.push_back(c);
+    return res;
+}
+
+vector<XMLNode*> XMLUtils::getAnyChildrenNodes(XMLNode* node, const std::vector<string>& names) {
+    vector<XMLNode*> res;
+    for (auto const& n : names) {
+        auto tmp = getChildrenNodes(node, n);
+        res.insert(res.end(), tmp.begin(), tmp.end());
+    }
     return res;
 }
 
@@ -635,8 +662,6 @@ string XMLUtils::convertToString(const Real value) {
     return result;
 }
 
-template <class T> string XMLUtils::convertToString(const T& value) { return boost::lexical_cast<std::string>(value); }
-
 /* Instantiate some template functions above for types T we want to support. Add instantiations for more types here,
    if required. This has two advantages over putting the templated version of the functions in the header file:
    - faster compile times
@@ -709,7 +734,6 @@ template vector<bool> XMLUtils::getChildrenValuesWithAttributes(XMLNode* parent,
                                                                 const string& name, const string& attrName,
                                                                 vector<string>& attrs,
                                                                 std::function<bool(string)> parser, bool mandatory);
-
 
 string XMLUtils::toString(XMLNode* node) {
     string xml_as_string;

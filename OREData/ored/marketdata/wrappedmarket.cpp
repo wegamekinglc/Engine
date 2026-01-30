@@ -90,6 +90,14 @@ Handle<Quote> WrappedMarket::recoveryRate(const string& name, const string& conf
     return market_->recoveryRate(name, configuration);
 }
 
+Handle<Quote> WrappedMarket::conversionFactor(const string& name, const string& configuration) const {
+    return market_->conversionFactor(name, configuration);
+}
+
+Handle<Quote> WrappedMarket::securityPrice(const string& name, const string& configuration) const {
+    return market_->securityPrice(name, configuration);
+}
+
 Handle<QuantExt::CreditVolCurve> WrappedMarket::cdsVol(const string& name, const string& configuration) const {
     return market_->cdsVol(name, configuration);
 }

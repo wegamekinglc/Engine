@@ -4,9 +4,6 @@ project(OREAnalytics CXX)
 
 enable_testing()
 
-include(writeAll)
-include(commonSettings)
-
 get_library_name("OREAnalytics" OREA_LIB_NAME)
 get_library_name("OREData" ORED_LIB_NAME)
 get_library_name("QuantExt" QLE_LIB_NAME)
@@ -20,14 +17,15 @@ if(ORE_USE_ZLIB)
     find_package(ZLIB REQUIRED)
 endif()
 
-SET(COMPONENT_LIST date_time filesystem iostreams regex serialization system timer thread)
+SET(COMPONENT_LIST date_time filesystem iostreams serialization timer thread)
+
 if (ORE_BUILD_TESTS)
     LIST(APPEND COMPONENT_LIST unit_test_framework)
 endif()
 if(MSVC AND ORE_USE_ZLIB)
     LIST(APPEND COMPONENT_LIST zlib)
 endif()
-find_package (Boost REQUIRED COMPONENTS ${COMPONENT_LIST} OPTIONAL_COMPONENTS chrono)
+find_package (Boost REQUIRED COMPONENTS ${COMPONENT_LIST} OPTIONAL_COMPONENTS system chrono)
 if (ORE_ENABLE_PARALLEL_UNIT_TEST_RUNNER AND UNIX AND NOT APPLE)
     find_library(RT_LIBRARY rt REQUIRED)
 endif()

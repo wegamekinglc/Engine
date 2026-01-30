@@ -163,6 +163,8 @@ void CreditLinkedSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& eng
     for (auto const& l : recoveryPayments_) {
         auto legBuilder = engineFactory->legBuilder(l.legType());
         legs_.push_back(legBuilder->buildLeg(l, engineFactory, requiredFixings_, configuration));
+        for(const auto& cf : legs_.back())
+            DLOG("  Recovery payment cashflow date: " << cf->date() << ", amount: " << cf->amount());
         legPayers_.push_back(l.isPayer());
         legTypes.push_back(QuantExt::CreditLinkedSwap::LegType::RecoveryPayments);
     }
@@ -182,11 +184,13 @@ void CreditLinkedSwap::build(const QuantLib::ext::shared_ptr<EngineFactory>& eng
     notionalCurrency_ = npvCurrency_;
     legCurrencies_ = std::vector<std::string>(legs_.size(), npvCurrency_);
     maturity_ = qlInstr->maturity();
+    maturityType_ = "CreditLinkedSwap's Latest Leg Date";
 
     // set pricing engine
 
     qlInstr->setPricingEngine(builder->engine(npvCurrency_, creditCurveId_));
     setSensitivityTemplate(*builder);
+    addProductModelEngine(*builder);
 
     // log
 

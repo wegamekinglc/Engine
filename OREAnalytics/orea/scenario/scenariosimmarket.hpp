@@ -27,15 +27,20 @@
 #include <orea/scenario/scenariogenerator.hpp>
 #include <orea/scenario/scenariosimmarketparameters.hpp>
 #include <orea/simulation/simmarket.hpp>
+
 #include <ored/configuration/conventions.hpp>
 #include <ored/configuration/curveconfigurations.hpp>
 #include <ored/configuration/iborfallbackconfig.hpp>
+
+#include <qle/utilities/scenarioinformation.hpp>
 
 #include <map>
 
 namespace ore {
 namespace analytics {
+
 using namespace QuantLib;
+
 using std::map;
 using std::string;
 using std::vector;
@@ -77,7 +82,8 @@ public:
                       const ore::data::TodaysMarketParameters& todaysMarketParams = ore::data::TodaysMarketParameters(),
                       const bool continueOnError = false, const bool useSpreadedTermStructures = false,
                       const bool cacheSimData = false, const bool allowPartialScenarios = false,
-                      const IborFallbackConfig& iborFallbackConfig = IborFallbackConfig::defaultConfig(),
+                      const QuantLib::ext::shared_ptr<IborFallbackConfig>& iborFallbackConfig =
+                          QuantLib::ext::make_shared<IborFallbackConfig>(IborFallbackConfig::defaultConfig()),
                       const bool handlePseudoCurrencies = true,
                       const QuantLib::ext::shared_ptr<Scenario>& offSetScenario = nullptr);
 
@@ -89,7 +95,8 @@ public:
                       const ore::data::TodaysMarketParameters& todaysMarketParams = ore::data::TodaysMarketParameters(),
                       const bool continueOnError = false, const bool useSpreadedTermStructures = false,
                       const bool cacheSimData = false, const bool allowPartialScenarios = false,
-                      const IborFallbackConfig& iborFallbackConfig = IborFallbackConfig::defaultConfig(),
+                      const QuantLib::ext::shared_ptr<IborFallbackConfig>& iborFallbackConfig =
+                          QuantLib::ext::make_shared<IborFallbackConfig>(IborFallbackConfig::defaultConfig()),
                       const bool handlePseudoCurrencies = true,
                       const QuantLib::ext::shared_ptr<Scenario>& offSetScenario = nullptr);
 
@@ -130,6 +137,9 @@ public:
       types, no matter whether useSpreadedTermStructures is true or false. */
     virtual QuantLib::ext::shared_ptr<Scenario> baseScenarioAbsolute() const { return baseScenarioAbsolute_; }
 
+    /*! Get offset scenario, or nullptr if none was set */
+    QuantLib::ext::shared_ptr<Scenario> offsetScenario() const { return offsetScenario_; }
+
     /*! Return true if this instance uses spreaded term structures */
     bool useSpreadedTermStructures() const { return useSpreadedTermStructures_; }
 
@@ -152,6 +162,12 @@ protected:
                        const RiskFactorKey::KeyType rf, const string& key, const vector<Period>& tenors,
                        bool& simDataWritten, bool simulate = true, bool spreaded = false);
 
+    QuantLib::Handle<QuantLib::YieldTermStructure> getYieldCurve(const std::string& key) const;
+
+    void applyCurveAlgebra();
+    void applyCurveAlgebraSpreadedYieldCurve(const ScenarioSimMarketParameters::CurveAlgebraData::Curve& a);
+    void applyCurveAlgebraCommodityPriceCurve(const ScenarioSimMarketParameters::CurveAlgebraData::Curve& a);
+
     /*! Given a yield curve spec ID, \p yieldSpecId, return the corresponding yield term structure
     from the \p market. If \p market is `nullptr`, then the yield term structure is taken from
     this ScenarioSimMarket instance.
@@ -160,8 +176,8 @@ protected:
     getYieldCurve(const std::string& yieldSpecId, const ore::data::TodaysMarketParameters& todaysMarketParams,
                   const std::string& configuration, const QuantLib::ext::shared_ptr<ore::data::Market>& market = nullptr) const;
 
-    /*! add a single swap index to the market, return true if successful */
-    bool addSwapIndexToSsm(const std::string& indexName, const bool continueOnError);
+    /*! add a single swap index to the market */
+    void addSwapIndexToSsm(const std::string& indexName);
 
     const QuantLib::ext::shared_ptr<ScenarioSimMarketParameters> parameters_;
     QuantLib::ext::shared_ptr<ScenarioGenerator> scenarioGenerator_;
@@ -189,13 +205,14 @@ protected:
 
     bool cacheSimData_;
     bool allowPartialScenarios_;
-    IborFallbackConfig iborFallbackConfig_;
+    QuantLib::ext::shared_ptr<IborFallbackConfig> iborFallbackConfig_;
 
     // for delta scenario application
     std::set<ore::analytics::RiskFactorKey> diffToBaseKeys_;
 
     mutable QuantLib::ext::shared_ptr<Scenario> currentScenario_;
     QuantLib::ext::shared_ptr<Scenario> offsetScenario_;
+    QuantLib::ext::shared_ptr<QuantExt::ScenarioInformationSetter> scenarioInformationSetter_;
 };
 } // namespace analytics
 } // namespace ore

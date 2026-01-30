@@ -40,8 +40,8 @@ string SimmConfigurationCalibration::group(const string& qualifier,
     return result;
 }
 
-QuantLib::Real SimmConfigurationCalibration::weight(const RiskType& rt, boost::optional<string> qualifier,
-                                                   boost::optional<string> label_1,
+QuantLib::Real SimmConfigurationCalibration::weight(const RiskType& rt, QuantLib::ext::optional<string> qualifier,
+                                                   QuantLib::ext::optional<string> label_1,
                                                    const string& calculationCurrency) const {
 
     if (rt == RiskType::FX) {
@@ -58,10 +58,11 @@ QuantLib::Real SimmConfigurationCalibration::weight(const RiskType& rt, boost::o
 }
 
 QuantLib::Real SimmConfigurationCalibration::correlation(const RiskType& firstRt, const string& firstQualifier,
-                                                        const string& firstLabel_1, const string& firstLabel_2,
-                                                        const RiskType& secondRt, const string& secondQualifier,
-                                                        const string& secondLabel_1, const string& secondLabel_2,
-                                                        const string& calculationCurrency) const {
+                                                         const string& firstBucket, const string& firstLabel_1,
+                                                         const string& firstLabel_2, const RiskType& secondRt,
+                                                         const string& secondQualifier, const string& secondBucket,
+                                                         const string& secondLabel_1, const string& secondLabel_2,
+                                                         const string& calculationCurrency) const {
 
     if (firstRt == RiskType::FX && secondRt == RiskType::FX) {
         QL_REQUIRE(calculationCurrency != "", "no calculation currency provided corr");
@@ -79,8 +80,9 @@ QuantLib::Real SimmConfigurationCalibration::correlation(const RiskType& firstRt
         }
     }
 
-    return SimmConfigurationBase::correlation(firstRt, firstQualifier, firstLabel_1, firstLabel_2, secondRt,
-                                              secondQualifier, secondLabel_1, secondLabel_2);
+    return SimmConfigurationBase::correlation(firstRt, firstQualifier, firstBucket, firstLabel_1, firstLabel_2,
+                                              secondRt, secondQualifier, secondBucket, secondLabel_1, secondLabel_2,
+                                              calculationCurrency);
 }
 
 SimmConfigurationCalibration::SimmConfigurationCalibration(const QuantLib::ext::shared_ptr<SimmBucketMapper>& simmBucketMapper,
@@ -353,7 +355,7 @@ SimmConfigurationCalibration::SimmConfigurationCalibration(const QuantLib::ext::
 is the historical volatility ratio for the interest-rate risk class (see page 8 section 11(d)
 of the ISDA-SIMM-v2.6 documentation).
 */
-QuantLib::Real SimmConfigurationCalibration::curvatureMarginScaling() const { return pow(hvr_ir_, -2.0); }
+QuantLib::Real SimmConfigurationCalibration::curvatureMarginScaling() const { return std::pow(hvr_ir_, -2.0); }
 
 void SimmConfigurationCalibration::addLabels2(const RiskType& rt, const string& label_2) {
     // Call the shared implementation

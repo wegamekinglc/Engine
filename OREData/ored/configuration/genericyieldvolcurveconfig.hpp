@@ -90,7 +90,7 @@ public:
         const vector<string>& smileOptionTenors = vector<string>(),
         const vector<string>& smileUnderlyingTenors = vector<string>(),
         const vector<string>& smileSpreads = vector<string>(),
-        const boost::optional<ParametricSmileConfiguration>& parametricSmileConfiguration = boost::none);
+        const QuantLib::ext::optional<ParametricSmileConfiguration>& parametricSmileConfiguration = QuantLib::ext::nullopt);
     //! Detailed contructor for proxy config
     GenericYieldVolatilityCurveConfig(const std::string& underlyingLabel, const std::string& rootNodeLabel,
                                       const std::string& qualifierLabel, const string& curveID,
@@ -115,6 +115,8 @@ public:
     Dimension dimension() const { return dimension_; }
     VolatilityType volatilityType() const { return volatilityType_; }
     VolatilityType outputVolatilityType() const { return outputVolatilityType_; }
+    const vector<Real>& modelShift() const { return modelShift_; }
+    const vector<Real>& outputShift() const { return outputShift_; }
     Interpolation interpolation() const { return interpolation_; }
     Extrapolation extrapolation() const { return extrapolation_; }
     const vector<string>& optionTenors() const { return optionTenors_; }
@@ -136,7 +138,7 @@ public:
     const std::string& proxyTargetShortSwapIndexBase() const { return proxyTargetShortSwapIndexBase_; }
     const std::string& proxyTargetSwapIndexBase() const { return proxyTargetSwapIndexBase_; }
     //
-    const boost::optional<ParametricSmileConfiguration> parametricSmileConfiguration() const {
+    const QuantLib::ext::optional<ParametricSmileConfiguration> parametricSmileConfiguration() const {
         return parametricSmileConfiguration_;
     }
     //
@@ -149,6 +151,8 @@ public:
     Dimension& dimension() { return dimension_; }
     VolatilityType& volatilityType() { return volatilityType_; }
     VolatilityType& outputVolatilityType() { return outputVolatilityType_; }
+    vector<Real>& modelShift() { return modelShift_; }
+    vector<Real>& outputShift() { return outputShift_; }
     Interpolation& interpolation() { return interpolation_; }
     Extrapolation& extrapolation() { return extrapolation_; }
     vector<string>& optionTenors() { return optionTenors_; }
@@ -165,7 +169,7 @@ public:
      //@}
 
 private:
-    void populateRequiredCurveIds();
+    void populateRequiredIds() const override;
     string ccyFromSwapIndexBase(const std::string& swapIndexBase);
     //
     const string underlyingLabel_, rootNodeLabel_, marketDatumInstrumentLabel_, qualifierLabel_;
@@ -175,6 +179,8 @@ private:
     Dimension dimension_ = Dimension::Smile;
     VolatilityType volatilityType_ = VolatilityType::Normal;
     VolatilityType outputVolatilityType_ = VolatilityType::Normal;
+    vector<double> modelShift_;
+    vector<double> outputShift_;
     Interpolation interpolation_ = Interpolation::Linear;
     Extrapolation extrapolation_ = Extrapolation::Flat;
     vector<string> optionTenors_, underlyingTenors_;
@@ -193,7 +199,7 @@ private:
     string proxyTargetShortSwapIndexBase_;
     string proxyTargetSwapIndexBase_;
 
-    boost::optional<ParametricSmileConfiguration> parametricSmileConfiguration_;
+    QuantLib::ext::optional<ParametricSmileConfiguration> parametricSmileConfiguration_;
 
     ReportConfig reportConfig_;
 };

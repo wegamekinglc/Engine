@@ -118,9 +118,11 @@ void CSVLoader::loadFile(const string& filename, DataType dataType) {
             boost::split(tokens, line, boost::is_any_of(",;\t "), boost::token_compress_on);
 
             // TODO: should we try, catch and log any invalid lines?
-            QL_REQUIRE(tokens.size() == 3 || tokens.size() == 4, "Invalid CSVLoader line, 3 tokens expected " << line);
-            if (tokens.size() == 4)
-                QL_REQUIRE(dataType == DataType::Dividend, "CSVLoader, dataType must be of type Dividend");
+            QL_REQUIRE(tokens.size() == 3 || dataType == DataType::Dividend,
+                       "Invalid CSVLoader line, expected 3 columns, got " << tokens.size() << ": " << line);
+            QL_REQUIRE(tokens.size() >= 3 || tokens.size() <= 5,
+                       "Invalid CSVLoader line, between 3 and 5 tokens expected, got " << tokens.size() << ": "
+                                                                                       << line);
             Date date = parseDate(tokens[0]);
             const string& key = tokens[1];
             Real value = parseReal(tokens[2]);
@@ -149,12 +151,12 @@ void CSVLoader::loadFile(const string& filename, DataType dataType) {
                             }
                         }
                         if (addFX.first && data_[date].insert(md).second) {
-                            LOG("Added MarketDatum " << key);
+                            TLOG("Added MarketDatum " << key);
                         } else if (!addFX.first) {
-                            LOG("Skipped MarketDatum " << key << " - dominant FX already present.")
+                            DLOG("Skipped MarketDatum " << key << " - dominant FX already present.")
                         }
 						else {
-                            LOG("Skipped MarketDatum " << key << " - this is already present.");
+                            DLOG("Skipped MarketDatum " << key << " - this is already present.");
                         }
                     }
                 } catch (std::exception& e) {
@@ -171,17 +173,20 @@ void CSVLoader::loadFile(const string& filename, DataType dataType) {
                 }
             } else if (dataType == DataType::Dividend) {
                 Date payDate = date;
-                if (tokens.size() == 4)
-                    payDate = parseDate(tokens[3]);
+                Date announcementDate = date;
+                if (tokens.size() > 3) {
+                    if (!tokens[3].empty())
+                        payDate = parseDate(tokens[3]);
+                    if (tokens.size() == 5 && !tokens[4].empty())
+                        announcementDate = parseDate(tokens[4]);
+                }
                 // process dividends
-                if (date <= today) {
-                    if (!dividends_.insert(QuantExt::Dividend(date, key, value, payDate)).second) {
-                        WLOG("Skipped Dividend " << key << "@" << QuantLib::io::iso_date(date)
-                                                 << " - this is already present.");
-                    }
+                if (!dividends_.insert(QuantExt::Dividend(date, key, value, payDate, announcementDate)).second) {
+                    WLOG("Skipped Dividend " << key << "@" << QuantLib::io::iso_date(date)
+                                                << " - this is already present.");
                 }
             } else {
-                QL_FAIL("unknown data type");
+                QL_FAIL("CSVLoader: unknown data type (" << static_cast<int>(dataType) << ").");
             }
         }
     }
@@ -249,5 +254,13 @@ std::set<QuantLib::ext::shared_ptr<MarketDatum>> CSVLoader::get(const Wildcard& 
     }
     return result;
 }
+
+std::set<QuantLib::Date> CSVLoader::asofDates() const {
+    std::set<QuantLib::Date> result;
+    for (auto const& [d, _] : data_)
+        result.insert(d);
+    return result;
+}
+
 } // namespace data
 } // namespace ore

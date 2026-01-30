@@ -45,11 +45,12 @@ public:
                          const Period& fixedTenor, const DayCounter& fixedDayCounter, const Calendar& fixedCalendar,
                          BusinessDayConvention fixedConvention, BusinessDayConvention fixedPaymentAdjustment,
                          // ON leg
-                         const QuantLib::ext::shared_ptr<OvernightIndex>& overnightIndex, const Period& onTenor,
-                         const Handle<Quote>& onSpread, Natural rateCutoff,
+                         const QuantLib::ext::shared_ptr<OvernightIndex>& overnightIndex, const bool onIndexGiven,
+                         const Period& onTenor, const Handle<Quote>& onSpread, Natural rateCutoff,
                          // Exogenous discount curve
                          const Handle<YieldTermStructure>& discountCurve = Handle<YieldTermStructure>(),
-                         const bool telescopicValueDates = false);
+                         const bool discountCurveGiven = false, const bool telescopicValueDates = false,
+                         const QuantLib::Pillar::Choice pillarChoice = QuantLib::Pillar::LastRelevantDate);
 
     //! \name RateHelper interface
     //@{
@@ -60,6 +61,7 @@ public:
     //@{
     Spread onSpread() const;
     QuantLib::ext::shared_ptr<AverageOIS> averageOIS() const;
+    const Leg& spreadLeg() const;
     //@}
     //! \name Visitability
     //@{
@@ -68,6 +70,7 @@ public:
 protected:
     void initializeDates() override;
     QuantLib::ext::shared_ptr<AverageOIS> averageOIS_;
+    Leg spreadLeg_;
     // Swap
     Period spotLagTenor_;
     Period swapTenor_;
@@ -79,15 +82,19 @@ protected:
     BusinessDayConvention fixedPaymentAdjustment_;
     // ON leg
     QuantLib::ext::shared_ptr<OvernightIndex> overnightIndex_;
+    bool onIndexGiven_;
     Period onTenor_;
     Handle<Quote> onSpread_;
     Natural rateCutoff_;
     // Curves
     RelinkableHandle<YieldTermStructure> termStructureHandle_;
     Handle<YieldTermStructure> discountHandle_;
+    bool discountCurveGiven_;
     RelinkableHandle<YieldTermStructure> discountRelinkableHandle_;
     bool telescopicValueDates_;
+    QuantLib::Pillar::Choice pillarChoice_;
 };
+
 } // namespace QuantExt
 
 #endif

@@ -40,7 +40,7 @@ CommodityDigitalAveragePriceOption::CommodityDigitalAveragePriceOption(
     const string& paymentCalendar, const string& paymentLag, const string& paymentConvention,
     const string& pricingCalendar, const string& paymentDate, Real gearing, Spread spread,
     CommodityQuantityFrequency commodityQuantityFrequency, CommodityPayRelativeTo commodityPayRelativeTo,
-    QuantLib::Natural futureMonthOffset, QuantLib::Natural deliveryRollDays, bool includePeriodEnd,
+    QuantLib::Integer futureMonthOffset, QuantLib::Natural deliveryRollDays, bool includePeriodEnd,
     const BarrierData& barrierData, const std::string& fxIndex)
     : Trade("CommodityDigitalAveragePriceOption", envelope), optionData_(optionData), barrierData_(barrierData),
       strike_(strike), digitalCashPayoff_(digitalCashPayoff), currency_(currency), name_(name),
@@ -67,8 +67,13 @@ void CommodityDigitalAveragePriceOption::build(const QuantLib::ext::shared_ptr<E
     QL_REQUIRE(optionData_.exerciseDates().size() == 1, "Invalid number of excercise dates");
     Date exDate = parseDate(optionData_.exerciseDates().front());
 
+    Real spread = 0.01;
+    if (engineFactory->engineData()->globalParameters().find("StrikeSpread") !=
+        engineFactory->engineData()->globalParameters().end()) {
+        spread = parseReal(engineFactory->engineData()->globalParameters().find("StrikeSpread")->second);
+    }
 
-    Real strikeSpread = strike_ * 0.01; // FIXME, what is a usual spread here, and where should we put it?
+    Real strikeSpread = strike_ * spread; // FIXME, what is a usual spread here, and where should we put it?
     Real strike1 = strike_ - strikeSpread / 2;
     Real strike2 = strike_ + strikeSpread / 2;
     CommodityAveragePriceOption opt1(
@@ -85,6 +90,7 @@ void CommodityDigitalAveragePriceOption::build(const QuantLib::ext::shared_ptr<E
     opt2.build(engineFactory);
 
     setSensitivityTemplate(opt1.sensitivityTemplate());
+    addProductModelEngine(opt1.productModelEngine());
 
     QuantLib::ext::shared_ptr<Instrument> inst1 = opt1.instrument()->qlInstrument();
     QuantLib::ext::shared_ptr<Instrument> inst2 = opt2.instrument()->qlInstrument();
@@ -109,10 +115,12 @@ void CommodityDigitalAveragePriceOption::build(const QuantLib::ext::shared_ptr<E
     // FIXME: Do we need to retrieve the engine builder's configuration
     string configuration = Market::defaultConfiguration;
     Currency ccy = parseCurrencyWithMinors(currency_);
-    
-    maturity_ =
-        std::max(exDate, addPremiums(additionalInstruments, additionalMultipliers, multiplier,
-                                          optionData_.premiumData(), -bsIndicator, ccy, engineFactory, configuration));
+    string discountCurve = envelope().additionalField("discount_curve", false, std::string());
+    Date lastPremiumDate =
+        addPremiums(additionalInstruments, additionalMultipliers, multiplier, optionData_.premiumData(), -bsIndicator,
+                    ccy, discountCurve, engineFactory, configuration);
+    maturity_ = std::max(exDate, lastPremiumDate);
+    maturityType_ = maturity_ == exDate ? "Exercise Date" : "Last Premium Date";
 
     instrument_ = QuantLib::ext::shared_ptr<InstrumentWrapper>(
         new VanillaInstrument(composite, multiplier, additionalInstruments, additionalMultipliers));
@@ -129,6 +137,7 @@ void CommodityDigitalAveragePriceOption::build(const QuantLib::ext::shared_ptr<E
     }
 
     additionalData_["payoff"] = digitalCashPayoff_;
+    additionalData_["spread"] = spread;
     additionalData_["strike"] = strike_;
     additionalData_["optionType"] = optionData_.callPut();
     additionalData_["strikeCurrency"] = currency_;
@@ -182,6 +191,7 @@ void CommodityDigitalAveragePriceOption::fromXML(XMLNode* node) {
     }
 
     futureMonthOffset_ = XMLUtils::getChildValueAsInt(apoNode, "FutureMonthOffset", false);
+    QL_REQUIRE(futureMonthOffset_ >= 0, "FutureMonthOffset must be positive for Commodity Digital APO.");
     deliveryRollDays_ = XMLUtils::getChildValueAsInt(apoNode, "DeliveryRollDays", false);
 
     includePeriodEnd_ = true;

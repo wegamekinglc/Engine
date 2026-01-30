@@ -85,6 +85,7 @@ private:
     <CreditCurveId>...</CreditCurveId>
     <ReferenceCurveId>...</ReferenceCurveId>
     <IncomCurveId>...</IncomeCurveId>
+    <PriceType>...</PriceType>
     <LegData>...</LegData>
   </BondReferenceData>
 </ReferenceDatum>
@@ -104,8 +105,9 @@ public:
         string referenceCurveId;
         string incomeCurveId;
         string volatilityCurveId;
-	string priceQuoteMethod;
+        string priceQuoteMethod;
         string priceQuoteBaseValue;
+        std::optional<QuantLib::Bond::Price::Type> quotedDirtyPrices;
         std::vector<LegData> legData;
         string subType;
         void fromXML(XMLNode* node) override;
@@ -131,6 +133,45 @@ public:
 
 private:
     BondData bondData_;
+};
+
+class BondFutureReferenceDatum : public ReferenceDatum {
+public:
+    static constexpr const char* TYPE = "BondFuture";
+
+    struct BondFutureData : XMLSerializable {
+        std::string currency;
+        std::vector<std::string> deliveryBasket;    // devlierable basket
+        std::string deliverableGrade;               // underlying deliverable grade
+        std::string lastTrading;                    // expiry
+        std::string lastDelivery;                   // settlement date
+        std::string settlement;                     // Cash or Physical
+        std::string dirtyQuotation;                 // true (dirty) or false (clean)
+        // bond future date conventions to derive lastTrading and lastDelivery
+        std::string contractMonth;
+        std::string rootDate;        // first, end, nth weekday (e.g. 'Monday,3') taken
+        std::string expiryBasis;     // ROOT, SETTLEMENT taken
+        std::string settlementBasis; // ROOT, EXPIRY taken
+        std::string expiryLag;       // periods taken
+        std::string settlementLag;   // periods taken
+        void fromXML(XMLNode* node) override;
+        XMLNode* toXML(ore::data::XMLDocument& doc) const override;
+    };
+
+    BondFutureReferenceDatum() { setType(TYPE); }
+    BondFutureReferenceDatum(const string& id) : ReferenceDatum(TYPE, id) {}
+    BondFutureReferenceDatum(const string& id, const BondFutureData& bondFutureData) : ReferenceDatum(TYPE, id), bondFutureData_(bondFutureData) {}
+    BondFutureReferenceDatum(const string& id, const QuantLib::Date& validFrom) : ReferenceDatum(TYPE, id, validFrom) {}
+    BondFutureReferenceDatum(const string& id, const QuantLib::Date& validFrom, const BondFutureData& bondFutureData)
+        : ReferenceDatum(TYPE, id, validFrom), bondFutureData_(bondFutureData) {}
+
+    void fromXML(XMLNode* node) override;
+    XMLNode* toXML(ore::data::XMLDocument& doc) const override;
+
+    const BondFutureData& bondFutureData() const { return bondFutureData_; }
+
+private:
+    BondFutureData bondFutureData_;
 };
 
 /*! Hold reference data on a constituent of a credit index.
@@ -201,12 +242,15 @@ public:
     const std::set<CreditIndexConstituent>& constituents() const;
 
     const std::string& indexFamily() const { return indexFamily_; }
+    const std::string& indexSubFamily() const { return indexSubFamily_; }
 
     void setIndexFamily(const std::string& indexFamily) { indexFamily_ = indexFamily; }
+    void setIndexSubFamily(const std::string& indexSubFamily) { indexSubFamily_ = indexSubFamily; }
 
 private:
     std::set<CreditIndexConstituent> constituents_;
     std::string indexFamily_;
+    std::string indexSubFamily_;
 };
 
 
@@ -415,10 +459,10 @@ public:
     void fromXML(XMLNode* node) override;
     XMLNode* toXML(ore::data::XMLDocument& doc) const override;
 
-    const vector<QuantLib::ext::shared_ptr<Trade>>& getTrades() const { return tradecomponents_; }
+    vector<QuantLib::ext::shared_ptr<Trade>> getTrades() const;
 
 private:
-    vector<QuantLib::ext::shared_ptr<Trade>> tradecomponents_;
+    std::string tradecomponents_;
 };
 
 
@@ -435,6 +479,7 @@ public:
         QuantLib::Date successorImplementationDate;
         QuantLib::Date predecessorImplementationDate;
         string entityType;
+        string primaryPriceType;
     };
     CreditReferenceDatum() {}
 
@@ -560,7 +605,15 @@ public:
 class BasicReferenceDataManager : public ReferenceDataManager, public XMLSerializable {
 public:
     BasicReferenceDataManager() {}
-    BasicReferenceDataManager(const string& filename) { fromFile(filename); }
+    BasicReferenceDataManager(const string& filename,
+                              const QuantLib::ext::shared_ptr<ReferenceDataManager>& rdmOverride = nullptr)
+        : rdmOverride_(rdmOverride) {
+        fromFile(filename);
+    }
+
+    void setRDMOverride(const QuantLib::ext::shared_ptr<ReferenceDataManager>& rdmOverride) {
+        rdmOverride_ = rdmOverride;
+    }
 
     // Load extra data and append to this manger
     void appendData(const string& filename) { fromFile(filename); }
@@ -589,6 +642,9 @@ protected:
     map<std::pair<string, string>, std::map<QuantLib::Date, QuantLib::ext::shared_ptr<ReferenceDatum>>> data_;
     std::set<std::tuple<string, string, QuantLib::Date>> duplicates_;
     map<std::pair<string, string>, std::map<QuantLib::Date, string>> buildErrors_;
+
+private:
+    QuantLib::ext::shared_ptr<ReferenceDataManager> rdmOverride_;
 };
 
 } // namespace data

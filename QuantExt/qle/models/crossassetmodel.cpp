@@ -86,25 +86,29 @@ CommoditySchwartzModel::Discretization getComSchwartzDiscretization(CrossAssetMo
 
 CrossAssetModel::CrossAssetModel(const std::vector<QuantLib::ext::shared_ptr<Parametrization>>& parametrizations,
                                  const Matrix& correlation, const SalvagingAlgorithm::Type salvaging,
-                                 const IrModel::Measure measure, const Discretization discretization)
+                                 const IrModel::Measure measure, const Discretization discretization,
+                                 const QuantLib::ext::shared_ptr<Integrator>& integrator,
+                                 const bool piecewiseIntegrationWrapper)
     : LinkableCalibratedModel(), p_(parametrizations), rho_(correlation), salvaging_(salvaging), measure_(measure),
-      discretization_(discretization) {
-    initialize();
+      discretization_(discretization), piecewiseIntegrationWrapper_(piecewiseIntegrationWrapper) {
+    initialize(integrator);
 }
 
 CrossAssetModel::CrossAssetModel(const std::vector<QuantLib::ext::shared_ptr<IrModel>>& currencyModels,
                                  const std::vector<QuantLib::ext::shared_ptr<FxBsParametrization>>& fxParametrizations,
                                  const Matrix& correlation, const SalvagingAlgorithm::Type salvaging,
-                                 const IrModel::Measure measure, const Discretization discretization)
+                                 const IrModel::Measure measure, const Discretization discretization,
+                                 const QuantLib::ext::shared_ptr<Integrator>& integrator,
+                                 const bool piecewiseIntegrationWrapper)
     : LinkableCalibratedModel(), irModels_(currencyModels), rho_(correlation), salvaging_(salvaging), measure_(measure),
-      discretization_(discretization) {
+      discretization_(discretization), piecewiseIntegrationWrapper_(piecewiseIntegrationWrapper) {
     for (Size i = 0; i < currencyModels.size(); ++i) {
         p_.push_back(currencyModels[i]->parametrizationBase());
     }
     for (Size i = 0; i < fxParametrizations.size(); ++i) {
         p_.push_back(fxParametrizations[i]);
     }
-    initialize();
+    initialize(integrator);
 }
 
 QuantLib::ext::shared_ptr<CrossAssetStateProcess> CrossAssetModel::stateProcess() const {
@@ -156,7 +160,7 @@ Size CrossAssetModel::crName(const std::string& name) const {
     Size i = 0;
     while (i < components(CrossAssetModel::AssetType::CR) && cr(i)->name() != name)
         ++i;
-    QL_REQUIRE(i < components(CrossAssetModel::AssetType::INF),
+    QL_REQUIRE(i < components(CrossAssetModel::AssetType::CR),
                "credit name " << name << " not present in cross asset model");
     return i;
 }
@@ -261,38 +265,35 @@ void CrossAssetModel::setCorrelation(const AssetType s, const Size i, const Asse
     update();
 }
 
-void CrossAssetModel::initialize() {
+void CrossAssetModel::initialize(const QuantLib::ext::shared_ptr<Integrator>& integrator) {
     initializeParametrizations();
     initializeCorrelation();
     initializeArguments();
     finalizeArguments();
     checkModelConsistency();
-    initDefaultIntegrator();
+    initIntegrator(integrator);
 }
 
-void CrossAssetModel::initDefaultIntegrator() {
-    setIntegrationPolicy(QuantLib::ext::make_shared<SimpsonIntegral>(1.0E-8, 100), true);
-}
-
-void CrossAssetModel::setIntegrationPolicy(const QuantLib::ext::shared_ptr<Integrator> integrator,
-                                           const bool usePiecewiseIntegration) const {
-
-    if (!usePiecewiseIntegration) {
-        integrator_ = integrator;
-        return;
+void CrossAssetModel::initIntegrator(const QuantLib::ext::shared_ptr<Integrator>& integrator) {
+    integrator_ = integrator;
+    if (integrator_ == nullptr) {
+        integrator_ = QuantLib::ext::make_shared<SimpsonIntegral>(1.0E-8, 100);
     }
+    underlyingIntegrator_ = integrator_;
+    if (piecewiseIntegrationWrapper_) {
 
-    // collect relevant times from parametrizations, we don't have to sort them or make them unique,
-    // this is all done in PiecewiseIntegral for us
+        // collect relevant times from parametrizations, we don't have to sort them or make them unique,
+        // this is all done in PiecewiseIntegral for us
 
-    std::vector<Time> allTimes;
-    for (Size i = 0; i < p_.size(); ++i) {
-        for (Size j = 0; j < getNumberOfParameters(i); ++j)
-            allTimes.insert(allTimes.end(), p_[i]->parameterTimes(j).begin(), p_[i]->parameterTimes(j).end());
+        std::vector<Time> allTimes;
+        for (Size i = 0; i < p_.size(); ++i) {
+            for (Size j = 0; j < getNumberOfParameters(i); ++j)
+                allTimes.insert(allTimes.end(), p_[i]->parameterTimes(j).begin(), p_[i]->parameterTimes(j).end());
+        }
+
+        // use piecewise integrator avoiding the step points
+        integrator_ = QuantLib::ext::make_shared<PiecewiseIntegral>(underlyingIntegrator_, allTimes, true);
     }
-
-    // use piecewise integrator avoiding the step points
-    integrator_ = QuantLib::ext::make_shared<PiecewiseIntegral>(integrator, allTimes, true);
 }
 
 std::pair<CrossAssetModel::AssetType, CrossAssetModel::ModelType>
@@ -744,6 +745,15 @@ void CrossAssetModel::calibrateIrLgm1fGlobal(const Size ccy,
     update();
 }
 
+void CrossAssetModel::calibrateIrHwVolatilitiesIterativeStatisticalWithRiskNeutralVolatility(
+    const Size ccy, const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
+    OptimizationMethod& method, const EndCriteria& endCriteria, const Constraint& constraint,
+    const std::vector<Real>& weights) {
+    hw(ccy)->calibrateVolatilitiesIterativeStatisticalWithRiskNeutralVolatility(helpers, method, endCriteria,
+                                                                                constraint, weights);
+    update();
+}
+
 void CrossAssetModel::calibrateBsVolatilitiesIterative(
     const AssetType& assetType, const Size idx, const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
     OptimizationMethod& method, const EndCriteria& endCriteria, const Constraint& constraint,
@@ -767,6 +777,42 @@ void CrossAssetModel::calibrateBsVolatilitiesGlobal(
     update();
 }
 
+void CrossAssetModel::calibrateComSchwartz1fSeasonalityIterative(
+    const AssetType& assetType, const Size adx, const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
+    OptimizationMethod& method, const EndCriteria& endCriteria, const Constraint& constraint,
+    const std::vector<Real>& weights) {
+    QL_REQUIRE(assetType == CrossAssetModel::AssetType::COM, "Unsupported AssetType for BS calibration");
+    for (Size i = 0; i < helpers.size(); ++i) {
+        std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>> h(1, helpers[i]);
+        calibrate(h, method, endCriteria, constraint, weights, MoveParameter(assetType, 2, adx, i));
+    }
+    update();
+}
+
+void CrossAssetModel::calibrateComSchwartz1fGlobal(
+    const AssetType& assetType, const Size aIdx, const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers,
+    OptimizationMethod& method, const EndCriteria& endCriteria, const std::map<Size, bool>& toCalibrate,
+    const Constraint& constraint, const std::vector<Real>& weights) {
+    
+    QL_REQUIRE(assetType == CrossAssetModel::AssetType::COM, "Unsupported AssetType for BS calibration");
+    // Initialise the parameters to move first to get the size.
+    vector<bool> fixedParams = MoveParameter(CrossAssetModel::AssetType::COM, 0, aIdx, Null<Size>());
+    std::fill(fixedParams.begin(), fixedParams.end(), true);
+
+    // Update fixedParams with parameters that need to be calibrated.
+    for (const auto& kv : toCalibrate) {
+        if (kv.second) {
+            vector<bool> tmp = MoveParameter(CrossAssetModel::AssetType::COM, kv.first, aIdx, Null<Size>());
+            std::transform(fixedParams.begin(), fixedParams.end(), tmp.begin(), fixedParams.begin(),
+                           std::logical_and<bool>());
+        }
+    }
+
+    // Perform the calibration
+    calibrate(helpers, method, endCriteria, constraint, weights, fixedParams);
+
+    update();
+}
 void CrossAssetModel::calibrateInfDkVolatilitiesIterative(
     const Size index, const std::vector<QuantLib::ext::shared_ptr<BlackCalibrationHelper>>& helpers, OptimizationMethod& method,
     const EndCriteria& endCriteria, const Constraint& constraint, const std::vector<Real>& weights) {

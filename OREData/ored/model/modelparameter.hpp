@@ -23,10 +23,10 @@
 
 #pragma once
 
-#include <ql/types.hpp>
+#include <ql/optional.hpp>
 #include <ored/model/lgmdata.hpp>
 #include <ored/utilities/xmlutils.hpp>
-#include <boost/optional.hpp>
+#include <ql/types.hpp>
 #include <vector>
 
 namespace ore {
@@ -59,7 +59,8 @@ public:
     void setValues(std::vector<Real> values);
     void mult(const Real f);
     void setCalibrate(const bool b);
-   //@}
+
+    //@}
 
     //! \name Serialisation
     //@{
@@ -81,7 +82,7 @@ private:
 };
 
 /*! Volatility model parameter with optional volatility type.
-    
+
     \note
     The volatility type is currently an LGM volatility type. We may want to broaden this in future.
 
@@ -97,9 +98,7 @@ public:
                         std::vector<QuantLib::Time> times, std::vector<QuantLib::Real> values);
 
     //! Constructor for constant volatility with an explicit volatility type.
-    VolatilityParameter(LgmData::VolatilityType volatilityType,
-        bool calibrate,
-        QuantLib::Real value);
+    VolatilityParameter(LgmData::VolatilityType volatilityType, bool calibrate, QuantLib::Real value);
 
     //! Constructor for piecewise volatility without an explicit volatility type.
     VolatilityParameter(bool calibrate, ParamType type, std::vector<QuantLib::Real> times,
@@ -110,7 +109,7 @@ public:
 
     //! \name Inspectors
     //@{
-    const boost::optional<LgmData::VolatilityType>& volatilityType() const;
+    const QuantLib::ext::optional<LgmData::VolatilityType>& volatilityType() const;
     //@}
 
     //! \name Serialisation
@@ -120,7 +119,7 @@ public:
     //@}
 
 private:
-    boost::optional<LgmData::VolatilityType> volatilityType_;
+    QuantLib::ext::optional<LgmData::VolatilityType> volatilityType_;
 };
 
 /*! Reversion model parameter with specified reversion type.
@@ -157,5 +156,5 @@ private:
     LgmData::ReversionType reversionType_;
 };
 
-}
-}
+} // namespace data
+} // namespace ore

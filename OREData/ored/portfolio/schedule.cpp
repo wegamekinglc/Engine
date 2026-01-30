@@ -128,7 +128,9 @@ void ScheduleDates::fromXML(XMLNode* node) {
     tenor_ = XMLUtils::getChildValue(node, "Tenor") == "1T" ? "0D" : XMLUtils::getChildValue(node, "Tenor");
     was1T_ = XMLUtils::getChildValue(node, "Tenor") == "1T" ? true : false;
     endOfMonth_ = XMLUtils::getChildValue(node, "EndOfMonth");
+    endOfMonthConvention_ = XMLUtils::getChildValue(node, "EndOfMonthConvention");
     dates_ = XMLUtils::getChildrenValues(node, "Dates", "Date");
+    includeDuplicateDates_ = XMLUtils::getChildValueAsBool(node, "IncludeDuplicateDates", false, false);
 }
 
 XMLNode* ScheduleDates::toXML(XMLDocument& doc) const {
@@ -139,7 +141,12 @@ XMLNode* ScheduleDates::toXML(XMLDocument& doc) const {
     XMLUtils::addChild(doc, node, "Tenor", was1T_ ? "1T" : tenor_);
     if (!endOfMonth_.empty())
         XMLUtils::addChild(doc, node, "EndOfMonth", endOfMonth_);
+    if (!endOfMonthConvention_.empty())
+        XMLUtils::addChild(doc, node, "EndOfMonthConvention", endOfMonthConvention_);
     XMLUtils::addChildren(doc, node, "Dates", "Date", dates_);
+    if (includeDuplicateDates_){
+        XMLUtils::addChild(doc, node, "IncludeDuplicateDates", includeDuplicateDates_);
+    }
     return node;
 }
 
@@ -269,23 +276,31 @@ Schedule makeSchedule(const ScheduleDates& data) {
     // Avoid compiler warning on gcc
     // https://www.boost.org/doc/libs/1_74_0/libs/optional/doc/html/boost_optional/tutorial/
     // gotchas/false_positive_with__wmaybe_uninitialized.html
-    auto tenor = boost::make_optional(false, Period());
+    QuantLib::ext::optional<Period> tenor = QuantLib::ext::nullopt;
     if (!data.tenor().empty())
         tenor = parsePeriod(data.tenor());
     bool endOfMonth = false;
     if (!data.endOfMonth().empty())
         endOfMonth = parseBool(data.endOfMonth());
-    ext::optional<BusinessDayConvention> endOfMonthConvention = boost::none;
+    ext::optional<BusinessDayConvention> endOfMonthConvention = QuantLib::ext::nullopt;
     if (!data.endOfMonthConvention().empty())
         endOfMonthConvention = parseBusinessDayConvention(data.endOfMonthConvention());
 
     // Ensure that Schedule ctor is passed a vector of unique ordered dates.
-    std::set<Date> uniqueDates;
-    for (const string& d : data.dates())
-        uniqueDates.insert(calendar.adjust(parseDate(d), convention));
 
-    return QuantLib::Schedule(vector<Date>(uniqueDates.begin(), uniqueDates.end()), calendar, convention, boost::none,
-                              tenor, boost::none, endOfMonth, vector<bool>(0), false, false, endOfMonthConvention);
+    std::vector<Date> dates;
+    for (const auto& d : data.dates()) {
+        dates.push_back(calendar.adjust(parseDate(d), convention));
+    }
+    std::sort(dates.begin(), dates.end());
+
+    if (!data.includeDuplicateDates()) {
+        auto last = std::unique(dates.begin(), dates.end());
+        dates.erase(last, dates.end());
+    }
+    
+    return QuantLib::Schedule(dates, calendar, convention, QuantLib::ext::nullopt, tenor, QuantLib::ext::nullopt, endOfMonth, vector<bool>(0),
+                              false, false, endOfMonthConvention);
 }
 
 Schedule makeSchedule(const ScheduleDerived& data, const Schedule& baseSchedule) {
@@ -294,7 +309,7 @@ Schedule makeSchedule(const ScheduleDerived& data, const Schedule& baseSchedule)
     Calendar calendar;
     if (strCalendar.empty()) {
         calendar = NullCalendar();
-        WLOG("No calendar provided in Schedule, attempting to use a null calendar.");
+        DLOG("No calendar provided in Schedule, attempting to use a null calendar.");
     }
     else
         calendar = parseCalendar(strCalendar);
@@ -320,12 +335,12 @@ Schedule makeSchedule(const ScheduleDerived& data, const Schedule& baseSchedule)
         derivedDate = calendar.advance(d, shift, convention);
         derivedDates.push_back(derivedDate);
     }
-    ext::optional<BusinessDayConvention> endOfMonthConvention = boost::none;
+    ext::optional<BusinessDayConvention> endOfMonthConvention = QuantLib::ext::nullopt;
     if (baseSchedule.hasEndOfMonthBusinessDayConvention())
         endOfMonthConvention = baseSchedule.endOfMonthBusinessDayConvention();
 
-    return QuantLib::Schedule(vector<Date>(derivedDates.begin(), derivedDates.end()), calendar, convention, boost::none,
-                              baseSchedule.tenor(), boost::none, baseSchedule.endOfMonth(), std::vector<bool>(0),
+    return QuantLib::Schedule(vector<Date>(derivedDates.begin(), derivedDates.end()), calendar, convention, QuantLib::ext::nullopt,
+                              baseSchedule.tenor(), QuantLib::ext::nullopt, baseSchedule.endOfMonth(), std::vector<bool>(0),
                               data.removeFirstDate(), data.removeLastDate(),
                               endOfMonthConvention);
 }
@@ -339,7 +354,7 @@ Schedule makeSchedule(const ScheduleRules& data, const Date& openEndDateReplacem
                "date from the schedule.");
     Calendar calendar = parseCalendar(data.calendar());
     if (calendar == NullCalendar())
-        WLOG("No calendar provided in Schedule, attempting to use a null calendar.");
+        DLOG("No calendar provided in Schedule, attempting to use a null calendar.");
     Date startDate = parseDate(data.startDate());
     Date endDate = data.endDate().empty() ? openEndDateReplacement : parseDate(data.endDate());
     // Handle trivial case here
@@ -360,7 +375,7 @@ Schedule makeSchedule(const ScheduleRules& data, const Date& openEndDateReplacem
     BusinessDayConvention bdcEnd = ModifiedFollowing;
     DateGeneration::Rule rule = DateGeneration::Forward;
     bool endOfMonth = false;
-    ext::optional<BusinessDayConvention> endOfMonthConvention = boost::none;
+    ext::optional<BusinessDayConvention> endOfMonthConvention = QuantLib::ext::nullopt;
 
     // now check the strings, if they are empty we take defaults
     if (!data.convention().empty())
@@ -541,14 +556,14 @@ Schedule makeSchedule(const ScheduleData& data, const Date& openEndDateReplaceme
         return QuantLib::Schedule(
             dates, hasCalendar && hasConsistentCalendar ? calendar : NullCalendar(),
             hasConvention && hasConsistentConvention ? convention : Unadjusted,
-            hasTermConvention ? ext::optional<BusinessDayConvention>(termConvention) : boost::none,
-            hasTenor && hasConsistentTenor ? ext::optional<Period>(tenor) : boost::none,
-            hasRule && hasConsistentRule ? ext::optional<DateGeneration::Rule>(rule) : boost::none,
-            hasEndOfMonth && hasConsistentEndOfMonth ? ext::optional<bool>(endOfMonth) : boost::none, isRegular,
+            hasTermConvention ? ext::optional<BusinessDayConvention>(termConvention) : QuantLib::ext::nullopt,
+            hasTenor && hasConsistentTenor ? ext::optional<Period>(tenor) : QuantLib::ext::nullopt,
+            hasRule && hasConsistentRule ? ext::optional<DateGeneration::Rule>(rule) : QuantLib::ext::nullopt,
+            hasEndOfMonth && hasConsistentEndOfMonth ? ext::optional<bool>(endOfMonth) : QuantLib::ext::nullopt, isRegular,
             false, false,
             hasEndOfMonthConvention && hasConsistentEndOfMonthConvention
                 ? ext::optional<BusinessDayConvention>(endOfMonthConvention)
-                : boost::none);
+                : QuantLib::ext::nullopt);
     }
 }
 } // namespace data

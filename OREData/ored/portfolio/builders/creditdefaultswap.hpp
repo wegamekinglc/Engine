@@ -30,6 +30,7 @@
 #include <qle/pricingengines/midpointcdsenginemultistate.hpp>
 
 #include <ql/pricingengines/credit/midpointcdsengine.hpp>
+#include <ql/pricingengines/credit/isdacdsengine.hpp>
 
 #include <boost/make_shared.hpp>
 
@@ -202,7 +203,7 @@ protected:
             } else {
                 boost::split(tokens, rule, boost::is_any_of(","));
                 QL_REQUIRE(tokens.size() == 2, "invalid rule: " << rule);
-                stateCreditCurveId = regex_replace(creditCurveId, std::regex(tokens[0]), tokens[1]);
+                stateCreditCurveId = std::regex_replace(creditCurveId, std::regex(tokens[0]), tokens[1]);
                 DLOG("Apply " << rule_s.str() << " => " << tokens[0] << " in " << creditCurveId << " yields state #"
                               << i << " creditCurve id " << stateCreditCurveId);
             }
@@ -229,6 +230,32 @@ protected:
                    "CreditDefaultSwapMultiStateEngineBuilder: No main state found for " << creditCurveId);
         // return engine
         return QuantLib::ext::make_shared<QuantExt::MidPointCdsEngineMultiState>(dpts, recovery, yts, mainResultState);
+    }
+};
+
+//! Isda Cds engine builder class for credit default swaps
+/*! This class creates a IsdaCdsEngine
+    \ingroup builders
+*/
+class IsdaCdsEngineBuilder : public CreditDefaultSwapEngineBuilder {
+public:
+    IsdaCdsEngineBuilder() : CreditDefaultSwapEngineBuilder("DiscountedCashflows", "IsdaCdsEngine") {}
+
+protected:
+    QuantLib::ext::shared_ptr<PricingEngine>
+    engineImpl(QuantLib::Currency ccy, std::string creditCurveId,
+               QuantLib::Real recoveryRate = QuantLib::Null<QuantLib::Real>()) override {
+
+        auto cfg = configuration(MarketContext::pricing);
+        auto yts = market_->discountCurve(ccy.code(), cfg);
+        auto dpts = market_->defaultCurve(creditCurveId, cfg);
+
+        if (recoveryRate == QuantLib::Null<QuantLib::Real>()) {
+            // If recovery rate is null, get it from the market for the given reference entity
+            recoveryRate = market_->recoveryRate(creditCurveId, cfg)->value();
+        }
+
+        return QuantLib::ext::make_shared<IsdaCdsEngine>(dpts->curve(), recoveryRate, yts);
     }
 };
 

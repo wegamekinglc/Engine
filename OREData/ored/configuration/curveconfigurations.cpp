@@ -17,13 +17,17 @@
 */
 
 #include <ored/configuration/curveconfigurations.hpp>
+#include <ored/configuration/inflationcurveconfig.hpp>
+#include <ored/configuration/inflationcapfloorvolcurveconfig.hpp>
 #include <ored/marketdata/curvespecparser.hpp>
 #include <ored/marketdata/structuredcurveerror.hpp>
+#include <ored/utilities/indexparser.hpp>
 #include <ored/utilities/log.hpp>
 #include <ored/utilities/to_string.hpp>
 #include <ql/errors.hpp>
 
 #include <boost/make_shared.hpp>
+#include <boost/algorithm/string.hpp>
 
 namespace ore {
 namespace data {
@@ -43,6 +47,7 @@ void addMinimalCurves(const char* nodeName, const map<string, QuantLib::ext::sha
 
 void CurveConfigurations::addNodes(XMLDocument& doc, XMLNode* parent, const char* nodeName) const {
     const auto& ct = parseCurveConfigurationType(nodeName);
+
     const auto& it = configs_.find(ct);
     if (it != configs_.end()) {
         XMLNode* node = doc.allocNode(nodeName);
@@ -62,7 +67,7 @@ void CurveConfigurations::parseNode(const CurveSpec::CurveType& type, const stri
         if (itc != it->second.end()) {
             switch (type) {
             case CurveSpec::CurveType::Yield: {
-                config = QuantLib::ext::make_shared<YieldCurveConfig>();
+                config = QuantLib::ext::make_shared<YieldCurveConfig>(iborFallbackConfig_);
                 break;
             }
             case CurveSpec::CurveType::Default: {
@@ -74,7 +79,7 @@ void CurveConfigurations::parseNode(const CurveSpec::CurveType& type, const stri
                 break;
             }
             case CurveSpec::CurveType::BaseCorrelation: {
-                config = QuantLib::ext::make_shared<BaseCorrelationCurveConfig>();
+                config = QuantLib::ext::make_shared<BaseCorrelationCurveConfig>(refDataManager_);
                 break;
             }
             case CurveSpec::CurveType::FX: {
@@ -129,20 +134,27 @@ void CurveConfigurations::parseNode(const CurveSpec::CurveType& type, const stri
                 config = QuantLib::ext::make_shared<CorrelationCurveConfig>();
                 break;
             }
+            case CurveSpec::CurveType::SwapIndex: {
+                QL_FAIL("CurveConfigurations::parseNode(): internal error, SwapIndex is unexpected.");
+                break;
+            }
             }
             try {
                 config->fromXMLString(itc->second);
                 configs_[type][curveId] = config;
                 unparsed_.at(type).erase(curveId);
-            } catch (std::exception& ex) {
-                string err = "Curve config under node '" + to_string(type) + " was requested, but could not be parsed.";
+            }
+            catch (std::exception& ex) {
+                string err = "Curve config " + curveId + " under node '" + to_string(type) + "' was requested, but could not be parsed.";
                 StructuredCurveErrorMessage(curveId, err, ex.what()).log();
                 QL_FAIL(err);
             }
-        } else
-            QL_FAIL("Could not find curveId " << curveId << " of type " << type << " in unparsed curve configurations");
-    } else
-        QL_FAIL("Could not find CurveType " << type << " in unparsed curve configurations");
+        }
+ else
+     QL_FAIL("Could not find curveId " << curveId << " of type " << type << " in unparsed curve configurations");
+    }
+ else
+     QL_FAIL("Could not find CurveType " << type << " in unparsed curve configurations");
 }
 
 void CurveConfigurations::add(const CurveSpec::CurveType& type, const string& curveId,
@@ -151,12 +163,14 @@ void CurveConfigurations::add(const CurveSpec::CurveType& type, const string& cu
 }
 
 bool CurveConfigurations::has(const CurveSpec::CurveType& type, const string& curveId) const {
-    return (configs_.count(type) > 0 && configs_.at(type).count(curveId) > 0) ||
-           (unparsed_.count(type) > 0 && unparsed_.at(type).count(curveId) > 0);
+    return (curveConfigOverride_ && curveConfigOverride_->has(type, curveId)) ||
+        (configs_.count(type) > 0 && configs_.at(type).count(curveId) > 0) ||
+        (unparsed_.count(type) > 0 && unparsed_.at(type).count(curveId) > 0);
 }
 
 const QuantLib::ext::shared_ptr<CurveConfig>& CurveConfigurations::get(const CurveSpec::CurveType& type,
-    const string& curveId) const {
+                                                                       const string& curveId) const {
+
     const auto& it = configs_.find(type);
     if (it != configs_.end()) {
         const auto& itc = it->second.find(curveId);
@@ -164,6 +178,15 @@ const QuantLib::ext::shared_ptr<CurveConfig>& CurveConfigurations::get(const Cur
             return itc->second;
         }
     }
+
+    // check if is in the overrides first, and then add to configs_ if so
+    if (curveConfigOverride_ && curveConfigOverride_->has(type, curveId)) {
+        auto cc = curveConfigOverride_->get(type, curveId);
+        configs_[type][curveId] = cc;
+        return configs_.at(type).at(curveId);
+    }
+
+    // next check the unparsed configs
     parseNode(type, curveId);
     return configs_.at(type).at(curveId);
 }
@@ -235,8 +258,8 @@ std::set<string> CurveConfigurations::quotes(const QuantLib::ext::shared_ptr<Tod
             if (spec->baseType() == CurveSpec::CurveType::FX) {
                 QuantLib::ext::shared_ptr<FXSpotSpec> fxss = QuantLib::ext::dynamic_pointer_cast<FXSpotSpec>(spec);
                 QL_REQUIRE(fxss, "Expected an FXSpotSpec but did not get one");
-                string strQuote = "FX/RATE/" + fxss->unitCcy() + "/" + fxss->ccy();
-                quotes.insert(strQuote);
+                quotes.insert("FX/RATE/" + fxss->unitCcy() + "/" + fxss->ccy());
+                quotes.insert("FX/RATE/" + fxss->ccy() + "/" + fxss->unitCcy());
             }
         }
     }
@@ -300,8 +323,11 @@ std::set<string> CurveConfigurations::conventions() const {
             for (const auto& c : cc.second) {
                 auto icc = QuantLib::ext::dynamic_pointer_cast<InflationCurveConfig>(c.second);
                 if (icc) {
-                    if (icc->conventions() != "")
-                        conventions.insert(icc->conventions());
+                    for (const auto& s : icc->segments()) {
+                        if (!s.convention().empty()) {
+                            conventions.insert(s.convention());
+                        }
+                    }
                 }
             }
         }
@@ -346,21 +372,127 @@ set<string> CurveConfigurations::yieldCurveConfigIds() {
     return curves;
 }
 
+QuantLib::ext::shared_ptr<CurveConfig>
+CurveConfigurations::findInflationCurveConfig(const string& id, InflationCurveConfig::Type type) {
+    set<string> curves;
+    const auto& it = configs_.find(CurveSpec::CurveType::Inflation);
+    if (it != configs_.end()) {
+        for (const auto& c : it->second) {
+            if (c.first == id || boost::starts_with(c.first, id + "_"))
+                curves.insert(c.first);
+        }
+    }
+
+    const auto& itu = unparsed_.find(CurveSpec::CurveType::Inflation);
+    if (itu != unparsed_.end()) {
+        for (const auto& c : itu->second) {
+            if (c.first == id || boost::starts_with(c.first, id + "_"))
+                curves.insert(c.first);
+        }
+    }
+
+    for (const auto& c : curves) {
+        const auto& cc = get(CurveSpec::CurveType::Inflation, c);
+        if (auto icc = QuantLib::ext::dynamic_pointer_cast<InflationCurveConfig>(cc)) {
+            if (icc->type() == type) {
+                return cc;
+            }
+        }
+    }
+    return nullptr;
+}
+
+QuantLib::ext::shared_ptr<CurveConfig>
+CurveConfigurations::findInflationVolCurveConfig(const string& id, InflationCapFloorVolatilityCurveConfig::Type type) {
+    set<string> curves;
+    const auto& it = configs_.find(CurveSpec::CurveType::InflationCapFloorVolatility);
+    if (it != configs_.end()) {
+        for (const auto& c : it->second) {
+            if (c.first == id || boost::starts_with(c.first, id + "_"))
+                curves.insert(c.first);
+        }
+    }
+
+    const auto& itu = unparsed_.find(CurveSpec::CurveType::InflationCapFloorVolatility);
+    if (itu != unparsed_.end()) {
+        for (const auto& c : itu->second) {
+            if (c.first == id || boost::starts_with(c.first, id + "_"))
+                curves.insert(c.first);
+        }
+    }
+
+    for (const auto& c : curves) {
+        const auto& cc = get(CurveSpec::CurveType::InflationCapFloorVolatility, c);
+        if (auto icc = QuantLib::ext::dynamic_pointer_cast<InflationCapFloorVolatilityCurveConfig>(cc)) {
+            InflationCapFloorVolatilityCurveConfig::Type t = icc->getType();
+            if (t == type) {
+                return cc;
+            }
+        }
+    }
+    return nullptr;
+}
+
 std::map<CurveSpec::CurveType, std::set<string>>
 CurveConfigurations::requiredCurveIds(const CurveSpec::CurveType& type, const std::string& curveId) const {
-    QuantLib::ext::shared_ptr<CurveConfig> cc;
     std::map<CurveSpec::CurveType, std::set<string>> ids;
-    if (!curveId.empty())
+    if (!curveId.empty()) {
         try {
-            cc = get(type, curveId);
+            if (auto cc = get(type, curveId))
+                ids = cc->requiredCurveIds();
         } catch (...) {
         }
-    if (cc)
-        ids = cc->requiredCurveIds();
+    }
+    return ids;
+}
+
+std::map<MarketObject, std::set<string>> CurveConfigurations::requiredNames(const CurveSpec::CurveType& type,
+                                                                            const std::string& curveId,
+                                                                            const std::string& configuration) const {
+    std::map<MarketObject, std::set<string>> ids;
+    auto rns = requiredNames(type, curveId);
+    for (const auto& [mo, names] : rns) {
+        if (mo.second == configuration)
+            ids[mo.first] = names;
+	}
+    return ids;
+}
+
+std::map<std::pair<MarketObject, std::string>, std::set<string>> CurveConfigurations::requiredNames(
+    const CurveSpec::CurveType& type, const std::string& curveId) const {
+    std::map<std::pair<MarketObject, std::string>, std::set<string>> ids;
+    if (type == CurveSpec::CurveType::FX) {
+        auto ccyPairs = parseCurrencyPair(curveId, "");
+        ids[std::make_pair(MarketObject::DiscountCurve, Market::defaultConfiguration)].insert(ccyPairs.first.code());
+        ids[std::make_pair(MarketObject::DiscountCurve, Market::defaultConfiguration)].insert(ccyPairs.second.code());
+    } else if (type == CurveSpec::CurveType::SwapIndex) {
+        QuantLib::ext::shared_ptr<Conventions> conventions = InstrumentConventions::instance().conventions();
+        auto swapCon = QuantLib::ext::dynamic_pointer_cast<data::SwapIndexConvention>(conventions->get(curveId));
+        QL_REQUIRE(swapCon, "Did not find SwapIndexConvention for " << curveId);
+        std::string indexName;
+        if (auto con =
+                QuantLib::ext::dynamic_pointer_cast<data::IRSwapConvention>(conventions->get(swapCon->conventions())))
+            indexName = con->indexName();
+        else if (auto conOisComp =
+                     QuantLib::ext::dynamic_pointer_cast<data::OisConvention>(conventions->get(swapCon->conventions())))
+            indexName = conOisComp->indexName();
+        else if (auto conOisAvg = QuantLib::ext::dynamic_pointer_cast<data::AverageOisConvention>(
+                     conventions->get(swapCon->conventions())))
+            indexName = conOisAvg->indexName();
+        if (!isGenericIborIndex(indexName))
+            ids[std::make_pair(MarketObject::IndexCurve, Market::defaultConfiguration)].insert(indexName);
+    } else if (!curveId.empty()) {
+        try {
+            if (auto cc = get(type, curveId))
+                ids = cc->requiredNames();
+        } catch (...) {
+        }
+    }
     return ids;
 }
 
 bool CurveConfigurations::hasYieldCurveConfig(const string& curveID) const { return has(CurveSpec::CurveType::Yield, curveID); }
+
 QuantLib::ext::shared_ptr<YieldCurveConfig> CurveConfigurations::yieldCurveConfig(const string& curveID) const {
     QuantLib::ext::shared_ptr<CurveConfig> cc = get(CurveSpec::CurveType::Yield, curveID);
     return QuantLib::ext::dynamic_pointer_cast<YieldCurveConfig>(cc);
@@ -544,6 +676,14 @@ void CurveConfigurations::fromXML(XMLNode* node) {
             if (auto tmp3 = XMLUtils::getChildNode(tmp2, "Report"))
                 reportConfigIrSwaptionVols_.fromXML(tmp3);
         }
+        if (auto tmp2 = XMLUtils::getChildNode(tmp, "YieldCurves")) {
+            if (auto tmp3 = XMLUtils::getChildNode(tmp2, "Report"))
+                reportConfigYieldCurves_.fromXML(tmp3);
+        }
+        if (auto tmp2 = XMLUtils::getChildNode(tmp, "InflationCapFloorVolatilities")) {
+            if (auto tmp3 = XMLUtils::getChildNode(tmp2, "Report"))
+                reportConfigInflationCapFloorVols_.fromXML(tmp3);
+        }
     }
 
     // Load YieldCurves, FXVols, etc, etc
@@ -586,8 +726,39 @@ XMLNode* CurveConfigurations::toXML(XMLDocument& doc) const {
     addNodes(doc, parent, "CommodityCurves");
     addNodes(doc, parent, "CommodityVolatilities");
     addNodes(doc, parent, "Correlations");
+    addReportConfigurationNode(doc, parent);
 
     return parent;
+}
+
+// Append to the parent node a ReportConfiguration node generated from member variables
+void CurveConfigurations::addReportConfigurationNode(XMLDocument& doc, XMLNode* parent) const {
+    // Allocate a node to contain the ReportConfiguration data
+    XMLNode* node = doc.allocNode("ReportConfiguration");
+    // A function to append data from member variables (ReportConfig objects) to the ReportConfiguration node
+    auto f = [&doc, node](const ReportConfig& rc, const string& label) {
+        // From the ReportConfig object, generate a (possibly null) node.  If it exists it will have the label "Report".
+        if (const auto& xml = rc.toXML(doc)) {
+            // If the generated Report node has no children then exit
+            if (XMLUtils::getChildrenNodes(xml, "").empty())
+                return;
+            // Append the data from the Report node to a new child node called "label" in the ReportConfiguration node
+            XMLNode* child = doc.allocNode(label);
+            XMLUtils::appendNode(node, child);
+            XMLUtils::appendNode(child, xml);
+        }
+    };
+    // Call the above function for each of the ReportConfig members
+    f(reportConfigEqVols_, "EquityVolatilities");
+    f(reportConfigFxVols_, "FXVolatilities");
+    f(reportConfigCommVols_, "CommodityVolatilities");
+    f(reportConfigIrCapFloorVols_, "IRCapFloorVolatilities");
+    f(reportConfigIrSwaptionVols_, "IRSwaptionVolatilities");
+    f(reportConfigYieldCurves_, "YieldCurves");
+    f(reportConfigInflationCapFloorVols_, "InflationCapFloorVolatilities");
+    // If the newly generated ReportConfiguration node contains any data then append it to the parent node
+    if (!XMLUtils::getChildrenNodes(node, "").empty())
+        XMLUtils::appendNode(parent, node);
 }
 
 void CurveConfigurations::addAdditionalCurveConfigs(const CurveConfigurations& c) {
@@ -627,7 +798,16 @@ void CurveConfigurations::addAdditionalCurveConfigs(const CurveConfigurations& c
     }
 }
 
+void CurveConfigurationsManager::setOverride(const QuantLib::ext::shared_ptr<CurveConfigurations>& curveConfigOverride) {
+    override_ = curveConfigOverride;
+    for (auto& it : configs_) {
+		it.second->setCurveConfigOverride(override_);
+	}
+}
+
 void CurveConfigurationsManager::add(const QuantLib::ext::shared_ptr<CurveConfigurations>& config, std::string id) {
+    if (override_)
+        config->setCurveConfigOverride(override_);
     configs_[id] = config;
 }
 

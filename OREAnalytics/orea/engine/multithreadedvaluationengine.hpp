@@ -37,7 +37,7 @@ namespace analytics {
 class MultiThreadedValuationEngine : public ore::data::ProgressReporter {
 public:
     /* if no cube factories are given, we create default ones as follows
-       - cubeFactory          : creates DoublePrecisionInMemoryCube
+       - cubeFactory          : creates InMemoryCubeOp<double>
        - nettingSetCubeFactory: creates nullptr
        - cptyCubeFactory:       creates nullptr */
     MultiThreadedValuationEngine(
@@ -54,7 +54,8 @@ public:
         const QuantLib::ext::shared_ptr<ore::analytics::ScenarioFilter>& scenarioFilter =
             QuantLib::ext::make_shared<ore::analytics::ScenarioFilter>(),
         const QuantLib::ext::shared_ptr<ore::data::ReferenceDataManager>& referenceData = nullptr,
-        const ore::data::IborFallbackConfig& iborFallbackConfig = ore::data::IborFallbackConfig::defaultConfig(),
+        const QuantLib::ext::shared_ptr<ore::data::IborFallbackConfig>& iborFallbackConfig =
+            QuantLib::ext::make_shared<ore::data::IborFallbackConfig>(ore::data::IborFallbackConfig::defaultConfig()),
         const bool handlePseudoCurrenciesTodaysMarket = true, const bool handlePseudoCurrenciesSimMarket = true,
         const bool recalibrateModels = true,
         const std::function<QuantLib::ext::shared_ptr<ore::analytics::NPVCube>(
@@ -67,22 +68,26 @@ public:
             const QuantLib::Date&, const std::set<std::string>&, const std::vector<QuantLib::Date>&,
             const QuantLib::Size)>& cptyCubeFactory = {},
         const std::string& context = "unspecified",
-        const QuantLib::ext::shared_ptr<ore::analytics::Scenario>& offSetScenario = nullptr);
+        const QuantLib::ext::shared_ptr<ore::analytics::Scenario>& offSetScenario = nullptr,
+        const bool useAtParCouponsCurves = true, const bool useAtParCouponsTrades = true);
 
     // can be optionally called to set the agg scen data (which is done in the ssm for single-threaded runs)
     void setAggregationScenarioData(const QuantLib::ext::shared_ptr<AggregationScenarioData>& aggregationScenarioData);
 
     /* analoguous to buildCube() in the single-threaded engine, results are retrieved using below constructors
        if no cptyCalculators is given a function returning an empty vector of calculators will be returned */
-    void
-    buildCube(const QuantLib::ext::shared_ptr<ore::data::Portfolio>& portfolio,
-              const std::function<std::vector<QuantLib::ext::shared_ptr<ore::analytics::ValuationCalculator>>()>& calculators,
-              const std::function<std::vector<QuantLib::ext::shared_ptr<ore::analytics::CounterpartyCalculator>>()>&
-                  cptyCalculators = {},
-              bool mporStickyDate = true, bool dryRun = false);
+    void buildCube(
+        const QuantLib::ext::shared_ptr<ore::data::Portfolio>& portfolio,
+        const std::function<std::vector<QuantLib::ext::shared_ptr<ore::analytics::ValuationCalculator>>()>& calculators,
+        const ValuationEngine::ErrorPolicy errorPolicy = ValuationEngine::ErrorPolicy::RemoveAll,
+        const std::function<std::vector<QuantLib::ext::shared_ptr<ore::analytics::CounterpartyCalculator>>()>&
+            cptyCalculators = {},
+        bool mporStickyDate = true, bool dryRun = false);
 
     // result output cubes (mini-cubes, one per thread)
     std::vector<QuantLib::ext::shared_ptr<ore::analytics::NPVCube>> outputCubes() const { return miniCubes_; }
+
+    // TODO: add error reporting as in single-threaded engine
 
     // result netting cubes (might be null, if nettingSetCubeFactory is returning null)
     std::vector<QuantLib::ext::shared_ptr<ore::analytics::NPVCube>> outputNettingSetCubes() const {
@@ -108,7 +113,7 @@ private:
     bool cacheSimData_;
     QuantLib::ext::shared_ptr<ore::analytics::ScenarioFilter> scenarioFilter_;
     QuantLib::ext::shared_ptr<ore::data::ReferenceDataManager> referenceData_;
-    ore::data::IborFallbackConfig iborFallbackConfig_;
+    QuantLib::ext::shared_ptr<ore::data::IborFallbackConfig> iborFallbackConfig_;
     bool handlePseudoCurrenciesTodaysMarket_;
     bool handlePseudoCurrenciesSimMarket_;
     bool recalibrateModels_;
@@ -123,6 +128,9 @@ private:
         cptyCubeFactory_;
     std::string context_;
     QuantLib::ext::shared_ptr<ore::analytics::Scenario> offsetScenario_;
+    bool useAtParCouponsCurves_ = true;
+    bool useAtParCouponsTrades_ = true;
+
     QuantLib::ext::shared_ptr<AggregationScenarioData>
             aggregationScenarioData_;
     std::vector<QuantLib::ext::shared_ptr<ore::analytics::NPVCube>> miniCubes_;

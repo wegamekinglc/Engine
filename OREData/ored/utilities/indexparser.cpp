@@ -24,7 +24,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/make_shared.hpp>
-#include <boost/regex.hpp>
+#include <regex>
 #include <map>
 #include <ored/configuration/conventions.hpp>
 #include <ored/utilities/conventionsbasedfutureexpiry.hpp>
@@ -225,11 +225,10 @@ QuantLib::ext::shared_ptr<FxIndex> parseFxIndex(const string& s, const Handle<Qu
 }
 
 QuantLib::ext::shared_ptr<QuantExt::EquityIndex2> parseEquityIndex(const string& s) {
-    std::vector<string> tokens;
-    split(tokens, s, boost::is_any_of("-"));
-    QL_REQUIRE(tokens.size() == 2, "two tokens required in " << s << ": EQ-NAME");
-    QL_REQUIRE(tokens[0] == "EQ", "expected first token to be EQ");
-    auto index = QuantLib::ext::make_shared<QuantExt::EquityIndex2>(tokens[1], NullCalendar(), Currency());
+    QL_REQUIRE(boost::starts_with(s, "EQ-"), "equity index expected to be of the form EQ-*");
+    string eqi = s;
+    eqi.erase(0, 3);
+    auto index = QuantLib::ext::make_shared<QuantExt::EquityIndex2>(eqi, NullCalendar(), Currency());
     IndexNameTranslator::instance().add(index->name(), s);
     return index;
 }
@@ -404,8 +403,10 @@ QuantLib::ext::shared_ptr<IborIndex> parseIborIndex(const string& s, string& ten
     if (indexStem == "USD-SIFMA") {
         QL_REQUIRE(tenor.empty(), "A tenor is not allowed with USD-SIFMA as it is implied");
         auto res = QuantLib::ext::make_shared<BMAIndexWrapper>(QuantLib::ext::make_shared<BMAIndex>(h));
-	IndexNameTranslator::instance().add(res->name(), s);
-	return res;
+        // set tenor to 1W, used in CAPFLOOR vol surface
+        tenor = "1W";
+        IndexNameTranslator::instance().add(res->name(), s);
+        return res;
     }
 
     // Ibor indices with a tenor, this includes OIS term rates like USD-SOFR-3M
@@ -442,7 +443,6 @@ QuantLib::ext::shared_ptr<IborIndex> parseIborIndex(const string& s, string& ten
 bool isGenericIborIndex(const string& indexName) { return indexName.find("-GENERIC-") != string::npos; }
 
 pair<bool, QuantLib::ext::shared_ptr<ZeroInflationIndex>> isInflationIndex(const string& indexName) {
-
     QuantLib::ext::shared_ptr<ZeroInflationIndex> index;
     try {
         // Currently, only way to have an inflation index is to have a ZeroInflationIndex
@@ -451,6 +451,15 @@ pair<bool, QuantLib::ext::shared_ptr<ZeroInflationIndex>> isInflationIndex(const
         return make_pair(false, nullptr);
     }
     return make_pair(true, index);
+}
+
+bool isIborIndex(const string& indexName) {
+    try {
+        parseIborIndex(indexName);
+    } catch (...) {
+        return false;
+    }
+    return true;
 }
 
 bool isEquityIndex(const string& indexName) {
@@ -465,6 +474,15 @@ bool isEquityIndex(const string& indexName) {
 bool isCommodityIndex(const string& indexName) {
     try {
         parseCommodityIndex(indexName);
+    } catch (...) {
+        return false;
+    }
+    return true;
+}
+
+bool isBondFuturesIndex(const string& indexName) {
+    try {
+        parseBondFuturesIndex(indexName);
     } catch (...) {
         return false;
     }
@@ -580,19 +598,12 @@ class ZeroInflationIndexParserBase {
 public:
     virtual ~ZeroInflationIndexParserBase() {}
     virtual QuantLib::ext::shared_ptr<ZeroInflationIndex> build(const Handle<ZeroInflationTermStructure>& h) const = 0;
-    virtual QL_DEPRECATED QuantLib::ext::shared_ptr<ZeroInflationIndex>
-    build(bool isInterpolated, const Handle<ZeroInflationTermStructure>& h) const = 0;
 };
 
 template <class T> class ZeroInflationIndexParser : public ZeroInflationIndexParserBase {
 public:
     QuantLib::ext::shared_ptr<ZeroInflationIndex> build(const Handle<ZeroInflationTermStructure>& h) const override {
         return QuantLib::ext::make_shared<T>(h);
-    }
-
-    QL_DEPRECATED QuantLib::ext::shared_ptr<ZeroInflationIndex> build(bool isInterpolated,
-                                                const Handle<ZeroInflationTermStructure>& h) const override {
-        return QuantLib::ext::make_shared<T>(isInterpolated, h);
     }
 };
 
@@ -604,11 +615,6 @@ public:
         return QuantLib::ext::make_shared<T>(frequency_, false, h);
     }
     
-    QuantLib::ext::shared_ptr<ZeroInflationIndex> build(bool isInterpolated,
-                                                const Handle<ZeroInflationTermStructure>& h) const override {
-        return QuantLib::ext::make_shared<T>(frequency_, false, isInterpolated, h);
-    }
-
 private:
     Frequency frequency_;
 };
@@ -666,67 +672,7 @@ QuantLib::ext::shared_ptr<ZeroInflationIndex> parseZeroInflationIndex(const stri
     }
 }
 
-
-QuantLib::ext::shared_ptr<ZeroInflationIndex> parseZeroInflationIndex(const string& s,
-    bool isInterpolated,
-    const Handle<ZeroInflationTermStructure>& h) {
-    
-    const QuantLib::ext::shared_ptr<Conventions>& conventions = InstrumentConventions::instance().conventions();
-
-    // If conventions are non-null and we have provided a convention of type InflationIndex with a name equal to the 
-    // string s, we use that convention to construct the inflation index.
-    if (conventions) {
-        pair<bool, QuantLib::ext::shared_ptr<Convention>> p = conventions->get(s, Convention::Type::ZeroInflationIndex);
-        if (p.first) {
-            auto c = QuantLib::ext::dynamic_pointer_cast<ZeroInflationIndexConvention>(p.second);
-            auto index = QuantLib::ext::make_shared<ZeroInflationIndex>(s, c->region(), c->revised(), isInterpolated,
-                c->frequency(), c->availabilityLag(), c->currency(), h);
-            IndexNameTranslator::instance().add(index->name(), s);
-            return index;
-        }
-    }
-
-    static map<string, QuantLib::ext::shared_ptr<ZeroInflationIndexParserBase>> m = {
-        {"AUCPI", QuantLib::ext::make_shared<ZeroInflationIndexParserWithFrequency<AUCPI>>(Quarterly)},
-        {"AU CPI", QuantLib::ext::make_shared<ZeroInflationIndexParserWithFrequency<AUCPI>>(Quarterly)},
-        {"BEHICP", QuantLib::ext::make_shared<ZeroInflationIndexParser<BEHICP>>()},
-        {"BE HICP", QuantLib::ext::make_shared<ZeroInflationIndexParser<BEHICP>>()},
-        {"EUHICP", QuantLib::ext::make_shared<ZeroInflationIndexParser<EUHICP>>()},
-        {"EU HICP", QuantLib::ext::make_shared<ZeroInflationIndexParser<EUHICP>>()},
-        {"EUHICPXT", QuantLib::ext::make_shared<ZeroInflationIndexParser<EUHICPXT>>()},
-        {"EU HICPXT", QuantLib::ext::make_shared<ZeroInflationIndexParser<EUHICPXT>>()},
-        {"FRHICP", QuantLib::ext::make_shared<ZeroInflationIndexParser<FRHICP>>()},
-        {"FR HICP", QuantLib::ext::make_shared<ZeroInflationIndexParser<FRHICP>>()},
-        {"FRCPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<FRCPI>>()},
-        {"FR CPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<FRCPI>>()},
-        {"UKRPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<UKRPI>>()},
-        {"UK RPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<UKRPI>>()},
-        {"USCPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<USCPI>>()},
-        {"US CPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<USCPI>>()},
-        {"ZACPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<ZACPI>>()},
-        {"ZA CPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<ZACPI>>()},
-        {"SECPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<SECPI>>()},
-        {"DKCPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<DKCPI>>()},
-        {"CACPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<CACPI>>()},
-        {"ESCPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<ESCPI>>()},
-        {"DECPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<DECPI>>()},
-        {"DE CPI", QuantLib::ext::make_shared<ZeroInflationIndexParser<DECPI>>()}
-    };
-
-    auto it = m.find(s);
-    if (it != m.end()) {
-        QL_DEPRECATED_DISABLE_WARNING
-        auto index = it->second->build(isInterpolated, h);
-        QL_DEPRECATED_ENABLE_WARNING
-        IndexNameTranslator::instance().add(index->name(), s);
-        return index;
-    } else {
-        QL_FAIL("parseZeroInflationIndex: \"" << s << "\" not recognized");
-    }
-}
-
-QuantLib::ext::shared_ptr<BondIndex> parseBondIndex(const string& name) {
-
+QuantLib::ext::shared_ptr<Index> parseBondIndex(const string& name) {
     // Make sure the prefix is correct
     string prefix = name.substr(0, 5);
     QL_REQUIRE(prefix == "BOND-", "A bond index string must start with 'BOND-' but got " << prefix);
@@ -742,7 +688,7 @@ QuantLib::ext::shared_ptr<BondIndex> parseBondIndex(const string& name) {
     // Check for form NAME-YYYY-MM-DD
     if (nameWoPrefix.size() > 10) {
         string test = nameWoPrefix.substr(nameWoPrefix.size() - 10);
-        if (boost::regex_match(test, boost::regex("\\d{4}-\\d{2}-\\d{2}"))) {
+        if (std::regex_match(test, std::regex("\\d{4}-\\d{2}-\\d{2}"))) {
             expiry = parseDate(test);
             bondName = nameWoPrefix.substr(0, nameWoPrefix.size() - test.size() - 1);
         }
@@ -751,20 +697,39 @@ QuantLib::ext::shared_ptr<BondIndex> parseBondIndex(const string& name) {
     // Check for form NAME-YYYY-MM if NAME-YYYY-MM-DD failed
     if (expiry == Date() && nameWoPrefix.size() > 7) {
         string test = nameWoPrefix.substr(nameWoPrefix.size() - 7);
-        if (boost::regex_match(test, boost::regex("\\d{4}-\\d{2}"))) {
+        if (std::regex_match(test, std::regex("\\d{4}-\\d{2}"))) {
             expiry = parseDate(test + "-01");
             bondName = nameWoPrefix.substr(0, nameWoPrefix.size() - test.size() - 1);
         }
     }
 
     // Create and return the required future index
-    QuantLib::ext::shared_ptr<BondIndex> index;
+    QuantLib::ext::shared_ptr<Index> index;
     if (expiry != Date()) {
-        index= QuantLib::ext::make_shared<BondFuturesIndex>(expiry, bondName);
+        auto tmp = QuantLib::ext::make_shared<BondFuturesIndex>(bondName, expiry);
+        tmp->setName("BOND-" + bondName + "-" + ore::data::to_string(expiry).substr(0, 7));
+        index = tmp;
     } else {
         index= QuantLib::ext::make_shared<BondIndex>(bondName);
     }
     IndexNameTranslator::instance().add(index->name(), name);
+    return index;
+}
+
+QuantLib::ext::shared_ptr<BondFuturesIndex> parseBondFuturesIndex(const string& name) {
+    // Make sure the prefix is correct
+    string prefix = name.substr(0, 12);
+    QL_REQUIRE(prefix == "BOND_FUTURE-", "A bond futures index string must start with 'BOND_FUTURE-' but got " << prefix);
+
+    // Now take the remainder of the string representing the contract name
+    string contractName = name.substr(12);
+
+    /* We can not derive the future expiry date without reference data, but for some use cases like setting
+       historical fixings, the contract name is enough */
+    auto index = QuantLib::ext::make_shared<BondFuturesIndex>(contractName);
+
+    IndexNameTranslator::instance().add(index->name(), name);
+
     return index;
 }
 
@@ -797,7 +762,6 @@ QuantLib::ext::shared_ptr<ConstantMaturityBondIndex> parseConstantMaturityBondIn
 QuantLib::ext::shared_ptr<QuantExt::CommodityIndex> parseCommodityIndex(const string& name, bool hasPrefix,
                                                                 const Handle<PriceTermStructure>& ts,
                                                                 const Calendar& cal, const bool enforceFutureIndex) {
-
     // Whether we check for "COMM-" prefix depends on hasPrefix.
     string commName = name;
     if (hasPrefix) {
@@ -816,7 +780,7 @@ QuantLib::ext::shared_ptr<QuantExt::CommodityIndex> parseCommodityIndex(const st
     // Check for form NAME-YYYY-MM-DD
     if (commName.size() > 10) {
         string test = commName.substr(commName.size() - 10);
-        if (boost::regex_match(test, boost::regex("\\d{4}-\\d{2}-\\d{2}"))) {
+        if (std::regex_match(test, std::regex("\\d{4}-\\d{2}-\\d{2}"))) {
             expiry = parseDate(test);
             commName = commName.substr(0, commName.size() - test.size() - 1);
         }
@@ -825,7 +789,7 @@ QuantLib::ext::shared_ptr<QuantExt::CommodityIndex> parseCommodityIndex(const st
     // Check for form NAME-YYYY-MM if NAME-YYYY-MM-DD failed
     if (expiry == Date() && commName.size() > 7) {
         string test = commName.substr(commName.size() - 7);
-        if (boost::regex_match(test, boost::regex("\\d{4}-\\d{2}"))) {
+        if (std::regex_match(test, std::regex("\\d{4}-\\d{2}"))) {
             expiry = parseDate(test + "-01");
             commName = commName.substr(0, commName.size() - test.size() - 1);
         }
@@ -915,6 +879,12 @@ QuantLib::ext::shared_ptr<Index> parseIndex(const string& s) {
     if (!ret_idx) {
         try {
             ret_idx = parseBondIndex(s);
+        } catch (...) {
+        }
+    }
+    if (!ret_idx) {
+        try {
+            ret_idx = parseBondFuturesIndex(s);
         } catch (...) {
         }
     }
@@ -1012,7 +982,7 @@ string internalIndexName(const string& indexName) {
     // Check if we have an overnight index
     // This covers cases like USD-FedFunds-1D and returns USD-FedFunds
     // (no need to check convention based overnight indices, they are always of the form CCY-INDEX)
-    if (parsePeriod(tokens[2]) == 1 * Days && isOvernightIndex(tmpName)) {
+    if (isOnePeriod(tokens[2]) && parsePeriod(tokens[2]) == 1 * Days && isOvernightIndex(tmpName)) {
         return tmpName;
     }
 

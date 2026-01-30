@@ -34,22 +34,17 @@ namespace analytics {
 void StressTestAnalyticImpl::setUpConfigurations() {
     const auto stressData =  inputs_->stressScenarioData();
     analytic()->configurations().simulationConfigRequired = true;
-    if (stressData != nullptr) {
+    if (stressData)
         analytic()->configurations().sensitivityConfigRequired = stressData->hasScenarioWithParShifts();
-    } else {
-        analytic()->configurations().sensitivityConfigRequired = false;
-    }
     analytic()->configurations().todaysMarketParams = inputs_->todaysMarketParams();
     analytic()->configurations().simMarketParams = inputs_->stressSimMarketParams();
     analytic()->configurations().sensiScenarioData = inputs_->stressSensitivityScenarioData();
-    setGenerateAdditionalResults(true);
+    if (inputs_->stressGenerateCashflows())
+        setGenerateAdditionalResults(true);
 }
 
 void StressTestAnalyticImpl::runAnalytic(const QuantLib::ext::shared_ptr<ore::data::InMemoryLoader>& loader,
                                          const std::set<std::string>& runTypes) {
-    if (!analytic()->match(runTypes))
-        return;
-
     LOG("StressTestAnalytic::runAnalytic called");
 
     Settings::instance().evaluationDate() = inputs_->asof();
@@ -63,21 +58,28 @@ void StressTestAnalyticImpl::runAnalytic(const QuantLib::ext::shared_ptr<ore::da
     CONSOLEW("StressTestAnalytic: Build Portfolio");
     analytic()->buildPortfolio();
     CONSOLE("OK");
-    QuantLib::ext::shared_ptr<InMemoryReport> report = QuantLib::ext::make_shared<InMemoryReport>();
+
     // This hook allows modifying the portfolio in derived classes before running the analytics below,
     // e.g. to apply SIMM exemptions.
     analytic()->modifyPortfolio();
+
     CONSOLEW("Risk: Stress Test Report");
     LOG("Stress Test Analysis called");
+
     QuantLib::ext::shared_ptr<StressTestScenarioData> scenarioData = inputs_->stressScenarioData();
-    if (scenarioData != nullptr && scenarioData->hasScenarioWithParShifts()) {
+    if (scenarioData && scenarioData->hasScenarioWithParShifts()) {
         try{
+            QuantLib::ext::shared_ptr<InMemoryReport> parScenarioReport =
+                QuantLib::ext::make_shared<InMemoryReport>(inputs_->reportBufferSize());
             ParStressTestConverter converter(
             inputs_->asof(), analytic()->configurations().todaysMarketParams,
             analytic()->configurations().simMarketParams, analytic()->configurations().sensiScenarioData,
             analytic()->configurations().curveConfig, analytic()->market(), inputs_->iborFallbackConfig());
-            scenarioData = converter.convertStressScenarioData(scenarioData);
+            scenarioData = converter.convertStressScenarioData(scenarioData, parScenarioReport);
             analytic()->stressTests()[label()]["stress_ZeroStressData"] = scenarioData;
+            if (parScenarioReport->rows() > 0) {
+                analytic()->addReport(label(), "stress_scenario_par_rates", parScenarioReport);
+            }
         } catch(const std::exception& e){
             StructuredAnalyticsErrorMessage(label(), "ParConversionFailed", e.what()).log();
         }
@@ -86,19 +88,41 @@ void StressTestAnalyticImpl::runAnalytic(const QuantLib::ext::shared_ptr<ore::da
     Settings::instance().evaluationDate() = inputs_->asof();
 
     std::string marketConfig = inputs_->marketConfig("pricing");
-    std::vector<QuantLib::ext::shared_ptr<ore::data::EngineBuilder>> extraEngineBuilders;
-    std::vector<QuantLib::ext::shared_ptr<ore::data::LegBuilder>> extraLegBuilders;
-    QuantLib::ext::shared_ptr<StressTest> stressTest = QuantLib::ext::make_shared<StressTest>(
-        analytic()->portfolio(), analytic()->market(), marketConfig, inputs_->pricingEngine(),
-        analytic()->configurations().simMarketParams, scenarioData, *analytic()->configurations().curveConfig,
-        *analytic()->configurations().todaysMarketParams, nullptr, inputs_->refDataManager(),
-        *inputs_->iborFallbackConfig(), inputs_->continueOnError());
-    stressTest->writeReport(report, inputs_->stressThreshold());
-    analytic()->reports()[label()]["stress"] = report;
+
+    QuantLib::ext::shared_ptr<InMemoryReport> report =
+        QuantLib::ext::make_shared<InMemoryReport>(inputs_->reportBufferSize());
+    QuantLib::ext::shared_ptr<InMemoryReport> cfReport =
+        inputs_->stressGenerateCashflows() ? QuantLib::ext::make_shared<InMemoryReport>(inputs_->reportBufferSize())
+                                           : nullptr;
+    
+    QuantLib::ext::shared_ptr<InMemoryReport> scenarioReport =
+        QuantLib::ext::make_shared<InMemoryReport>(inputs_->reportBufferSize());
+    analytic()->addReport(label(), "stress_scenarios", scenarioReport);
+    
+    if (inputs_->scenarioReader()) {
+        runStressTest(analytic()->portfolio(), analytic()->market(), marketConfig, inputs_->pricingEngine(),
+                      analytic()->configurations().simMarketParams, inputs_->scenarioReader(), report, cfReport,
+                      inputs_->stressThreshold(), inputs_->stressPrecision(), inputs_->includePastCashflows(),
+                      *analytic()->configurations().curveConfig, *analytic()->configurations().todaysMarketParams,
+                      inputs_->refDataManager(), inputs_->iborFallbackConfig(), inputs_->continueOnError(),
+                      scenarioReport, inputs_->useAtParCouponsTrades());
+    } else {
+        QL_REQUIRE(scenarioData, "StressTestAnalytic::runAnalytic: No stress scenario data provided.");
+        runStressTest(analytic()->portfolio(), analytic()->market(), marketConfig, inputs_->pricingEngine(),
+                      analytic()->configurations().simMarketParams, scenarioData, report, cfReport,
+                      inputs_->stressThreshold(), inputs_->stressPrecision(), inputs_->includePastCashflows(),
+                      *analytic()->configurations().curveConfig, *analytic()->configurations().todaysMarketParams,
+                      nullptr, inputs_->refDataManager(), inputs_->iborFallbackConfig(), inputs_->continueOnError(),
+                      scenarioReport, inputs_->useAtParCouponsTrades());
+    }
+
+    analytic()->addReport(label(), "stress", report);
+    if (cfReport) {
+        analytic()->addReport(label(), "stress_cashflows", cfReport);
+    }
+
     CONSOLE("OK");
 }
 
-StressTestAnalytic::StressTestAnalytic(const QuantLib::ext::shared_ptr<InputParameters>& inputs)
-    : Analytic(std::make_unique<StressTestAnalyticImpl>(inputs), {"STRESS"}, inputs, false, false, false, false) {}
 } // namespace analytics
 } // namespace ore

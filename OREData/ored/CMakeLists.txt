@@ -1,6 +1,7 @@
 # cpp files, this list is maintained manually
 
 set(OREData_SRC configuration/basecorrelationcurveconfig.cpp
+configuration/baseltrafficlightconfig.cpp
 configuration/bootstrapconfig.cpp
 configuration/capfloorvolcurveconfig.cpp
 configuration/cdsvolcurveconfig.cpp
@@ -65,8 +66,8 @@ marketdata/todaysmarketparameters.cpp
 marketdata/wrappedmarket.cpp
 marketdata/yieldcurve.cpp
 marketdata/yieldvolcurve.cpp
+model/assetmodelbuilderbase.cpp
 model/blackscholesmodelbuilder.cpp
-model/blackscholesmodelbuilderbase.cpp
 model/calibrationbasket.cpp
 model/calibrationconfiguration.cpp
 model/calibrationinstrumentfactory.cpp
@@ -86,7 +87,10 @@ model/eqbsbuilder.cpp
 model/eqbsdata.cpp
 model/fxbsbuilder.cpp
 model/fxbsdata.cpp
+model/hestonmodelbuilder.cpp
 model/hwbuilder.cpp
+model/hwhistoricalcalibrationmodelbuilder.cpp
+model/hwhistoricalcalibrationmodeldata.cpp
 model/inflation/infdkbuilder.cpp
 model/inflation/infdkdata.cpp
 model/inflation/infjybuilder.cpp
@@ -94,6 +98,7 @@ model/inflation/infjydata.cpp
 model/inflation/inflationmodeldata.cpp
 model/irhwmodeldata.cpp
 model/irlgmdata.cpp
+model/irmodelbuilder.cpp
 model/irmodeldata.cpp
 model/lgmbuilder.cpp
 model/lgmdata.cpp
@@ -102,6 +107,7 @@ model/modeldata.cpp
 model/modelparameter.cpp
 model/utilities.cpp
 portfolio/accumulator.cpp
+portfolio/additionalfieldgetter.cpp
 portfolio/ascot.cpp
 portfolio/asianoption.cpp
 portfolio/autocallable_01.cpp
@@ -115,6 +121,7 @@ portfolio/basketvarianceswap.cpp
 portfolio/bestentryoption.cpp
 portfolio/bond.cpp
 portfolio/bondbasket.cpp
+portfolio/bondfuture.cpp
 portfolio/bondoption.cpp
 portfolio/bondposition.cpp
 portfolio/bondrepo.cpp
@@ -127,6 +134,7 @@ portfolio/builders/bond.cpp
 portfolio/builders/bondoption.cpp
 portfolio/builders/bondrepo.cpp
 portfolio/builders/bondtotalreturnswap.cpp
+portfolio/builders/callablebond.cpp
 portfolio/builders/capfloor.cpp
 portfolio/builders/capflooredaveragebmacouponleg.cpp
 portfolio/builders/capflooredaverageonindexedcouponleg.cpp
@@ -190,8 +198,12 @@ portfolio/builders/swap.cpp
 portfolio/builders/swaption.cpp
 portfolio/builders/varianceswap.cpp
 portfolio/builders/yoycapfloor.cpp
+portfolio/callablebond.cpp
+portfolio/callablebondreferencedata.cpp
 portfolio/callableswap.cpp
 portfolio/capfloor.cpp
+portfolio/cashflowutils.cpp
+portfolio/cashposition.cpp
 portfolio/cbo.cpp
 portfolio/cdo.cpp
 portfolio/cliquetoption.cpp
@@ -213,6 +225,9 @@ portfolio/compositetrade.cpp
 portfolio/convertiblebond.cpp
 portfolio/convertiblebonddata.cpp
 portfolio/convertiblebondreferencedata.cpp
+portfolio/counterpartycorrelationmatrix.cpp
+portfolio/counterpartyinformation.cpp
+portfolio/counterpartymanager.cpp
 portfolio/creditdefaultswap.cpp
 portfolio/creditdefaultswapdata.cpp
 portfolio/creditdefaultswapoption.cpp
@@ -291,6 +306,7 @@ portfolio/referencedatafactory.cpp
 portfolio/riskparticipationagreement.cpp
 portfolio/schedule.cpp
 portfolio/scriptedtrade.cpp
+portfolio/strikeresettableoption.cpp
 portfolio/swap.cpp
 portfolio/swaption.cpp
 portfolio/tarf.cpp
@@ -299,6 +315,7 @@ portfolio/trade.cpp
 portfolio/tradeactions.cpp
 portfolio/tradebarrier.cpp
 portfolio/tradefactory.cpp
+portfolio/tradegenerator.cpp
 portfolio/trademonetary.cpp
 portfolio/tradestrike.cpp
 portfolio/tranche.cpp
@@ -319,6 +336,13 @@ scripting/astresetter.cpp
 scripting/asttoscriptconverter.cpp
 scripting/computationgraphbuilder.cpp
 scripting/context.cpp
+scripting/engines/amccgbaseengine.cpp
+scripting/engines/amccgcurrencyswapengine.cpp
+scripting/engines/amccgfxforwardengine.cpp
+scripting/engines/amccgfxoptionengine.cpp
+scripting/engines/amccgmultilegoptionengine.cpp
+scripting/engines/amccgpricingengine.cpp
+scripting/engines/amccgswapengine.cpp
 scripting/engines/analyticblackriskparticipationagreementengine.cpp
 scripting/engines/analyticxccyblackriskparticipationagreementengine.cpp
 scripting/engines/cliquetoptionmcscriptengine.cpp
@@ -329,15 +353,14 @@ scripting/engines/scriptedinstrumentamccalculator.cpp
 scripting/engines/scriptedinstrumentpricingengine.cpp
 scripting/engines/scriptedinstrumentpricingenginecg.cpp
 scripting/grammar.cpp
+scripting/models/assetmodel.cpp
 scripting/models/blackscholes.cpp
-scripting/models/blackscholesbase.cpp
 scripting/models/blackscholescg.cpp
-scripting/models/blackscholescgbase.cpp
-scripting/models/fdblackscholesbase.cpp
+scripting/models/blackscholeslocalvolbase.cpp
 scripting/models/fdgaussiancam.cpp
 scripting/models/gaussiancam.cpp
 scripting/models/gaussiancamcg.cpp
-scripting/models/hwcg.cpp
+scripting/models/heston.cpp
 scripting/models/lgmcg.cpp
 scripting/models/localvol.cpp
 scripting/models/modelcg.cpp
@@ -361,6 +384,7 @@ utilities/currencyhedgedequityindexdecomposition.cpp
 utilities/currencyparser.cpp
 utilities/databuilders.cpp
 utilities/dategrid.cpp
+utilities/dependencies.cpp
 utilities/fileio.cpp
 utilities/flowanalysis.cpp
 utilities/formulaparser.cpp
@@ -374,6 +398,7 @@ utilities/parsers.cpp
 utilities/progressbar.cpp
 utilities/strike.cpp
 utilities/timeperiod.cpp
+utilities/timer.cpp
 utilities/to_string.cpp
 utilities/wildcard.cpp
 utilities/xmlutils.cpp)
@@ -382,6 +407,7 @@ utilities/xmlutils.cpp)
 
 set(OREData_HDR auto_link.hpp
 configuration/basecorrelationcurveconfig.hpp
+configuration/baseltrafficlightconfig.hpp
 configuration/bootstrapconfig.hpp
 configuration/capfloorvolcurveconfig.hpp
 configuration/cdsvolcurveconfig.hpp
@@ -453,8 +479,8 @@ marketdata/todaysmarketparameters.hpp
 marketdata/wrappedmarket.hpp
 marketdata/yieldcurve.hpp
 marketdata/yieldvolcurve.hpp
+model/assetmodelbuilderbase.hpp
 model/blackscholesmodelbuilder.hpp
-model/blackscholesmodelbuilderbase.hpp
 model/calibrationbasket.hpp
 model/calibrationconfiguration.hpp
 model/calibrationinstrumentfactory.hpp
@@ -474,7 +500,10 @@ model/eqbsbuilder.hpp
 model/eqbsdata.hpp
 model/fxbsbuilder.hpp
 model/fxbsdata.hpp
+model/hestonmodelbuilder.hpp
 model/hwbuilder.hpp
+model/hwhistoricalcalibrationmodelbuilder.hpp
+model/hwhistoricalcalibrationmodeldata.hpp
 model/inflation/infdkbuilder.hpp
 model/inflation/infdkdata.hpp
 model/inflation/infjybuilder.hpp
@@ -482,6 +511,7 @@ model/inflation/infjydata.hpp
 model/inflation/inflationmodeldata.hpp
 model/irhwmodeldata.hpp
 model/irlgmdata.hpp
+model/irmodelbuilder.hpp
 model/irmodeldata.hpp
 model/lgmbuilder.hpp
 model/lgmdata.hpp
@@ -492,6 +522,7 @@ model/structuredmodelerror.hpp
 model/structuredmodelwarning.hpp
 model/utilities.hpp
 portfolio/accumulator.hpp
+portfolio/additionalfieldgetter.hpp
 portfolio/ascot.hpp
 portfolio/asianoption.hpp
 portfolio/autocallable_01.hpp
@@ -505,6 +536,7 @@ portfolio/basketvarianceswap.hpp
 portfolio/bestentryoption.hpp
 portfolio/bond.hpp
 portfolio/bondbasket.hpp
+portfolio/bondfuture.hpp
 portfolio/bondoption.hpp
 portfolio/bondposition.hpp
 portfolio/bondrepo.hpp
@@ -514,10 +546,12 @@ portfolio/builders/ascot.hpp
 portfolio/builders/asianoption.hpp
 portfolio/builders/balanceguaranteedswap.hpp
 portfolio/builders/bond.hpp
+portfolio/builders/bondfuture.hpp
 portfolio/builders/bondoption.hpp
 portfolio/builders/bondrepo.hpp
 portfolio/builders/bondtotalreturnswap.hpp
 portfolio/builders/cachingenginebuilder.hpp
+portfolio/builders/callablebond.hpp
 portfolio/builders/capfloor.hpp
 portfolio/builders/capflooredaveragebmacouponleg.hpp
 portfolio/builders/capflooredaverageonindexedcouponleg.hpp
@@ -583,8 +617,12 @@ portfolio/builders/swaption.hpp
 portfolio/builders/vanillaoption.hpp
 portfolio/builders/varianceswap.hpp
 portfolio/builders/yoycapfloor.hpp
+portfolio/callablebond.hpp
+portfolio/callablebondreferencedata.hpp
 portfolio/callableswap.hpp
 portfolio/capfloor.hpp
+portfolio/cashflowutils.hpp
+portfolio/cashposition.hpp
 portfolio/cbo.hpp
 portfolio/cdo.hpp
 portfolio/cliquetoption.hpp
@@ -606,6 +644,9 @@ portfolio/compositetrade.hpp
 portfolio/convertiblebond.hpp
 portfolio/convertiblebonddata.hpp
 portfolio/convertiblebondreferencedata.hpp
+portfolio/counterpartycorrelationmatrix.hpp
+portfolio/counterpartyinformation.hpp
+portfolio/counterpartymanager.hpp
 portfolio/creditdefaultswap.hpp
 portfolio/creditdefaultswapdata.hpp
 portfolio/creditdefaultswapoption.hpp
@@ -687,6 +728,7 @@ portfolio/riskparticipationagreement.hpp
 portfolio/schedule.hpp
 portfolio/scriptedtrade.hpp
 portfolio/simmcreditqualifiermapping.hpp
+portfolio/strikeresettableoption.hpp
 portfolio/structuredconfigurationerror.hpp
 portfolio/structuredconfigurationwarning.hpp
 portfolio/structuredtradeerror.hpp
@@ -699,6 +741,7 @@ portfolio/trade.hpp
 portfolio/tradeactions.hpp
 portfolio/tradebarrier.hpp
 portfolio/tradefactory.hpp
+portfolio/tradegenerator.hpp
 portfolio/trademonetary.hpp
 portfolio/tradestrike.hpp
 portfolio/tranche.hpp
@@ -721,6 +764,13 @@ scripting/astresetter.hpp
 scripting/asttoscriptconverter.hpp
 scripting/computationgraphbuilder.hpp
 scripting/context.hpp
+scripting/engines/amccgbaseengine.hpp
+scripting/engines/amccgcurrencyswapengine.hpp
+scripting/engines/amccgfxforwardengine.hpp
+scripting/engines/amccgfxoptionengine.hpp
+scripting/engines/amccgmultilegoptionengine.hpp
+scripting/engines/amccgpricingengine.hpp
+scripting/engines/amccgswapengine.hpp
 scripting/engines/analyticblackriskparticipationagreementengine.hpp
 scripting/engines/analyticxccyblackriskparticipationagreementengine.hpp
 scripting/engines/cliquetoptionmcscriptengine.hpp
@@ -732,16 +782,15 @@ scripting/engines/scriptedinstrumentpricingengine.hpp
 scripting/engines/scriptedinstrumentpricingenginecg.hpp
 scripting/grammar.hpp
 scripting/models/amcmodel.hpp
+scripting/models/assetmodel.hpp
 scripting/models/blackscholes.hpp
-scripting/models/blackscholesbase.hpp
 scripting/models/blackscholescg.hpp
-scripting/models/blackscholescgbase.hpp
+scripting/models/blackscholeslocalvolbase.hpp
 scripting/models/dummymodel.hpp
-scripting/models/fdblackscholesbase.hpp
 scripting/models/fdgaussiancam.hpp
 scripting/models/gaussiancam.hpp
 scripting/models/gaussiancamcg.hpp
-scripting/models/hwcg.hpp
+scripting/models/heston.hpp
 scripting/models/lgmcg.hpp
 scripting/models/localvol.hpp
 scripting/models/model.hpp
@@ -762,11 +811,13 @@ utilities/calendaradjustmentconfig.hpp
 utilities/calendarparser.hpp
 utilities/conventionsbasedfutureexpiry.hpp
 utilities/correlationmatrix.hpp
+utilities/credit.hpp
 utilities/csvfilereader.hpp
 utilities/currencyhedgedequityindexdecomposition.hpp
 utilities/currencyparser.hpp
 utilities/databuilders.hpp
 utilities/dategrid.hpp
+utilities/dependencies.hpp
 utilities/fileio.hpp
 utilities/flowanalysis.hpp
 utilities/formulaparser.hpp
@@ -778,11 +829,10 @@ utilities/marketdata.hpp
 utilities/osutils.hpp
 utilities/parsers.hpp
 utilities/progressbar.hpp
-utilities/serializationdate.hpp
 utilities/serializationdaycounter.hpp
-utilities/serializationperiod.hpp
 utilities/strike.hpp
 utilities/timeperiod.hpp
+utilities/timer.hpp
 utilities/to_string.hpp
 utilities/vectorutils.hpp
 utilities/wildcard.hpp
